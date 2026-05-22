@@ -34,6 +34,11 @@ MAX_OUTER=${MAX_OUTER:-20}
 MAX_PER_OUTER=${MAX_PER_OUTER:-25}
 PER_AGENT_BUDGET=${PER_AGENT_BUDGET:-20.00}
 TEST_TIMEOUT_S=${TEST_TIMEOUT_S:-20}
+SESSION_BUDGET=${SESSION_BUDGET:-400.00}
+AUTO_COMMIT=${AUTO_COMMIT:-1}
+COMMIT_LOCK_DIR="$OUT_DIR/commit.lock"
+PREV_PASS_COUNT=-1
+declare -a STUCK_PROGS=()
 
 # A frontier of Lua test programs. Each entry is a TSV: program\texpected_stdout.
 # expected_stdout uses literal \n for newlines and \t for tabs (interpreted via printf %b).
@@ -103,6 +108,24 @@ DEFAULT_PROGS=(
     '@FILE:reference/lua-c/testes/goto.lua'
     '@FILE:reference/lua-c/testes/sort.lua'
     '@FILE:reference/lua-c/testes/closure.lua'
+    '@FILE:reference/lua-c/testes/pm.lua'
+    '@FILE:reference/lua-c/testes/strings.lua'
+    '@FILE:reference/lua-c/testes/bitwise.lua'
+    '@FILE:reference/lua-c/testes/math.lua'
+    '@FILE:reference/lua-c/testes/tpack.lua'
+    '@FILE:reference/lua-c/testes/literals.lua'
+    '@FILE:reference/lua-c/testes/locals.lua'
+    '@FILE:reference/lua-c/testes/calls.lua'
+    '@FILE:reference/lua-c/testes/constructs.lua'
+    '@FILE:reference/lua-c/testes/nextvar.lua'
+    '@FILE:reference/lua-c/testes/utf8.lua'
+    '@FILE:reference/lua-c/testes/files.lua'
+    '@FILE:reference/lua-c/testes/errors.lua'
+    '@FILE:reference/lua-c/testes/api.lua'
+    '@FILE:reference/lua-c/testes/attrib.lua'
+    '@FILE:reference/lua-c/testes/main.lua'
+    '@FILE:reference/lua-c/testes/events.lua'
+    '@FILE:reference/lua-c/testes/code.lua'
 )
 
 emit() {
@@ -278,6 +301,51 @@ count_passing() {
     echo "$pass"
 }
 
+# Commit any pending changes under crates/ as one commit attributed to the
+# named agent. Serialized via mkdir-lock so parallel agents don't race.
+# Args: kind (impl|debug), target (func or prog), out_json (translator.json).
+commit_agent_changes() {
+    [ "$AUTO_COMMIT" != "1" ] && return 0
+    local kind="$1"
+    local target="$2"
+    local out_json="$3"
+
+    local lock_tries=0
+    while ! mkdir "$COMMIT_LOCK_DIR" 2>/dev/null; do
+        lock_tries=$((lock_tries + 1))
+        if [ "$lock_tries" -gt 120 ]; then
+            emit "  commit-lock timeout, skipping commit for $kind/$target"
+            return 0
+        fi
+        sleep 0.5
+    done
+
+    if [ -z "$(git status --porcelain crates/ 2>/dev/null)" ]; then
+        rmdir "$COMMIT_LOCK_DIR" 2>/dev/null
+        return 0
+    fi
+
+    local result_text; result_text=$(jq -r '.result // ""' "$out_json" 2>/dev/null)
+    local title_target; title_target=$(echo "$target" | tr '\n' ' ' | cut -c1-50)
+    local subject="agent ${kind}: ${title_target}"
+    local body_file="$OUT_DIR/.commit-body.tmp"
+    {
+        echo "$subject"
+        echo
+        printf "%s\n" "$result_text" | head -50
+    } > "$body_file"
+
+    git add crates/ >/dev/null 2>&1
+    if git commit -F "$body_file" >/dev/null 2>&1; then
+        local sha; sha=$(git rev-parse --short HEAD)
+        emit "  → committed $sha (${kind}/${title_target})"
+    else
+        emit "  → no commit (probably nothing in crates/)"
+    fi
+    rm -f "$body_file"
+    rmdir "$COMMIT_LOCK_DIR" 2>/dev/null
+}
+
 # Dispatch a family-aware implement agent for one stub (the prompt
 # already invites the agent to handle siblings while in context).
 dispatch_one() {
@@ -310,6 +378,7 @@ dispatch_one() {
 
     jq -s 'map(select(.type == "result")) | .[-1] // {}' "$transcript" > "$out_json" 2>/dev/null || echo '{}' > "$out_json"
     local cost; cost=$(jq -r '.total_cost_usd // 0' "$out_json")
+    commit_agent_changes "impl" "$func" "$out_json"
     echo "$cost"
 }
 
@@ -347,12 +416,39 @@ dispatch_debug() {
 
     jq -s 'map(select(.type == "result")) | .[-1] // {}' "$transcript" > "$out_json" 2>/dev/null || echo '{}' > "$out_json"
     local cost; cost=$(jq -r '.total_cost_usd // 0' "$out_json")
+    commit_agent_changes "debug" "$prog" "$out_json"
     echo "$cost"
+}
+
+# Extract a coarse error signature from a test's output. Used for stuck-detect:
+# two consecutive failures with the same signature on the same program means we
+# can't make progress on that program this session.
+error_signature() {
+    local out_file="$1"
+    if grep -qE "not yet implemented:" "$out_file"; then
+        grep -E "not yet implemented:" "$out_file" | head -1 \
+            | sed -E 's/^.*not yet implemented: //' | head -c 80
+    elif grep -qE "^thread '[^']+' .* panicked at " "$out_file"; then
+        grep -oE "panicked at [^:]+:[0-9]+" "$out_file" | head -1
+    elif grep -qE "^\[err\]" "$out_file"; then
+        grep -E "^\[err\]" "$out_file" | head -1 | head -c 80
+    else
+        echo "unknown"
+    fi
+}
+
+# Whether $1 is in the STUCK_PROGS list.
+is_stuck() {
+    local p="$1"
+    for s in "${STUCK_PROGS[@]+"${STUCK_PROGS[@]}"}"; do
+        if [ "$s" = "$p" ]; then return 0; fi
+    done
+    return 1
 }
 
 emit "═════════════════════════════════════════════════════════════════"
 emit "mega-loop start. ${#PROGS[@]} test programs."
-emit "  MAX_OUTER=$MAX_OUTER  MAX_PER_OUTER=$MAX_PER_OUTER  PER_AGENT_BUDGET=\$$PER_AGENT_BUDGET"
+emit "  MAX_OUTER=$MAX_OUTER  MAX_PER_OUTER=$MAX_PER_OUTER  PER_AGENT_BUDGET=\$$PER_AGENT_BUDGET  SESSION_BUDGET=\$$SESSION_BUDGET"
 emit "═════════════════════════════════════════════════════════════════"
 
 OUTER=0
@@ -363,7 +459,18 @@ while [ "$OUTER" -lt "$MAX_OUTER" ]; do
     OUTER=$((OUTER + 1))
     emit "─── outer round $OUTER (spent: \$$TOTAL_COST) ───"
 
-    ensure_binary
+    # SESSION_BUDGET guard — abort cleanly before dispatching more work.
+    budget_exceeded=$(awk -v t="$TOTAL_COST" -v b="$SESSION_BUDGET" 'BEGIN { print (t >= b) ? 1 : 0 }')
+    if [ "$budget_exceeded" = "1" ]; then
+        emit "  SESSION_BUDGET (\$$SESSION_BUDGET) reached. Stopping cleanly."
+        break
+    fi
+
+    if ! cargo build -q -p lua-cli 2>"$OUT_DIR/build-O$OUTER.err"; then
+        emit "  BUILD BROKEN at top of round — abort. See $OUT_DIR/build-O$OUTER.err"
+        head -30 "$OUT_DIR/build-O$OUTER.err" | tee -a "$LOG"
+        break
+    fi
 
     # ONE scan per outer round; reused for pass-count + stub-extraction.
     SCAN_DIR="$OUT_DIR/scan-$OUTER"
@@ -371,6 +478,14 @@ while [ "$OUTER" -lt "$MAX_OUTER" ]; do
 
     pass=$(count_passing "$SCAN_DIR")
     emit "  scan: $pass/${#PROGS[@]} programs pass cleanly"
+
+    # Regression-abort: pass count should never decrease between rounds.
+    if [ "$PREV_PASS_COUNT" -gt -1 ] && [ "$pass" -lt "$PREV_PASS_COUNT" ]; then
+        emit "  REGRESSION: pass count went $PREV_PASS_COUNT → $pass. Aborting."
+        break
+    fi
+    PREV_PASS_COUNT=$pass
+
     if [ "$pass" = "${#PROGS[@]}" ]; then
         emit "★ all ${#PROGS[@]} programs pass. Stopping."
         break
@@ -407,6 +522,14 @@ while [ "$OUTER" -lt "$MAX_OUTER" ]; do
                 fi
             fi
             if [ "$failing" = "0" ]; then continue; fi
+            # Stuck-detect: same prog + same error signature as last attempt = skip.
+            current_sig=$(error_signature "$out_file")
+            sig_key="${prog}::${current_sig}"
+            if is_stuck "$sig_key"; then
+                emit "  skip stuck prog (sig: $current_sig): ${LABELS[$((idx-1))]:-inline}"
+                continue
+            fi
+            STUCK_PROGS+=("$sig_key")
             debug_iter=$((debug_iter + 1))
             if [ "$debug_iter" -gt "$MAX_PER_OUTER" ]; then break; fi
             ITER=$debug_iter
