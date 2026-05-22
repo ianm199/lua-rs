@@ -1,5 +1,0 @@
-2 0.74142045 reference/lua-c/testes/strings.lua [sonnet]
-3 [2026-05-18T18:19:53Z mega]   → committed 2441e59 (debug/reference/lua-c/testes/locals.lua )
-8.003488749999999 reference/lua-c/testes/locals.lua [opus]
-1 [2026-05-18T18:23:36Z mega]   → committed 66ccd3d (debug/reference/lua-c/testes/gc.lua )
-8.11896575 reference/lua-c/testes/gc.lua [opus]

@@ -1110,3 +1110,12 @@
 [2026-05-18T18:31:23Z mega]   HARD_TESTS=gc.lua,locals.lua
 [2026-05-18T18:31:23Z mega] ═════════════════════════════════════════════════════════════════
 [2026-05-18T18:31:23Z mega] ─── outer round 1 (spent: $0) ───
+[2026-05-18T18:31:39Z mega]   scan: 70/79 programs pass cleanly
+[2026-05-18T18:31:39Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-18T18:31:39Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-18T18:31:39Z mega]   [O1.D1] DEBUG dispatch on prog: local t = {3, 1, 4, 1, 5, 9, 2, 6}; table.sort(t); for i=1,#t do io.write(t[i]); if i < #t then io.write(",") end end; print() [model=sonnet] [parallel]
+[2026-05-18T18:31:39Z mega]   [hard-test] reference/lua-c/testes/gc.lua → opus (skip Sonnet)
+[2026-05-18T18:31:39Z mega]   [O1.D2] DEBUG dispatch on file: reference/lua-c/testes/gc.lua [model=opus] [parallel]
+[2026-05-18T18:31:39Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/gengc.lua
+[2026-05-18T18:31:39Z mega]   [O1.D3] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [model=sonnet] [parallel]
+[2026-05-18T18:31:39Z mega]   [hard-test] reference/lua-c/testes/locals.lua → opus (skip Sonnet)

@@ -153,15 +153,40 @@ struct StdStreamHandle {
 }
 
 impl LuaFileHandle for StdStreamHandle {
-    fn read_byte(&mut self) -> i32 { EOF_SENTINEL }
-    fn unread_byte(&mut self, _byte: i32) {}
-    fn write_bytes(&mut self, _data: &[u8]) -> io::Result<usize> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "std stream write not yet implemented",
-        ))
+    fn read_byte(&mut self) -> i32 {
+        use std::io::Read;
+        match self.kind {
+            StdFileKind::Stdin => {
+                let mut buf = [0u8; 1];
+                match std::io::stdin().read(&mut buf) {
+                    Ok(1) => buf[0] as i32,
+                    _ => EOF_SENTINEL,
+                }
+            }
+            _ => EOF_SENTINEL,
+        }
     }
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn unread_byte(&mut self, _byte: i32) {}
+    fn write_bytes(&mut self, data: &[u8]) -> io::Result<usize> {
+        use std::io::Write;
+        match self.kind {
+            StdFileKind::Stderr => {
+                std::io::stderr().write_all(data)?;
+                Ok(data.len())
+            }
+            _ => {
+                std::io::stdout().write_all(data)?;
+                Ok(data.len())
+            }
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        use std::io::Write;
+        match self.kind {
+            StdFileKind::Stderr => std::io::stderr().flush(),
+            _ => std::io::stdout().flush(),
+        }
+    }
     fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
         Err(io::Error::new(io::ErrorKind::Unsupported, "stdio seek"))
     }

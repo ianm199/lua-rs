@@ -5,3 +5,6 @@
 testing syntax
 +
 testing short-circuit optimizations (1)
++
+OK
+[ok] execution completed, status=Ok
