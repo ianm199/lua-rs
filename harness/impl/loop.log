@@ -3548,3 +3548,7 @@ help: use `let _ = ...` to ignore the expression or result
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [2026-05-16T22:53:53Z]   dispatching DEBUG agent for real-error (budget $15)
+[2026-05-16T23:15:26Z]   agent done. iter cost=$9.0393635  total=$0.00
+[2026-05-16T23:15:26Z] ─── iter 2  (spent: $0.00) ───
+[2026-05-16T23:15:27Z]   real-error blocker at step 4/4 Executing chunk: pcall_k failed: Runtime: attempt to call a table value
+[2026-05-16T23:15:27Z]   dispatching DEBUG agent for real-error (budget $15)

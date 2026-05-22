@@ -1323,3 +1323,6 @@
 {"ts":"2026-05-16T22:53:33Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
 {"ts":"2026-05-16T22:53:53Z","action":"no_panic","detail":"iter=1 rc=1","total_cost":0.00}
 {"ts":"2026-05-16T22:53:53Z","action":"dispatch_start","detail":"type=debug err=(unknown failure; see tail above) iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:15:26Z","action":"dispatch_done","detail":"type=debug err=(unknown failure; see tail above) cost=9.0393635","total_cost":0.00}
+{"ts":"2026-05-16T23:15:27Z","action":"real_error","detail":"err=pcall_k failed: Runtime: attempt to call a table value step=4/4 Executing chunk iter=2","total_cost":0.00}
+{"ts":"2026-05-16T23:15:27Z","action":"dispatch_start","detail":"type=debug err=pcall_k failed: Runtime: attempt to call a table value iter=2","total_cost":0.00}

@@ -1264,7 +1264,36 @@ impl LuaState {
     pub fn intern_or_create_str(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> { self.intern_str(bytes) }
     pub fn new_userdata(&mut self, _size: usize, _nuvalue: usize) -> Result<GcRef<LuaUserData>, LuaError> { todo!("phase-b: new_userdata") }
     pub fn new_c_closure(&mut self, _f: LuaCFunction, _n: i32) -> Result<LuaClosure, LuaError> { todo!("phase-b: new_c_closure") }
-    pub fn push_closure<A, B, C, D>(&mut self, _a: A, _b: B, _c: C, _d: D) -> Result<(), LuaError> { todo!("phase-b: push_closure") }
+    pub fn push_closure(
+        &mut self,
+        proto_idx: usize,
+        ci: CallInfoIdx,
+        base: StackIdx,
+        ra: StackIdx,
+    ) -> Result<(), LuaError> {
+        let parent_cl = self.ci_lua_closure(ci).expect(
+            "push_closure: current frame is not a Lua closure",
+        );
+        let child_proto = parent_cl.proto.p[proto_idx].clone();
+        let nup = child_proto.upvalues.len();
+        let mut upvals: Vec<GcRef<UpVal>> = Vec::with_capacity(nup);
+        for i in 0..nup {
+            let desc = &child_proto.upvalues[i];
+            let uv = if desc.instack {
+                let level = base + desc.idx as i32;
+                crate::func::find_upval(self, level)
+            } else {
+                parent_cl.upvals[desc.idx as usize].clone()
+            };
+            upvals.push(uv);
+        }
+        let new_cl = GcRef::new(LuaClosureLua {
+            proto: child_proto,
+            upvals,
+        });
+        self.set_at(ra, LuaValue::Function(LuaClosure::Lua(new_cl)));
+        Ok(())
+    }
     pub fn new_tbc_upval(&mut self, _idx: StackIdx) -> Result<(), LuaError> { todo!("phase-b: new_tbc_upval") }
 
     pub fn upvalue_get(&self, cl: &GcRef<LuaClosureLua>, n: usize) -> LuaValue {

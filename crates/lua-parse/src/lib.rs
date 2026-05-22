@@ -1980,15 +1980,23 @@ fn add_prototype(ls: &mut LexState, state: &mut LuaState) -> Result<Box<LuaProto
 
 /// C: static void codeclosure(LexState *ls, expdesc *v)
 /// Emits OP_CLOSURE in the parent function and fixes up v.
-fn codeclosure(ls: &mut LexState, state: &mut LuaState, v: &mut ExprDesc) -> Result<(), LuaError> {
-    // C: FuncState *fs = ls->fs->prev
-    // C: init_exp(v, VRELOC, luaK_codeABx(fs, OP_CLOSURE, 0, fs->np - 1))
-    // C: luaK_exp2nextreg(fs, v)
-    // TODO(port): needs access to ls.fs.prev — requires traversal
-    // TODO(port): lua_code::code_abx(parent_fs, OpCode::Closure, 0, np - 1)?
-    // PORT NOTE: codeclosure operates on the PARENT FuncState (ls->fs->prev),
-    //   not the current one. Phase B must thread this correctly.
-    init_exp(v, ExprKind::Reloc, 0);
+fn codeclosure(ls: &mut LexState, _state: &mut LuaState, v: &mut ExprDesc) -> Result<(), LuaError> {
+    let line = ls.linenumber;
+    let mut child = ls.fs.take().expect("codeclosure: no current FuncState");
+    let pc = {
+        let parent = child.prev.as_mut().expect(
+            "codeclosure: child FuncState has no parent (called outside body()?)",
+        );
+        let bx = (parent.np - 1) as u32;
+        let inst = lua_code::opcodes::Instruction::abx(
+            lua_code::opcodes::OpCode::Closure,
+            0,
+            bx,
+        );
+        emit_inst(parent, line, inst)
+    };
+    ls.fs = Some(child);
+    init_exp(v, ExprKind::Reloc, pc);
     Ok(())
 }
 
@@ -2402,7 +2410,13 @@ fn body(
     ls.fs.as_mut().unwrap().f.lastlinedefined = ls.linenumber;
     check_match(ls, state, TK_END, TK_FUNCTION, line)?;
     codeclosure(ls, state, e)?;
-    close_func(ls, state)?;
+    let inner_proto = close_func(ls, state)?;
+    let parent = ls.fs.as_mut().expect("body: close_func left no parent FuncState");
+    let slot = (parent.np - 1) as usize;
+    if parent.f.p.len() <= slot {
+        parent.f.p.resize_with(slot + 1, || GcRef::new(LuaProto::placeholder()));
+    }
+    parent.f.p[slot] = GcRef::new(*inner_proto);
     Ok(())
 }
 
