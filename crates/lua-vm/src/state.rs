@@ -2077,11 +2077,27 @@ impl LuaState {
     pub fn proto_const(&mut self, cl: &GcRef<lua_types::closure::LuaLClosure>, idx: usize) -> LuaValue {
         cl.proto.k[idx].clone()
     }
-    pub fn get_proto_instr<T, P>(&mut self, _ci: T, _pc: P) -> lua_types::opcode::Instruction { todo!("phase-b: get_proto_instr") }
+    pub fn get_proto_instr(&self, ci: CallInfoIdx, pc: u32) -> lua_types::opcode::Instruction {
+        let cl = self.ci_lua_closure(ci)
+            .expect("get_proto_instr: CallInfo does not hold a Lua closure");
+        cl.proto.code[pc as usize]
+    }
     pub fn dump_proto(&self, _proto: &GcRef<LuaProto>, _writer: &mut dyn FnMut(&[u8]) -> Result<(), LuaError>, _strip: bool) -> Result<(), LuaError> { todo!("phase-b: dump_proto") }
 
-    pub fn trace_call(&mut self, _idx: CallInfoIdx) -> Result<bool, LuaError> { todo!("phase-b: trace_call") }
-    pub fn trace_exec(&mut self, _idx: CallInfoIdx, _pc: u32) -> Result<bool, LuaError> { todo!("phase-b: trace_exec") }
+    /// C: `int luaG_tracecall(lua_State *L)` — wrapper that returns the trap
+    /// flag as `bool` (C returns `int` 0/1).
+    ///
+    /// The C function reads `L->ci` directly, so the `_idx` argument is unused;
+    /// the VM passes its locally tracked `ci` for symmetry with `trace_exec`.
+    pub fn trace_call(&mut self, _idx: CallInfoIdx) -> Result<bool, LuaError> {
+        Ok(crate::debug::trace_call(self)? != 0)
+    }
+    /// C: `int luaG_traceexec(lua_State *L, const Instruction *pc)` — wrapper
+    /// returning `bool` for the trap flag. `_idx` is unused for the same reason
+    /// as `trace_call`; `pc` is the 0-based index of the next instruction.
+    pub fn trace_exec(&mut self, _idx: CallInfoIdx, pc: u32) -> Result<bool, LuaError> {
+        Ok(crate::debug::trace_exec(self, pc)? != 0)
+    }
     pub fn hook_call(&mut self, idx: CallInfoIdx) -> Result<(), LuaError> {
         crate::do_::hookcall(self, idx)
     }
