@@ -2,3 +2,4 @@
 2.5723294999999995 reference/lua-c/testes/gc.lua
 5 [2026-05-18T03:38:11Z mega]   → committed bc6efb0 (debug/reference/lua-c/testes/gengc.lua )
 1.22999725 reference/lua-c/testes/gengc.lua
+1 4.67824725 reference/lua-c/testes/goto.lua

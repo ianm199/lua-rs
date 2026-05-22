@@ -8,4 +8,7 @@ testing pack
 testing sort
 sorting 5000 random elements in 0 msec.
 re-sorting 5000 sorted elements in 0 msec.
-Invert-sorting other 5000 elements in 0 msec., with 65517 comparisons
+Invert-sorting other 5000 elements in 0 msec., with 62587 comparisons
+sorting 5000 equal elements in 0 msec.
+OK
+[ok] execution completed, status=Ok
