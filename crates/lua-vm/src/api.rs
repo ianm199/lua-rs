@@ -1564,25 +1564,17 @@ fn register_finalizable_table(state: &mut LuaState, tbl: &GcRef<LuaTable>) {
 /// Replaced by `lua_gc::run_pending_finalizers` when Phase D's incremental
 /// GC lands.
 pub fn run_pending_finalizers(state: &mut LuaState) {
-    eprintln!("DBG run_pending_finalizers: pending count = {}", state.global().pending_finalizers.len());
-    for (i, t) in state.global().pending_finalizers.iter().enumerate() {
-        eprintln!("DBG   [{}] strong_count = {}", i, t.strong_count());
-    }
     let mut did_run = false;
     loop {
+        // `to_be_finalized` was populated by the most recent
+        // `collect_via_heap` mark phase. Drain in LIFO order so the most
+        // recently dead object runs its `__gc` first — matches C-Lua's
+        // `finobj` stack ordering.
         let target_idx = {
-            let pending = &state.global().pending_finalizers;
-            let mut found: Option<usize> = None;
-            for (i, t) in pending.iter().enumerate().rev() {
-                if t.strong_count() == 1 {
-                    found = Some(i);
-                    break;
-                }
-            }
-            found
+            let to_fin = &state.global().to_be_finalized;
+            if to_fin.is_empty() { None } else { Some(to_fin.len() - 1) }
         };
         let Some(i) = target_idx else { break; };
-        eprintln!("DBG   firing finalizer for [{}]", i);
         // The Phase-A pre-finalizer weak-value sweep (mirroring C-Lua's
         // `clearbyvalues(g, g->weak, NULL)` from `atomic()`) is no longer
         // needed: under D-2, weak-table sweeping runs inside the post-mark
@@ -1592,7 +1584,7 @@ pub fn run_pending_finalizers(state: &mut LuaState) {
         // ordering (finalizer-visible state) still requires reachability-
         // based detection of which finalizable tables are about to die — a
         // gap tracked under D-2 ephemeron/finalizer follow-up.
-        let tbl = state.global_mut().pending_finalizers.swap_remove(i);
+        let tbl = state.global_mut().to_be_finalized.swap_remove(i);
         let mt = tbl.metatable();
         let gc_fn = match mt {
             Some(ref m) => {
@@ -1601,17 +1593,13 @@ pub fn run_pending_finalizers(state: &mut LuaState) {
             }
             None => LuaValue::Nil,
         };
-        eprintln!("DBG     gc_fn type = {:?}", std::mem::discriminant(&gc_fn));
         if !matches!(gc_fn, LuaValue::Function(_)) {
-            eprintln!("DBG     skip: not a function");
             continue;
         }
         did_run = true;
-        eprintln!("DBG     calling __gc");
         state.push(gc_fn);
         state.push(LuaValue::Table(tbl));
-        let r = pcall_k(state, 1, 0, 0, 0, None);
-        eprintln!("DBG     __gc pcall result = {:?}", r);
+        let _ = pcall_k(state, 1, 0, 0, 0, None);
     }
     // Post-finalizer weak sweep is also obsolete: any weak entries newly
     // exposed by the finalizer pass will be cleared on the NEXT

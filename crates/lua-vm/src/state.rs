@@ -774,6 +774,13 @@ pub struct GlobalState {
     /// incremental GC lands in Phase D.
     pub pending_finalizers: Vec<GcRef<lua_types::value::LuaTable>>,
 
+    /// Tables identified by the most recent `collect_via_heap` mark phase as
+    /// reachable only through `pending_finalizers` (i.e. the user has dropped
+    /// every reference). Their `__gc` runs the next time
+    /// `run_pending_finalizers` executes; entries are then cleared. Traced as
+    /// strong roots so they survive the sweep that scheduled them.
+    pub to_be_finalized: Vec<GcRef<lua_types::value::LuaTable>>,
+
     // Phase-D NOTE: tobefnz + fixedgc removed (dead since Phase A — see
     // sibling note above re allgc et al). Pending finalizers live in
     // `pending_finalizers` above; fixed objects live in heap.allgc with the
@@ -2066,23 +2073,24 @@ impl LuaState {
     pub fn gc_check_step(&mut self) {
         // Phase-B: drive the __gc finalizer queue from common allocation
         // sites so loops like `repeat u = {} until finish` make progress
-        // without an explicit `collectgarbage()`. No-op when the queue is
-        // empty (the common case). When a finalizer actually runs we
-        // also force a full collect so the weak-table sweep (post-mark
-        // hook) executes — gc.lua's `GC()` helper (`GC1(); GC2()`) drives
-        // weak-table cleanup purely through allocation-triggered finalizer
-        // activity, never calling `collectgarbage()` explicitly.
-        if !self.global().pending_finalizers.is_empty() {
+        // without an explicit `collectgarbage()`. The heap's threshold-based
+        // `check_step` decides whether to mark+sweep; when it does, the
+        // post-mark hook populates `to_be_finalized` with any pending
+        // finalizer whose target was reachable only via the finalizer
+        // registry. We then drain that list. Unlike the older path, this
+        // does NOT force a full collect on every allocation just because
+        // some library has long-lived finalizable userdata (stdin/stdout/
+        // stderr) pinned in `pending_finalizers`.
+        self.gc().check_step();
+        if !self.global().to_be_finalized.is_empty() {
             crate::api::run_pending_finalizers(self);
-            self.gc().full_collect();
         }
     }
     pub fn gc_cond_step(&mut self) {
-        if !self.global().pending_finalizers.is_empty() {
-            crate::api::run_pending_finalizers(self);
-            self.gc().full_collect();
-        }
         self.gc().check_step();
+        if !self.global().to_be_finalized.is_empty() {
+            crate::api::run_pending_finalizers(self);
+        }
     }
     pub fn gc_barrier_back<T, U>(&mut self, _t: T, _v: U) { /* phase-b no-op */ }
     pub fn gc_barrier_upval<T, U, V>(&mut self, _cl: T, _uv: U, _v: V) { /* phase-b no-op */ }
@@ -2198,8 +2206,19 @@ impl<'a> GcHandle<'a> {
                 .collect()
         };
 
+        // Snapshot pending finalizers. `GlobalState::trace` deliberately
+        // does NOT root these — that's how the post-mark hook below can
+        // distinguish "still reachable from program state" from "only kept
+        // alive by the finalizer registry."
+        let pending_snapshot: Vec<lua_types::gc::GcRef<lua_types::value::LuaTable>> = {
+            let g = state_ref.global.borrow();
+            g.pending_finalizers.clone()
+        };
+
         let alive_ids: std::cell::RefCell<std::collections::HashSet<usize>> =
             std::cell::RefCell::new(std::collections::HashSet::new());
+        let newly_unreachable: std::cell::RefCell<Vec<lua_types::gc::GcRef<lua_types::value::LuaTable>>> =
+            std::cell::RefCell::new(Vec::new());
         let collect_ran = std::cell::Cell::new(false);
 
         {
@@ -2234,6 +2253,21 @@ impl<'a> GcHandle<'a> {
                         alive_ids.borrow_mut().insert(id);
                     }
                 }
+                // Pending-finalizer detection. Any entry not yet visited is
+                // reachable ONLY through `pending_finalizers` (which we are
+                // not tracing this cycle), so the user has dropped every
+                // strong reference and the table is a candidate for `__gc`.
+                // `marker.mark` (not `trace_obj`) is what flips the heap
+                // header to Gray so the sweep keeps the box alive; draining
+                // the gray queue then propagates the mark to the metatable
+                // and entries the finalizer will read.
+                for pf in &pending_snapshot {
+                    if !marker.is_visited(pf.identity()) {
+                        marker.mark(pf.0);
+                        newly_unreachable.borrow_mut().push(pf.clone());
+                    }
+                }
+                marker.drain_gray_queue();
             };
             if force {
                 global.heap.full_collect_with_post_mark(&roots, hook);
@@ -2252,9 +2286,19 @@ impl<'a> GcHandle<'a> {
         // upgrade those handles (current placeholder GcWeak always returns
         // Some) and the prune walk would deref freed memory.
         let alive_set = alive_ids.into_inner();
+        let promote: Vec<lua_types::gc::GcRef<lua_types::value::LuaTable>> =
+            newly_unreachable.into_inner();
+        let promote_ids: std::collections::HashSet<usize> =
+            promote.iter().map(|t| t.identity()).collect();
         let mut g = state_ref.global.borrow_mut();
         g.weak_tables_registry
             .retain(|w| alive_set.contains(&w.0.identity()));
+        // Move newly-unreachable finalizables from `pending_finalizers` to
+        // `to_be_finalized`. The latter is rooted by `GlobalState::trace`,
+        // so these tables remain alive until their `__gc` runs.
+        g.pending_finalizers
+            .retain(|t| !promote_ids.contains(&t.identity()));
+        g.to_be_finalized.extend(promote);
     }
 
     /// Phase-B stub for `luaC_step(L)`.
@@ -3178,6 +3222,7 @@ pub fn new_state() -> Option<LuaState> {
         weak_tables_registry: Vec::new(),
         gc_tracked_long_strings: Vec::new(),
         pending_finalizers: Vec::new(),
+        to_be_finalized: Vec::new(),
         // C: g->twups = NULL;
         twups: Vec::new(),
         // C: g->panic = NULL;

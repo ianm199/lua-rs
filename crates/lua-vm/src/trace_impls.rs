@@ -132,10 +132,18 @@ impl Trace for GlobalState {
             }
         }
 
-        // Pending finalizers pin tables whose `__gc` is still queued to run;
-        // they must outlive the next mark even though no live program path
-        // references them.
-        for t in self.pending_finalizers.iter() {
+        // Pending finalizers are NOT traced here — that's what lets the mark
+        // phase distinguish "still reachable from the user program" from
+        // "only kept alive by the finalizer registry". `collect_via_heap`'s
+        // post-mark hook checks each entry against the visited set; an
+        // unvisited entry is moved to `to_be_finalized` and explicitly
+        // marked there so it survives the sweep.
+        //
+        // `to_be_finalized` IS traced as a strong root: tables in this list
+        // are awaiting their `__gc` call but are otherwise dead, and the
+        // table (plus its descendants) must survive long enough for the
+        // finalizer to run.
+        for t in self.to_be_finalized.iter() {
             t.trace(m);
         }
 
