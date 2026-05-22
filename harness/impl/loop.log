@@ -436,3 +436,7 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [2026-05-16T19:42:02Z] ─── iter 6  (spent: $0.00) ───
 [2026-05-16T19:42:03Z]   stub blocker: OpCode decode from instruction word
 [2026-05-16T19:42:03Z]   dispatching IMPLEMENT agent for OpCode decode from instruction word at crates/lua-vm/src/vm.rs:83:9 (budget $10)
+[2026-05-16T19:43:26Z]   agent done. iter cost=$0.558731  total=$0.00
+[2026-05-16T19:43:26Z] ─── iter 7  (spent: $0.00) ───
+[2026-05-16T19:43:27Z]   stub blocker: ci_nresults
+[2026-05-16T19:43:27Z]   dispatching IMPLEMENT agent for ci_nresults at crates/lua-vm/src/state.rs:1196:59 (budget $10)

@@ -1,1 +1,1 @@
-OpCode decode from instruction word
+ci_nresults

@@ -245,3 +245,6 @@
 {"ts":"2026-05-16T19:42:02Z","action":"dispatch_done","detail":"type=debug err=crates/lua-vm/src/state.rs:1382:22: cost=3.2236205000000004","total_cost":0.00}
 {"ts":"2026-05-16T19:42:03Z","action":"panic_detected","detail":"func=OpCode decode from instruction word iter=6","total_cost":0.00}
 {"ts":"2026-05-16T19:42:03Z","action":"dispatch_start","detail":"type=implement func=OpCode decode from instruction word iter=6","total_cost":0.00}
+{"ts":"2026-05-16T19:43:26Z","action":"dispatch_done","detail":"type=implement func=OpCode decode from instruction word cost=0.558731","total_cost":0.00}
+{"ts":"2026-05-16T19:43:27Z","action":"panic_detected","detail":"func=ci_nresults iter=7","total_cost":0.00}
+{"ts":"2026-05-16T19:43:27Z","action":"dispatch_start","detail":"type=implement func=ci_nresults iter=7","total_cost":0.00}

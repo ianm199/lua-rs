@@ -1193,7 +1193,7 @@ impl LuaState {
     pub fn ci_nextraargs(&self, _idx: CallInfoIdx) -> i32 { todo!("phase-b: ci_nextraargs") }
     pub fn ci_nres(&self, _idx: CallInfoIdx) -> i32 { todo!("phase-b: ci_nres") }
     pub fn ci_nres_set(&mut self, _idx: CallInfoIdx, _n: i32) { todo!("phase-b: ci_nres_set") }
-    pub fn ci_nresults(&self, _idx: CallInfoIdx) -> i32 { todo!("phase-b: ci_nresults") }
+    pub fn ci_nresults(&self, idx: CallInfoIdx) -> i32 { self.call_info[idx.as_usize()].nresults as i32 }
     pub fn ci_prev_instruction(&self, _idx: CallInfoIdx) -> lua_types::opcode::Instruction { todo!("phase-b: ci_prev_instruction") }
     pub fn ci_prev2_instruction(&self, _idx: CallInfoIdx) -> lua_types::opcode::Instruction { todo!("phase-b: ci_prev2_instruction") }
     pub fn ci_skip_next_instruction(&mut self, _idx: CallInfoIdx) { todo!("phase-b: ci_skip_next_instruction") }
