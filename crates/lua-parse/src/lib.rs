@@ -2912,7 +2912,6 @@ fn exp1(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
 
 /// C: static void fixforjump(FuncState *fs, int pc, int dest, int back)
 fn fixforjump(fs: &mut FuncState, pc: i32, dest: i32, back: bool) -> Result<(), LuaError> {
-    // C: int offset = dest - (pc + 1); if (back) offset = -offset
     let mut offset = dest - (pc + 1);
     if back {
         offset = -offset;
@@ -2920,8 +2919,10 @@ fn fixforjump(fs: &mut FuncState, pc: i32, dest: i32, back: bool) -> Result<(), 
     if offset > MAXARG_BX {
         return Err(LuaError::syntax(format_args!("control structure too long")));
     }
-    // C: SETARG_Bx(*jmp, offset)
-    // TODO(port): fs.f.code[pc as usize].set_arg_bx(offset as u32);
+    let raw = fs.f.code[pc as usize].0;
+    let mut inst = lua_code::opcodes::Instruction(raw);
+    inst.set_arg_bx(offset as u32);
+    fs.f.code[pc as usize] = lua_types::opcode::Instruction::new(inst.0);
     Ok(())
 }
 
@@ -2934,36 +2935,37 @@ fn forbody(
     nvars: i32,
     isgen: bool,
 ) -> Result<(), LuaError> {
-    // C: static const OpCode forprep[2] = {OP_FORPREP, OP_TFORPREP}
-    // C: static const OpCode forloop[2] = {OP_FORLOOP, OP_TFORLOOP}
     check_next(ls, state, TK_DO)?;
-    // C: prep = luaK_codeABx(fs, forprep[isgen], base, 0)
     let prep_op = if isgen { OpCode::TForPrep } else { OpCode::ForPrep };
-    // TODO(port): let prep = lua_code::code_abx(ls.fs.as_mut().unwrap(), prep_op, base, 0)?;
-    let prep = ls.fs.as_ref().unwrap().pc; // placeholder
+    let prep = {
+        let fs = ls.fs.as_mut().unwrap();
+        let inst = lua_code::opcodes::Instruction::abx(prep_op, base as u32, 0);
+        emit_inst(fs, line, inst)
+    };
 
-    enter_block(ls, false); // scope for declared variables
+    enter_block(ls, false);
     adjust_local_vars(ls, state, nvars)?;
     reserve_regs(ls.fs.as_mut().unwrap(), nvars)?;
     block(ls, state)?;
     leave_block(ls, state)?;
 
-    // C: fixforjump(fs, prep, luaK_getlabel(fs), 0)
-    let label_pc = ls.fs.as_ref().unwrap().pc; // placeholder
+    let label_pc = ls.fs.as_ref().unwrap().pc;
     fixforjump(ls.fs.as_mut().unwrap(), prep, label_pc, false)?;
 
     if isgen {
-        // C: luaK_codeABC(fs, OP_TFORCALL, base, 0, nvars); luaK_fixline(fs, line)
-        // TODO(port): lua_code::code_abc(ls.fs.as_mut().unwrap(), OpCode::TForCall, base, 0, nvars)?;
-        // TODO(port): lua_code::fix_line(ls.fs.as_mut().unwrap(), line);
+        let fs = ls.fs.as_mut().unwrap();
+        let inst = lua_code::opcodes::Instruction::abck(
+            OpCode::TForCall, base as u32, 0, nvars as u32, 0,
+        );
+        emit_inst(fs, line, inst);
     }
-    // C: endfor = luaK_codeABx(fs, forloop[isgen], base, 0)
     let loop_op = if isgen { OpCode::TForLoop } else { OpCode::ForLoop };
-    // TODO(port): let endfor = lua_code::code_abx(ls.fs.as_mut().unwrap(), loop_op, base, 0)?;
-    let endfor = ls.fs.as_ref().unwrap().pc; // placeholder
+    let endfor = {
+        let fs = ls.fs.as_mut().unwrap();
+        let inst = lua_code::opcodes::Instruction::abx(loop_op, base as u32, 0);
+        emit_inst(fs, line, inst)
+    };
     fixforjump(ls.fs.as_mut().unwrap(), endfor, prep + 1, true)?;
-    // C: luaK_fixline(fs, line)
-    // TODO(port): lua_code::fix_line(ls.fs.as_mut().unwrap(), line);
     Ok(())
 }
 
