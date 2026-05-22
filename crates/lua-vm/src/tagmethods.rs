@@ -824,8 +824,8 @@ pub(crate) fn get_varargs(
 //                  src/ltm.h  (104 lines; merged into this file)
 //   target_crate:  lua-vm
 //   confidence:    medium
-//   todos:         10
-//   port_notes:    5
+//   todos:         12
+//   port_notes:    7
 //   unsafe_blocks: 0   (must be 0 outside lua-gc/lua-coro)
 //   notes:
 //     Logic translation is faithful; the main uncertainties are:

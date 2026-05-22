@@ -84,14 +84,17 @@ def truncate(s: str, n: int) -> str:
 # Rendering
 # ──────────────────────────────────────────────────────────────────────────
 
-def render(stdscr, files: list[FileEntry], summary: Summary, expanded: bool) -> None:
-    del expanded  # reserved for a future detail panel; currently informational
+def render(stdscr, files: list[FileEntry], summary: Summary,
+           expanded: bool, refresh_pulse: bool, backend) -> None:
     stdscr.erase()
     max_y, max_x = stdscr.getmaxyx()
 
     # ─ Header ──────────────────────────────────────────────────────────
-    title = " Phase A Monitor — lua-rs-port"
+    pulse = "↻ " if refresh_pulse else "  "
+    title = f" Phase A Monitor — lua-rs-port{pulse if refresh_pulse else ''}"
     clock = time.strftime("%H:%M:%S", time.localtime())
+    if refresh_pulse:
+        title = f" {pulse}Phase A Monitor — lua-rs-port (refreshed)"
     stdscr.addnstr(0, 0, title.ljust(max_x - len(clock) - 1) + clock,
                    max_x, curses.color_pair(6) | curses.A_BOLD)
 
@@ -130,21 +133,34 @@ def render(stdscr, files: list[FileEntry], summary: Summary, expanded: bool) -> 
         stdscr.addnstr(row, 0, line[:max_x], max_x, cp)
         row += 1
 
-        if f.status == "work" and f.last_event and row < max_y - 2:
-            indent = "       ⤷ "
-            event_line = indent + f.last_event
-            stdscr.addnstr(row, 0, event_line[:max_x], max_x,
-                           curses.color_pair(7) | curses.A_DIM)
-            row += 1
+        if f.status == "work" and row < max_y - 2:
+            # Expanded mode: show last 5 events per worker; normal: last 1
+            limit = 5 if expanded else 1
+            events = backend.events(f.cfile, limit=limit) if expanded else (
+                [None]  # placeholder; we use f.last_event for the unexpanded case
+            )
+            if expanded and events:
+                for ev in events:
+                    if row >= max_y - 2:
+                        break
+                    line = f"       ⤷ [{ev.type}] {ev.summary[:max_x - 16]}"
+                    stdscr.addnstr(row, 0, line[:max_x], max_x,
+                                   curses.color_pair(7) | curses.A_DIM)
+                    row += 1
+            elif f.last_event:
+                event_line = "       ⤷ " + f.last_event
+                stdscr.addnstr(row, 0, event_line[:max_x], max_x,
+                               curses.color_pair(7) | curses.A_DIM)
+                row += 1
         elif f.status == "fail" and f.last_event and row < max_y - 2:
-            indent = "       ⤷ "
-            event_line = indent + f.last_event
+            event_line = "       ⤷ " + f.last_event
             stdscr.addnstr(row, 0, event_line[:max_x], max_x,
                            curses.color_pair(4) | curses.A_DIM)
             row += 1
 
     # ─ Footer ─────────────────────────────────────────────────────────
-    footer = " q quit · r refresh · e toggle expanded · auto-refresh 1s"
+    mode_tag = " [expanded]" if expanded else ""
+    footer = f" q quit · r refresh now · e toggle expanded{mode_tag} · auto 1s"
     stdscr.addnstr(max_y - 1, 0, footer[:max_x], max_x, curses.A_REVERSE)
 
     stdscr.noutrefresh()
@@ -162,10 +178,12 @@ def loop(stdscr, backend: Backend, refresh_s: float) -> None:
     init_colors()
 
     expanded = False
+    refresh_pulse_until = 0.0
     while True:
         files = backend.files()
         summary = backend.summary()
-        render(stdscr, files, summary, expanded)
+        pulse = time.time() < refresh_pulse_until
+        render(stdscr, files, summary, expanded, pulse, backend)
         try:
             key = stdscr.getch()
         except KeyboardInterrupt:
@@ -173,6 +191,7 @@ def loop(stdscr, backend: Backend, refresh_s: float) -> None:
         if key in (ord("q"), 27):
             return
         if key == ord("r"):
+            refresh_pulse_until = time.time() + 0.8
             continue
         if key == ord("e"):
             expanded = not expanded
