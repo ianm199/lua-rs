@@ -402,11 +402,20 @@ fn lua_key_eq(a: &LuaValue, b: &LuaValue) -> bool {
 ///
 /// Convention: `id == 0` is reserved for the main thread. Coroutines are
 /// assigned ids starting at 1.
-#[derive(Debug)]
 pub struct LuaThread {
     pub id: u64,
+    /// Coroutine body function, set by `co_create`. Phase E replaces this
+    /// with a real stackful coroutine handle via `corosensei`.
+    pub body: std::cell::RefCell<Option<LuaValue>>,
 }
+
+impl std::fmt::Debug for LuaThread {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LuaThread").field("id", &self.id).finish()
+    }
+}
+
 impl LuaThread {
-    pub fn new(id: u64) -> Self { LuaThread { id } }
-    pub fn placeholder() -> Self { LuaThread { id: 0 } }
+    pub fn new(id: u64) -> Self { LuaThread { id, body: std::cell::RefCell::new(None) } }
+    pub fn placeholder() -> Self { LuaThread { id: 0, body: std::cell::RefCell::new(None) } }
 }

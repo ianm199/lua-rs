@@ -197,6 +197,7 @@ pub fn co_resume(state: &mut LuaState) -> Result<usize, LuaError> {
 /// Phase E replaces this with the full cross-thread `auxresume` sequence
 /// once stackful coroutines land.
 fn aux_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
+    eprintln!("[DEBUG-CORO] aux_wrap called with top={}", state.get_top());
     let ci_func = state.current_call_info().func;
     let func_val = state.get_at(ci_func);
     let cache_key = match &func_val {
@@ -246,6 +247,15 @@ fn aux_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
     }
 
     // First call: run the wrapped function with a yield buffer active.
+    //
+    // PORT NOTE: We must use a protected call here, not a plain call. When the
+    // wrapped function raises an error, an unprotected call leaves state.ci
+    // pointing at the inner function's CallInfo instead of aux_wrap's. Every
+    // subsequent stack operation in aux_wrap then uses the wrong stack base,
+    // corrupting results and causing spurious "attempt to call a nil value"
+    // panics downstream. A protected call mirrors what real Lua does:
+    // coroutine.wrap / lua_resume use lua_pcall internally so errors trigger
+    // TBC cleanup and CI restoration before returning to the caller.
     let nargs = state.get_top();
     let func = state.value_at(upvalue_index(1));
     state.push(func);
@@ -254,7 +264,7 @@ fn aux_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
     }
     state.push_yield_buffer();
     // Use LUA_MULTRET (-1) so the function's final return values reach the stack.
-    let call_result = state.call(nargs, -1);
+    let call_result = state.protected_call(nargs, -1, 0);
 
     // If the call succeeded, capture its final return values as the closing
     // batch.  On error we discard whatever residue is on the stack and defer
@@ -361,6 +371,7 @@ pub fn co_yield(state: &mut LuaState) -> Result<usize, LuaError> {
     if state.has_yield_buffer() {
         let n = state.get_top();
         let batch: Vec<LuaValue> = (1..=n).map(|i| state.value_at(i)).collect();
+        eprintln!("[DEBUG-CORO] co_yield buffering batch of size {}", batch.len());
         state.yield_buffer_push_batch(batch);
         return Ok(0);
     }
