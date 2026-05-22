@@ -87,13 +87,47 @@ fn get_co(state: &mut LuaState) -> Result<GcRef<lua_types::value::LuaThread>, Lu
 }
 
 /// Returns one of the `COS_*` status codes describing `co` relative to the
-/// calling thread `state`.
+/// calling thread `state`. Mirrors `auxstatus` in `lcorolib.c` exactly,
+/// reading the target coroutine's `status`, call-frame depth, and stack
+/// top through `GlobalState::threads`.
+///
+/// The main thread (id 0) is never stored in the registry, so a value
+/// pointing at it is always "running" when it is the current thread.
+/// Phase E-1 cannot resume coroutines, so any registry-resident thread
+/// is either suspended (initial state, function still on stack) or dead
+/// (empty stack).
 ///
 /// C: `static int auxstatus(lua_State *L, lua_State *co)`
-fn aux_status(_state: &mut LuaState, _co: &GcRef<lua_types::value::LuaThread>) -> i32 {
-    // TODO(phase-b): needs lua_vm cross-thread access to status, has_frames,
-    // get_top, is_same_thread. Phase E wires real coroutines.
-    todo!("phase-b: coroutine aux_status")
+fn aux_status(state: &mut LuaState, co: &GcRef<lua_types::value::LuaThread>) -> i32 {
+    let co_id = co.id;
+    let g = state.global();
+    if co_id == g.current_thread_id {
+        return COS_RUN;
+    }
+    let entry = match g.threads.get(&co_id) {
+        Some(e) => e,
+        None => return COS_DEAD,
+    };
+    let co_state: &lua_vm::state::LuaState = &entry.state;
+    let raw_status = co_state.status;
+    if raw_status == LuaStatus::Yield as u8 {
+        return COS_YIELD;
+    }
+    if raw_status != LuaStatus::Ok as u8 {
+        return COS_DEAD;
+    }
+    let has_frames = co_state.ci.as_usize() > 0;
+    if has_frames {
+        return COS_NORM;
+    }
+    let ci_func = co_state.call_info[0].func.0;
+    let top = co_state.top.0;
+    let lua_gettop = top as i64 - ci_func as i64 - 1;
+    if lua_gettop == 0 {
+        COS_DEAD
+    } else {
+        COS_YIELD
+    }
 }
 
 /// Transfers `narg` arguments from `state` to `co`, resumes the coroutine,
@@ -273,23 +307,19 @@ fn aux_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
 ///
 /// Pushes the new thread value and returns 1.
 ///
+/// Phase E-1: allocates a real `LuaState` registered in
+/// `GlobalState::threads`, with `f` staged on the new thread's stack so
+/// `coroutine.status` reports `"suspended"`. The full `xmove` from the
+/// caller's stack arrives in slice 02b; for this slice the body is
+/// cloned via `value_at(1)`, which has the same net stack effect since
+/// `lua_newthread` in C also leaves only the thread value on the
+/// caller's stack.
+///
 /// C: `static int luaB_cocreate(lua_State *L)`
 pub fn co_create(state: &mut LuaState) -> Result<usize, LuaError> {
-    // C: luaL_checktype(L, 1, LUA_TFUNCTION);
     state.check_arg_type(1, LuaType::Function)?;
-    // C: NL = lua_newthread(L);
-    // TODO(port): coroutine stub — new_thread allocates a fresh LuaState coroutine
-    // and pushes a Thread value for it; Phase E needed.
-    let _nl = state.new_thread()?;
-    // C: lua_pushvalue(L, 1);          /* move function to top */
-    // C: lua_xmove(L, NL, 1);          /* move function from L to NL */
-    // PORT NOTE: in C the function copy is pushed and then xmove pops it
-    // off L's stack into NL's. The Phase E xmove is not yet wired, but the
-    // net stack effect on L is "thread on top". Skip the push entirely so
-    // co_wrap's push_cclosure captures the thread (not the function) as
-    // upvalue 1. Phase E will restore the push + xmove pair.
-    // TODO(port): coroutine stub — xmove transfers the function from L's stack to
-    // NL's stack so it becomes the coroutine body; Phase E needed.
+    let body = state.value_at(1);
+    let _nl = state.new_thread(Some(body))?;
     Ok(1)
 }
 
@@ -363,9 +393,18 @@ pub fn co_isyieldable(state: &mut LuaState) -> Result<usize, LuaError> {
     let is_yieldable = if matches!(state.type_at(1), LuaType::None) {
         state.is_yieldable()
     } else {
-        let _co = get_co(state)?;
-        // TODO(phase-b): needs cross-thread is_yieldable; Phase E.
-        todo!("phase-b: cross-thread is_yieldable")
+        let co = get_co(state)?;
+        let co_id = co.id;
+        let g = state.global();
+        if co_id == g.main_thread_id {
+            false
+        } else {
+            let entry = g
+                .threads
+                .get(&co_id)
+                .expect("thread value carries an id that must resolve in GlobalState::threads");
+            entry.state.is_yieldable()
+        }
     };
     state.push(LuaValue::Bool(is_yieldable));
     Ok(1)
@@ -388,30 +427,27 @@ pub fn co_running(state: &mut LuaState) -> Result<usize, LuaError> {
 
 /// `coroutine.close(co)` — close a dead or suspended coroutine.
 ///
-/// Runs the to-be-closed variable finalizers.  Returns `true` on success, or
-/// `false` plus an error object on failure.  Raises an error if `co` is
-/// running or normal.
+/// Phase E-1 skeleton: the running/normal-rejection branch matches the
+/// final C-Lua behavior and lands here. Closing a suspended/dead
+/// coroutine requires running to-be-closed variables and resetting the
+/// thread; that machinery lands in slice 02d. Until then this returns
+/// an error rather than silently dropping the work.
 ///
 /// C: `static int luaB_close(lua_State *L)`
 pub fn co_close(state: &mut LuaState) -> Result<usize, LuaError> {
     let co = get_co(state)?;
     let status = aux_status(state, &co);
     match status {
-        s if s == COS_DEAD || s == COS_YIELD => {
-            // TODO(phase-b): needs cross-thread close_thread + xmove.
-            todo!("phase-b: coroutine close")
-        }
-        _ => {
-            let name = match status {
-                COS_RUN => "running",
-                COS_NORM => "normal",
-                _ => "unknown",
-            };
+        COS_RUN | COS_NORM => {
+            let name = if status == COS_RUN { "running" } else { "normal" };
             Err(LuaError::runtime(format_args!(
                 "cannot close a {} coroutine",
                 name
             )))
         }
+        _ => Err(LuaError::runtime(format_args!(
+            "coroutine.close not yet implemented for suspended/dead coroutines (Phase E-2d)"
+        ))),
     }
 }
 

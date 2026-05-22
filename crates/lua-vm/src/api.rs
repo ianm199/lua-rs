@@ -1231,16 +1231,15 @@ pub fn push_light_userdata(state: &mut LuaState, p: *mut core::ffi::c_void) {
 // C: LUA_API int lua_pushthread (lua_State *L)
 // Returns true if pushed thread is the main thread.
 pub fn push_thread(state: &mut LuaState) -> bool {
-    // C: setthvalue(L, s2v(L->top.p), L); api_incr_top(L);
-    // C: return (G(L)->mainthread == L);
-    // PORT NOTE: pushing the current state as a Thread value requires a
-    // GcRef<LuaState> pointing to self, which is gated on Phase D's GC cycle
-    // handling. Until then we push a stable per-state thread token kept on
-    // GlobalState so callers like `debug.sethook` can use a consistent key
-    // in registry subtables.
-    let is_main = state.is_main_thread();
-    let token = state.global().thread_token.clone();
-    state.push(LuaValue::Thread(token));
+    let (value, is_main) = {
+        let g = state.global();
+        let id = g.current_thread_id;
+        let v = g
+            .thread_value_for(id)
+            .expect("current_thread_id must always resolve to a registered thread");
+        (v, id == g.main_thread_id)
+    };
+    state.push(LuaValue::Thread(value));
     is_main
 }
 

@@ -181,8 +181,10 @@ impl Trace for LuaUserData {
     }
 }
 
-/// LuaThread — placeholder unit type in lua-types; the real LuaState lives
-/// in lua-vm. No GC-bearing fields here.
+/// LuaThread — value-side thread identity. Carries only a `ThreadId`
+/// (the registry key); the real per-thread `LuaState` lives in
+/// `lua-vm`'s `GlobalState::threads` map and is traced from
+/// `GlobalState::trace` as a root.
 impl Trace for LuaThread {
     fn trace(&self, _m: &mut Marker) {}
 }

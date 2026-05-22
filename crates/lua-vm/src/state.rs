@@ -693,6 +693,22 @@ pub type DynLibSymbolHook =
 /// hook and keep libraries alive until process exit.
 pub type DynLibUnloadHook = fn(handle: DynLibId);
 
+/// One row of [`GlobalState::threads`]. Pairs the per-thread `LuaState`
+/// with the canonical `GcRef<LuaThread>` so every `push_thread` for the
+/// same id shares pointer-identity. Phase E-1 adds this; Phase E-2
+/// extends it with interior-mutability bookkeeping when `resume`/`yield`
+/// need to mutate the child thread while the parent holds a borrow.
+pub struct ThreadRegistryEntry {
+    /// The owned coroutine `LuaState`. The Phase E-1 slice only ever
+    /// reads through this handle (for `coroutine.status`); slice 02b
+    /// wraps it in interior mutability when resume / yield need to
+    /// mutate the child while the parent is borrowed.
+    pub state: GcRef<LuaState>,
+    /// Canonical thread-value handle. Reused on every push so
+    /// `GcRef::ptr_eq` is true across pushes.
+    pub value: GcRef<lua_types::value::LuaThread>,
+}
+
 /// Process-wide state shared by all Lua threads.
 ///
 /// C: `global_State` in `lstate.h`.
@@ -893,13 +909,39 @@ pub struct GlobalState {
     // TODO(port): self-referential Rc cycle; Phase D GC handles cycles properly
     pub mainthread: Option<GcRef<LuaState>>,
 
-    /// Phase-A/B substitute for `GcRef<LuaState>` thread identity. Until the
-    /// self-referential Rc cycle is broken in Phase D, callers that need a
-    /// stable hashable handle for "the current thread" (e.g. `lua_pushthread`
-    /// pushing the running thread into the debug hook table) use this single
-    /// shared `LuaThread` token. Coroutines are stubbed (design decision #6),
-    /// so reusing one token across all logical threads is correct for now.
-    pub thread_token: GcRef<lua_types::value::LuaThread>,
+    /// Registry of all live coroutine threads, keyed by `ThreadId`. Phase E-1
+    /// replaces the `thread_token` placeholder with a real id-indexed map so
+    /// `coroutine.create` allocates a fresh `LuaState`, registers it, and
+    /// returns a value that resolves back to the same state on every
+    /// `coroutine.status` / `coroutine.resume` call.
+    ///
+    /// Each entry pairs the per-thread `LuaState` with the canonical
+    /// `GcRef<LuaThread>` value, so two `LuaValue::Thread` pushes of the
+    /// same id share `GcRef::ptr_eq` identity. The main thread is NOT
+    /// stored here — its `LuaState` is owned externally by the embedder.
+    /// `main_thread_id` is reserved as `0` and a `LuaValue::Thread`
+    /// carrying id `0` is recognized as the main thread by lookup helpers.
+    pub threads: std::collections::HashMap<u64, ThreadRegistryEntry>,
+
+    /// Cached `LuaValue::Thread` payload for the main thread (id 0).
+    /// Built once during `new_state` so every `push_thread` on the main
+    /// thread shares the same `GcRef<LuaThread>` and thus compares
+    /// pointer-equal under `LuaValue::PartialEq`.
+    pub main_thread_value: GcRef<lua_types::value::LuaThread>,
+
+    /// Identity of the currently-running thread. `0` (main) until a
+    /// coroutine resume swaps it in slice 02b. The Phase E-1 slice
+    /// always leaves this at `main_thread_id` because resume is not yet
+    /// implemented.
+    pub current_thread_id: u64,
+
+    /// Identity of the main thread. Convention: `0`. Held as a field so
+    /// the lookup helpers can read it without hard-coding the constant.
+    pub main_thread_id: u64,
+
+    /// Monotonic counter handing out fresh ids in `new_thread`. Starts
+    /// at `1` because `0` is reserved for the main thread.
+    pub next_thread_id: u64,
 
     // C: TString *memerrmsg — preallocated OOM error message
     // types.tsv: global_State.memerrmsg → GcRef<LuaString>
@@ -958,8 +1000,26 @@ impl GlobalState {
     /// C: `gettotalbytes(g)` macro → `cast(lu_mem, (g)->totalbytes + (g)->GCdebt)`
     /// macros.tsv: `gettotalbytes → g.total_bytes()`
     pub fn total_bytes(&self) -> usize {
-        // C: cast(lu_mem, (g)->totalbytes + (g)->GCdebt)
         (self.totalbytes + self.gc_debt) as usize
+    }
+
+    /// Look up the coroutine `LuaState` registered under `id`. Returns
+    /// `None` for the main-thread id (the main `LuaState` is owned by
+    /// the embedder, not stored in `threads`) and for ids that were
+    /// never issued or have already been closed.
+    pub fn get_thread(&self, id: u64) -> Option<&ThreadRegistryEntry> {
+        self.threads.get(&id)
+    }
+
+    /// Return the canonical `GcRef<LuaThread>` for `id`. For the main
+    /// thread that's `main_thread_value`; for a coroutine it's the
+    /// value stored in the registry. Returns `None` if `id` is unknown.
+    pub fn thread_value_for(&self, id: u64) -> Option<GcRef<lua_types::value::LuaThread>> {
+        if id == self.main_thread_id {
+            Some(self.main_thread_value.clone())
+        } else {
+            self.threads.get(&id).map(|e| e.value.clone())
+        }
     }
 
     /// Returns `true` when the state has been fully initialized.
@@ -2268,16 +2328,13 @@ impl LuaState {
     pub fn gc_barrier_upval<T, U, V>(&mut self, _cl: T, _uv: U, _v: V) { /* phase-b no-op */ }
     /// C: `(G(L)->mainthread == L)` — true if `self` is the main thread.
     ///
-    /// PORT NOTE: In C this is a pointer-identity check against the global
-    /// state's `mainthread` slot. In Phase B we have no GcRef cycle from the
-    /// main thread to itself (see TODO at `state_open`) and coroutines are
-    /// stubbed (design decision #6), so the only running `LuaState` is the
-    /// main thread. The `mainthread` slot in `GlobalState` is `None` while
-    /// the cycle is unsupported; treat that as "self is the main thread".
-    /// Once Phase E wires real coroutines, this must compare a GcRef pointer
-    /// against `global.mainthread`.
+    /// Phase E-1: compares `GlobalState::current_thread_id` against
+    /// `main_thread_id`. Coroutine resume (slice 02b) is what will swap
+    /// `current_thread_id` in and out; until then the running thread is
+    /// always the main thread and this returns `true`.
     pub fn is_main_thread(&mut self) -> bool {
-        self.global().mainthread.is_none()
+        let g = self.global();
+        g.current_thread_id == g.main_thread_id
     }
     pub fn obj_type_name<'v>(&self, v: &'v LuaValue) -> std::borrow::Cow<'static, [u8]> {
         match v {
@@ -3157,10 +3214,16 @@ fn close_state(state: &mut LuaState) {
 /// //   lua_unlock(L); return L1;
 /// // }
 /// ```
-pub fn new_thread(state: &mut LuaState) -> Result<(), LuaError> {
-    // C: lua_lock(L); → no-op; macros.tsv: lua_lock → (drop entirely)
-    // C: luaC_checkGC(L);
-    // macros.tsv: luaC_checkGC → state.gc().check_step()
+/// Allocate a fresh coroutine `LuaState`, register it under a new
+/// `ThreadId`, and push the resulting `LuaValue::Thread(value)` onto
+/// `state`'s stack.
+///
+/// If `initial_body` is `Some(f)`, `f` is also pushed onto the new
+/// thread's stack so that `coroutine.status` reports `"suspended"`
+/// rather than `"dead"`. The full cross-thread `xmove` from caller to
+/// coroutine arrives in slice 02b; `co_create` uses `initial_body` to
+/// stage the body without needing a real `xmove`.
+pub fn new_thread(state: &mut LuaState, initial_body: Option<LuaValue>) -> Result<(), LuaError> {
     state.gc().check_step();
 
     // C: o = luaC_newobjdt(L, LUA_TTHREAD, sizeof(LX), offsetof(LX, l));
@@ -3219,21 +3282,26 @@ pub fn new_thread(state: &mut LuaState) -> Result<(), LuaError> {
     // C: stack_init(L1, L);
     stack_init(&mut new_thread);
 
-    // Wrap in GcRef and push onto caller's stack.
-    // TODO(port): register new_thread in state.global_mut().allgc for GC tracking (Phase D)
-    // TODO(D-1c-bridge): no state.new_thread helper; wraps a LuaState directly
-    let _thread_ref: GcRef<LuaState> = GcRef::new(new_thread);
+    if let Some(body) = initial_body {
+        new_thread.push(body);
+    }
 
-    // C: setthvalue2s(L, L->top.p, L1);
-    // macros.tsv: setthvalue2s → state.set_at(o, LuaValue::Thread(th.clone()))
-    // C: api_incr_top(L); → state.push() already increments
-    // TODO(phase-b): LuaValue::Thread expects GcRef<lua_types::value::LuaThread>;
-    // the rich LuaState lives in lua-vm and the two have not been unified. Pushing
-    // a placeholder for now so Phase A state construction can compile.
-    // TODO(D-1c-bridge): no state.new_thread_value helper; LuaThread placeholder
-    state.push(LuaValue::Thread(GcRef::new(lua_types::value::LuaThread::placeholder())));
+    let thread_ref: GcRef<LuaState> = GcRef::new(new_thread);
 
-    // C: lua_unlock(L); → no-op; macros.tsv: lua_unlock → (drop entirely)
+    let value = {
+        let mut g = state.global_mut();
+        let id = g.next_thread_id;
+        g.next_thread_id += 1;
+        let value = GcRef::new(lua_types::value::LuaThread::new(id));
+        g.threads.insert(
+            id,
+            ThreadRegistryEntry { state: thread_ref, value: value.clone() },
+        );
+        value
+    };
+
+    state.push(LuaValue::Thread(value));
+
     Ok(())
 }
 
@@ -3503,7 +3571,11 @@ pub fn new_state() -> Option<LuaState> {
         panic: None,
         // C: g->mainthread = L; — set after main thread created
         mainthread: None,
-        thread_token: GcRef::new(lua_types::value::LuaThread::placeholder()),
+        threads: std::collections::HashMap::new(),
+        main_thread_value: GcRef::new(lua_types::value::LuaThread::new(0)),
+        current_thread_id: 0,
+        main_thread_id: 0,
+        next_thread_id: 1,
         memerrmsg: placeholder_str.clone(),
         tmname: Vec::new(),
         // C: for (i=0; i < LUA_NUMTAGS; i++) g->mt[i] = NULL;

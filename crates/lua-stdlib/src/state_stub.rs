@@ -293,7 +293,10 @@ pub trait LuaStateStubExt {
     fn hook_is_internal_lua_hook(&mut self) -> bool { todo!("phase-b-reconcile: hook_is_internal_lua_hook") }
     fn set_c_stack_limit(&mut self, limit: i32) -> Result<i32, LuaError> { todo!("phase-b-reconcile: set_c_stack_limit") }
 
-    fn new_thread(&mut self) -> Result<GcRef<LuaThread>, LuaError> { todo!("phase-b-reconcile: new_thread") }
+    fn new_thread(&mut self, initial_body: Option<LuaValue>) -> Result<GcRef<LuaThread>, LuaError> {
+        let _ = initial_body;
+        todo!("phase-b-reconcile: new_thread")
+    }
     fn is_same_thread(&mut self, other: &LuaState) -> bool { todo!("phase-b-reconcile: is_same_thread") }
     fn thread_status(&mut self) -> LuaStatus { todo!("phase-b-reconcile: thread_status") }
 
@@ -980,8 +983,8 @@ impl LuaStateStubExt for LuaState {
         lua_vm::api::status(self)
     }
 
-    fn new_thread(&mut self) -> Result<GcRef<LuaThread>, LuaError> {
-        lua_vm::state::new_thread(self)?;
+    fn new_thread(&mut self, initial_body: Option<LuaValue>) -> Result<GcRef<LuaThread>, LuaError> {
+        lua_vm::state::new_thread(self, initial_body)?;
         let th = lua_vm::api::to_thread(self, -1)
             .ok_or_else(|| LuaError::runtime(format_args!("new_thread: missing thread on top")))?;
         Ok(th)

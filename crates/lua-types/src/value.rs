@@ -391,10 +391,22 @@ fn lua_key_eq(a: &LuaValue, b: &LuaValue) -> bool {
     }
 }
 
+/// Identity of a Lua thread (coroutine).
+///
+/// The real per-thread `LuaState` lives in `lua-vm` and is held by
+/// `GlobalState` keyed by this id. `LuaValue::Thread` carries a
+/// `GcRef<LuaThread>` so that pointer-equality of the wrapping `GcRef`
+/// still implements thread-identity comparison, but the only payload is
+/// the registry key — keeping `LuaState` outside `lua-types` avoids the
+/// `lua-types` → `lua-vm` crate cycle.
+///
+/// Convention: `id == 0` is reserved for the main thread. Coroutines are
+/// assigned ids starting at 1.
 #[derive(Debug)]
 pub struct LuaThread {
-    _private: (),
+    pub id: u64,
 }
 impl LuaThread {
-    pub fn placeholder() -> Self { LuaThread { _private: () } }
+    pub fn new(id: u64) -> Self { LuaThread { id } }
+    pub fn placeholder() -> Self { LuaThread { id: 0 } }
 }
