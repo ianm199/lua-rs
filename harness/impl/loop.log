@@ -9,3 +9,7 @@
 [2026-05-16T13:49:04Z] ─── iter 2  (spent: $0.00) ───
 [2026-05-16T13:49:05Z]   blocked on: get_field
 [2026-05-16T13:49:05Z]   dispatching agent for get_field (budget $10)
+[2026-05-16T13:50:32Z]   agent done. iter cost=$0.6442545000000001  total=$0.00
+[2026-05-16T13:50:32Z] ─── iter 3  (spent: $0.00) ───
+[2026-05-16T13:50:32Z]   blocked on: registry_value
+[2026-05-16T13:50:32Z]   dispatching agent for registry_value (budget $10)

@@ -1128,7 +1128,7 @@ impl LuaState {
     pub fn set_hook<T>(&mut self, _h: T) { todo!("phase-b: set_hook") }
     pub fn call_hook_event(&mut self, _event: i32, _line: i32) -> Result<(), LuaError> { todo!("phase-b: call_hook_event") }
 
-    pub fn registry_value(&self) -> LuaValue { todo!("phase-b: registry_value") }
+    pub fn registry_value(&self) -> LuaValue { self.global().l_registry.clone() }
     pub fn registry_get(&self, _key: usize) -> LuaValue { todo!("phase-b: registry_get") }
 
     pub fn new_string(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> { self.intern_str(bytes) }

@@ -4,3 +4,6 @@
 {"ts":"2026-05-16T13:49:04Z","action":"dispatch_done","detail":"func=require_lib cost=0.9077387499999999","total_cost":0.00}
 {"ts":"2026-05-16T13:49:05Z","action":"panic_detected","detail":"func=get_field iter=2","total_cost":0.00}
 {"ts":"2026-05-16T13:49:05Z","action":"dispatch_start","detail":"func=get_field iter=2","total_cost":0.00}
+{"ts":"2026-05-16T13:50:32Z","action":"dispatch_done","detail":"func=get_field cost=0.6442545000000001","total_cost":0.00}
+{"ts":"2026-05-16T13:50:32Z","action":"panic_detected","detail":"func=registry_value iter=3","total_cost":0.00}
+{"ts":"2026-05-16T13:50:32Z","action":"dispatch_start","detail":"func=registry_value iter=3","total_cost":0.00}
