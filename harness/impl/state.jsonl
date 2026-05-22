@@ -1530,3 +1530,6 @@
 {"ts":"2026-05-17T00:02:35Z","action":"dispatch_done","detail":"type=implement func=table_resize cost=1.0313562500000002","total_cost":0.00}
 {"ts":"2026-05-17T00:02:36Z","action":"panic_detected","detail":"func=table_ensure_array iter=4","total_cost":0.00}
 {"ts":"2026-05-17T00:02:36Z","action":"dispatch_start","detail":"type=implement func=table_ensure_array iter=4","total_cost":0.00}
+{"ts":"2026-05-17T00:03:52Z","action":"dispatch_done","detail":"type=implement func=table_ensure_array cost=0.627074","total_cost":0.00}
+{"ts":"2026-05-17T00:03:53Z","action":"panic_detected","detail":"func=table_array_set iter=5","total_cost":0.00}
+{"ts":"2026-05-17T00:03:53Z","action":"dispatch_start","detail":"type=implement func=table_array_set iter=5","total_cost":0.00}

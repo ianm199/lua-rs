@@ -1436,7 +1436,13 @@ impl LuaState {
         let tbl = tbl.clone();
         tbl.raw_set(self, &k, v)
     }
-    pub fn table_array_set<T>(&mut self, _t: T, _idx: usize, _v: LuaValue) -> Result<(), LuaError> { todo!("phase-b: table_array_set") }
+    pub fn table_array_set(&mut self, t: &LuaValue, idx: usize, v: LuaValue) -> Result<(), LuaError> {
+        let LuaValue::Table(tbl) = t else {
+            return Err(LuaError::type_error(t, "index"));
+        };
+        let tbl = tbl.clone();
+        tbl.raw_set_int(self, idx as i64 + 1, v)
+    }
     pub fn table_ensure_array<T>(&mut self, _t: T, _n: usize) -> Result<(), LuaError> {
         // PORT NOTE: C's luaH_resizearray preallocates the table's contiguous
         // array region (h->array). Phase B's LuaTable (lua-types/src/value.rs)

@@ -1,1 +1,1 @@
-table_ensure_array
+table_array_set
