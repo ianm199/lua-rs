@@ -321,6 +321,11 @@ impl LuaStateStubExt for LuaState {
         self.push(LuaValue::Function(LuaClosure::LightC(placeholder)));
         Ok(())
     }
+
+    fn push_bytes(&mut self, s: &[u8]) -> Result<(), LuaError> {
+        lua_vm::api::push_lstring(self, s)?;
+        Ok(())
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
