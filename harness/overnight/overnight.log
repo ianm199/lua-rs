@@ -10,3 +10,16 @@
 [2026-05-16T03:43:13Z]   pass 2 errored (consecutive: 2)
 [2026-05-16T03:43:13Z]   → pass 3: dispatching compiler-fixer (budget $6, hint=focus on top E0308/E0061)
 [2026-05-16T03:46:50Z]   pass 3: 211 → 0 errors, $1.5015802500000004
+[2026-05-16T03:46:50Z]   committed: 73e4a40 Phase B compiler-fixer pass 3: lua-vm 211 → 0 errors
+[2026-05-16T03:46:50Z] ════ Phase C translate: 12 stdlib files ════
+[2026-05-16T03:46:50Z]   dispatching fanout: 6 workers, $3/file
+fanout: mode=files  files=12  workers=6  dry_run=0
+         auth=personal subscription (CLAUDE_CONFIG_DIR=/Users/ianmclaughlin/.claude-personal)
+                                   (ANTHROPIC_API_KEY explicitly unset)
+
+  [lbaselib.c] → crates/lua-stdlib/src/base.rs
+  [lstrlib.c] → crates/lua-stdlib/src/string_lib.rs
+  [lmathlib.c] → crates/lua-stdlib/src/math_lib.rs
+  [ltablib.c] → crates/lua-stdlib/src/table_lib.rs
+  [liolib.c] → crates/lua-stdlib/src/io_lib.rs
+  [loslib.c] → crates/lua-stdlib/src/os_lib.rs

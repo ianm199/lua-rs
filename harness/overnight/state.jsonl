@@ -3,3 +3,6 @@
 {"ts":"2026-05-16T03:34:40Z","action":"fixer_done","detail":"lua-vm pass 1: {\"crate\":\"lua-vm\",\"status\":\"error\",\"cost_usd\":6.0343846,\"duration_s\":599,\"start_errors\":211,\"end_errors\":99}","total_spent":0.00}
 {"ts":"2026-05-16T03:43:13Z","action":"fixer_done","detail":"lua-vm pass 2: {\"crate\":\"lua-vm\",\"status\":\"error\",\"cost_usd\":6.061359749999997,\"duration_s\":511,\"start_errors\":99,\"end_errors\":10}","total_spent":6.0344}
 {"ts":"2026-05-16T03:46:50Z","action":"fixer_done","detail":"lua-vm pass 3: {\"crate\":\"lua-vm\",\"status\":\"ok\",\"cost_usd\":1.5015802500000004,\"duration_s\":217,\"start_errors\":10,\"end_errors\":0}","total_spent":12.0958}
+{"ts":"2026-05-16T03:46:50Z","action":"commit","detail":"73e4a40 Phase B compiler-fixer pass 3: lua-vm 211 → 0 errors","total_spent":13.5974}
+{"ts":"2026-05-16T03:46:50Z","action":"phase_end","detail":"B_finish","total_spent":13.5974}
+{"ts":"2026-05-16T03:46:50Z","action":"phase_start","detail":"C_xlate","total_spent":13.5974}
