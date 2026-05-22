@@ -143,8 +143,12 @@ translate_one() {
     local rust_rel=$(echo "$target_line" | awk '{print $2}')
     local rust_full="crates/$crate/$rust_rel"
 
-    # Idempotency: skip if rust file already exists and looks ported
-    if [ -f "$rust_full" ] && grep -q "PORT STATUS" "$rust_full"; then
+    # Idempotency: skip only if the file is a REAL port (trailer source field
+    # references a .c source). Skeleton placeholders have `source: (none —` and
+    # should be overwritten.
+    if [ -f "$rust_full" ] \
+        && grep -qE '^//\s*source:.*\.[ch]\b' "$rust_full" \
+        && ! grep -qE '^//\s*source:\s*\(none' "$rust_full"; then
         echo "  [$cfile] SKIP: $rust_full already ported"
         echo "{\"file\":\"$cfile\",\"target\":\"$rust_full\",\"status\":\"already_ported\"}" >> "$JSONL"
         return
