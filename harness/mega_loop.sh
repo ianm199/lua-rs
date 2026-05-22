@@ -112,6 +112,15 @@ DEFAULT_PROGS=(
     '@FILE:reference/lua-c/testes/goto.lua'
     '@FILE:reference/lua-c/testes/sort.lua'
     '@FILE:reference/lua-c/testes/closure.lua'
+    # Phase-D GC test files. gc.lua exercises the collector; gengc.lua tests
+    # generational mode (we only implement full collect for now — gengc may
+    # fail until later D-phase work).
+    '@FILE:reference/lua-c/testes/gc.lua'
+    '@FILE:reference/lua-c/testes/gengc.lua'
+    # Handwritten GC smokes that exercise specific collection scenarios.
+    # These deliberately call collectgarbage to drive trace() coverage.
+    $'do local t = {}; for i=1,100 do t[i] = {value=i} end; t = nil end; collectgarbage("collect"); print("ok")\tok'
+    $'local function makecycle() local a, b = {}, {}; a.b = b; b.a = a; return a end; for i=1,50 do local _ = makecycle() end; collectgarbage("collect"); print("ok")\tok'
     '@FILE:reference/lua-c/testes/pm.lua'
     '@FILE:reference/lua-c/testes/strings.lua'
     '@FILE:reference/lua-c/testes/bitwise.lua'
@@ -374,7 +383,13 @@ dispatch_one() {
     export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-64000}"
     export CLAUDE_TARGET_RS_FILE="crates/lua-vm/src/state.rs"
 
-    claude -p \
+    local timeout_cmd=""
+    if command -v gtimeout >/dev/null 2>&1; then
+        timeout_cmd="gtimeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-720}"
+    elif command -v timeout >/dev/null 2>&1; then
+        timeout_cmd="timeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-720}"
+    fi
+    $timeout_cmd claude -p \
         --append-system-prompt "$(cat PORTING.md)" \
         --allowedTools "Read,Write,Edit,Glob,Grep,Bash(cargo build*),Bash(cargo check*),Bash(grep *),Bash(rg *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *)" \
         --permission-mode dontAsk \
@@ -412,7 +427,13 @@ dispatch_debug() {
     unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
     export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-64000}"
 
-    claude -p \
+    local timeout_cmd=""
+    if command -v gtimeout >/dev/null 2>&1; then
+        timeout_cmd="gtimeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-720}"
+    elif command -v timeout >/dev/null 2>&1; then
+        timeout_cmd="timeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-720}"
+    fi
+    $timeout_cmd claude -p \
         --append-system-prompt "$(cat PORTING.md)" \
         --allowedTools "Read,Write,Edit,Glob,Grep,Bash(cargo build*),Bash(cargo check*),Bash(grep *),Bash(rg *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *),Bash(target/debug/lua-rs *),Bash(./harness/run_official_test.sh *)" \
         --permission-mode dontAsk \

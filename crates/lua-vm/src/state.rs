@@ -1882,7 +1882,15 @@ impl<'a> GcHandle<'a> {
     /// C: `luaC_fullgc(L, isemergency)` — full collection.
     /// macros.tsv: `luaC_fullgc → state.gc().full_collect()`
     pub fn full_collect(&self) {
-        // PORT NOTE: Phase A–C no-op
+        // Phase D: trigger real mark-and-sweep. Holds an immutable borrow of
+        // GlobalState as both the heap-owner and the root set (heap is
+        // interior-mutable; roots are read-only). The Trace impl for
+        // GlobalState walks its registry/stringpool/etc.; each unimplemented
+        // sub-Trace fires its `todo!("phase-d:")` panic so the mega-loop
+        // surfaces it as work.
+        let global = self._state.global.borrow();
+        global.heap.unpause();
+        global.heap.full_collect(&*global);
     }
 
     /// Phase-B stub for `luaC_step(L)`.
