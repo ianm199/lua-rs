@@ -1549,10 +1549,11 @@ fn addliteral(state: &mut LuaState, buf: &mut Vec<u8>, arg: i32) -> Result<(), L
                 buf.extend_from_slice(&hex);
             }
         }
-        LuaType::Nil | LuaType::Boolean => {
-            // C: luaL_tolstring(L, arg, NULL); luaL_addvalue(b);
-            let s = state.to_string_coerced(arg).unwrap_or_default();
-            buf.extend_from_slice(&s);
+        LuaType::Nil => {
+            buf.extend_from_slice(b"nil");
+        }
+        LuaType::Boolean => {
+            buf.extend_from_slice(if state.to_boolean(arg) { b"true" } else { b"false" });
         }
         _ => {
             return Err(LuaError::arg_error(arg, "value has no literal form"));

@@ -448,6 +448,23 @@ impl StackIdxExt for StackIdx {
 /// methods are needed by api.rs and tagmethods.rs but the lua-types
 /// placeholders don't yet expose them. TODO(phase-b): replace with real
 /// accessor methods on the canonical types in lua-types.
+/// Reject table keys that Lua semantics disallow:
+///   * `nil` — would shadow the "absent" sentinel.
+///   * NaN floats — `NaN != NaN` makes the key unfindable by any equality
+///     comparison, so insertion is forbidden too.
+///
+/// `gc.lua`, `math.lua`, and `attrib.lua` all assert `pcall(rawset, t, ...)`
+/// returns false for these cases.
+fn reject_invalid_table_key(k: &LuaValue) -> Result<(), LuaError> {
+    match k {
+        LuaValue::Nil => Err(LuaError::runtime(format_args!("table index is nil"))),
+        LuaValue::Float(f) if f.is_nan() => {
+            Err(LuaError::runtime(format_args!("table index is NaN")))
+        }
+        _ => Ok(()),
+    }
+}
+
 pub trait LuaTableRefExt {
     fn metatable(&self) -> Option<GcRef<LuaTable>>;
     fn as_ptr(&self) -> *const ();
@@ -467,6 +484,7 @@ impl LuaTableRefExt for GcRef<LuaTable> {
     fn get_int(&self, k: i64) -> LuaValue { (**self).get(&LuaValue::Int(k)) }
     fn get_short_str(&self, k: &GcRef<LuaString>) -> LuaValue { (**self).get_short_str(k) }
     fn raw_set(&self, _state: &mut LuaState, k: &LuaValue, v: LuaValue) -> Result<(), LuaError> {
+        reject_invalid_table_key(k)?;
         (**self).raw_set(k.clone(), v);
         Ok(())
     }
