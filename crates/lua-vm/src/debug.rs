@@ -117,6 +117,11 @@ pub fn c_api_runtime(state: &LuaState, msg: Vec<u8>) -> LuaError {
 /// e.g. `_G.table.sort` can be found as `"table.sort"`.
 /// Returns the dotted path on success, `None` otherwise.
 /// Mirrors `ldblib.c:findfield` from reference C-Lua 5.4.
+///
+/// Not called from `arg_error_impl` (that path was removed to prevent stack
+/// overflow via re-entrant error generation). Reserved for a future
+/// `debug.findfield` Lua binding.
+#[allow(dead_code)]
 fn find_func_in_table(table: &LuaTable, target: &LuaValue, prefix: &[u8], depth: u8) -> Option<Vec<u8>> {
     let mut key = LuaValue::Nil;
     loop {
@@ -164,6 +169,11 @@ fn find_func_in_table(table: &LuaTable, target: &LuaValue, prefix: &[u8], depth:
 /// When `get_info` cannot resolve a function name (e.g. the function was called
 /// as a value from C code), walk `_G` to find its dotted path by identity.
 /// Returns `None` if not found; caller falls back to `"?"`.
+///
+/// Not called from `arg_error_impl` (that path was removed to prevent stack
+/// overflow via re-entrant error generation). Reserved for a future
+/// `debug.findfield` Lua binding.
+#[allow(dead_code)]
 fn find_func_name_in_globals(state: &LuaState, func_val: &LuaValue) -> Option<Vec<u8>> {
     let globals = state.global().globals.clone();
     if let LuaValue::Table(globals_table) = globals {
@@ -195,15 +205,7 @@ pub fn arg_error_impl(state: &mut LuaState, mut arg: i32, extramsg: &[u8]) -> Lu
             return c_api_runtime(state, msg.into_bytes());
         }
     }
-    let fname = if let Some(name) = ar.name.clone() {
-        name
-    } else if let Some(ci_idx) = ar.i_ci {
-        let func_slot = state.get_ci(ci_idx).func;
-        let func_val = state.get_at(func_slot).clone();
-        find_func_name_in_globals(state, &func_val).unwrap_or_else(|| b"?".to_vec())
-    } else {
-        b"?".to_vec()
-    };
+    let fname = ar.name.clone().unwrap_or_else(|| b"?".to_vec());
     let msg = format!(
         "bad argument #{} to '{}' ({})",
         arg,

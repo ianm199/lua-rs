@@ -219,7 +219,7 @@ fn aux_resume(state: &mut LuaState, co: GcRef<lua_types::value::LuaThread>, narg
         }
         co_state.global_mut().current_thread_id = co_id;
         let mut nres: i32 = 0;
-        let status = lua_vm::do_::lua_resume(&mut *co_state, None, narg, &mut nres);
+        let status = lua_vm::do_::lua_resume(&mut *co_state, Some(state), narg, &mut nres);
         co_state.global_mut().current_thread_id = parent_thread_id;
         let co_top = co_state.top_idx().0 as i32;
         let ci_func = co_state.current_call_info().func.0 as i32;

@@ -1769,6 +1769,9 @@ pub fn call_k(
     // C: if (k != NULL && yieldable(L)) { save continuation; luaD_call }
     // C: else luaD_callnoyield(L, func, nresults);
     // TODO(port): continuation (k) and yieldable check deferred to Phase E.
+    // Until continuation registration is wired, taking the yieldable path
+    // would trip the `finishCcall` debug_assert that demands `ci->u.c.k`
+    // is set on resume — leaving `call_no_yield` here is the safe choice.
     state.call_no_yield(func_idx, nresults)?;
     // C: adjustresults(L, nresults);
     state.adjust_results(nresults);

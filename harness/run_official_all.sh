@@ -43,6 +43,7 @@ if _VERSION == nil then _VERSION = "Lua 5.4" end
 '
 
 export LUA_PATH="$TESTES_DIR/?.lua;$TESTES_DIR/?/init.lua;./?.lua;./?/init.lua"
+export LUA_RS_VERBOSE=1
 
 pass=0; fail=0; timeout=0
 declare -a FAILED

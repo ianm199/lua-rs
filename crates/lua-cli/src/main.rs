@@ -459,6 +459,26 @@ fn os_str_bytes(s: &std::ffi::OsString) -> Vec<u8> {
     s.to_string_lossy().into_owned().into_bytes()
 }
 
+/// Prepend `dir/?.lua;dir/?/init.lua` to `LUA_PATH` so that `require` can
+/// find modules that live next to the running script.
+///
+/// When `LUA_PATH` is already set the script-dir entries are prepended so the
+/// existing value is preserved.  When `LUA_PATH` is not set we write
+/// `dir/?.lua;dir/?/init.lua;;` — the trailing `;;` causes `setpath` to
+/// splice in the compiled-in default at that position, matching C-Lua's
+/// behaviour when `LUA_PATH` is absent.
+fn prepend_lua_path(dir: &std::path::Path) {
+    let prefix = format!(
+        "{dir}/?.lua;{dir}/?/init.lua",
+        dir = dir.display(),
+    );
+    let new_val = match std::env::var("LUA_PATH") {
+        Ok(existing) if !existing.is_empty() => format!("{};{}", prefix, existing),
+        _ => format!("{};;", prefix),
+    };
+    std::env::set_var("LUA_PATH", new_val);
+}
+
 fn main() -> ExitCode {
     let args_os: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if args_os.len() < 2 {
@@ -482,6 +502,9 @@ fn main() -> ExitCode {
     } else {
         let path = std::path::Path::new(&args_os[1]);
         if path.is_file() {
+            if let Some(script_dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+                prepend_lua_path(script_dir);
+            }
             match std::fs::read(path) {
                 Ok(bytes) => {
                     let mut name = vec![b'@'];

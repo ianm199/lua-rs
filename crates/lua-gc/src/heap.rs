@@ -691,11 +691,9 @@ impl Heap {
         if self.paused.get() {
             return StepOutcome::SkippedStopped;
         }
-        let did_any_work = self.run_budgeted(roots, &mut budget, &mut post_mark);
+        self.run_budgeted(roots, &mut budget, &mut post_mark);
         if self.state.get().is_pause() {
             StepOutcome::Paused
-        } else if did_any_work {
-            StepOutcome::InProgress
         } else {
             StepOutcome::InProgress
         }
