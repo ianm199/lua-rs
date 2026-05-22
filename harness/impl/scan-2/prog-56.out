@@ -6,12 +6,9 @@ testing (parts of) table library
 testing unpack
 testing pack
 testing sort
-sorting 5000 random elements in 0 msec.
-re-sorting 5000 sorted elements in 0 msec.
-Invert-sorting other 5000 elements in 0 msec., with 64404 comparisons
-sorting 5000 equal elements in 0 msec.
-
-thread 'main' (10069635) panicked at crates/lua-types/src/trace_impls.rs:19:9:
-not yet implemented: phase-d: trace LuaValue — match each GC-bearing variant (Str, Table, Function, UserData, Thread) and mark via m.mark or field.trace
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-d: trace LuaValue — match each GC-bearing variant (Str, Table, Function, UserData, Thread) and mark via m.mark or field.trace
+sorting 5000 random elements in 0.00 msec.
+re-sorting 5000 sorted elements in 0.00 msec.
+Invert-sorting other 5000 elements in 0.00 msec., with 63903 comparisons
+sorting 5000 equal elements in 0.00 msec.
+OK
+[ok] execution completed, status=Ok

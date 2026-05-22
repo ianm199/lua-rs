@@ -328,17 +328,13 @@ fn check_close_mth(state: &mut LuaState, level: StackIdx) -> Result<(), LuaError
         // C: level - L->ci->func.p — distance from the function slot to the variable
         let idx = (level.0 as i32) - (func_idx.0 as i32);
         // C: const char *vname = luaG_findlocal(L, L->ci, idx, NULL);
-        // TODO(port): luaG_findlocal lives in debug.rs (ldebug.c); cross-module call.
-        let vname: &[u8] = state.debug_find_local(state.ci, idx).unwrap_or(b"?");
+        let vname_owned: Vec<u8> = state.debug_find_local(state.ci, idx).unwrap_or_else(|| b"?".to_vec());
         // C: luaG_runerror(L, "variable '%s' got a non-closable value", vname);
-        // error_sites.tsv: luaG_runerror → return Err(LuaError::runtime(format_args!(...)))
-        // TODO(port): `vname` is `&[u8]`; `format_args!` needs a Display wrapper.
-        // Lua variable names are ASCII identifiers so the bytes are valid ASCII,
-        // but the type system requires a wrapper type. Using `escape_ascii` as a
-        // best-effort displayable representation for Phase A.
+        // PORT NOTE: Lua variable names are ASCII identifiers; `escape_ascii`
+        // produces a Display-compatible wrapper for the byte slice.
         return Err(LuaError::runtime(format_args!(
             "variable '{}' got a non-closable value",
-            vname.escape_ascii()
+            vname_owned.escape_ascii()
         )));
     }
     Ok(())
@@ -781,14 +777,13 @@ impl LuaState {
     /// Returns the local-variable name at frame position `n` for CallInfo `ci`.
     ///
     /// C: `luaG_findlocal(L, ci, n, NULL)`.
-    /// TODO(port): real implementation in debug.rs.
     pub(crate) fn debug_find_local(
         &self,
-        _ci: CallInfoIdx,
-        _n: i32,
-    ) -> Option<&[u8]> {
-        // TODO(port): implement in debug.rs
-        None
+        ci: CallInfoIdx,
+        n: i32,
+    ) -> Option<Vec<u8>> {
+        let ci = self.get_ci(ci).clone();
+        crate::debug::find_local(self, &ci, n, None)
     }
 }
 

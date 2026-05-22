@@ -490,16 +490,21 @@ fn find_vararg(ci: &CallInfo, n: i32) -> Option<(StackIdx, &'static [u8])> {
 /// - If `pos` is `Some`, sets it to the variable's stack index.
 ///
 /// C: `const char *luaG_findlocal(lua_State *L, CallInfo *ci, int n, StkId *pos)`
-pub(crate) fn find_local<'a>(
-    state: &'a LuaState,
+///
+/// PORT NOTE: returns an owned `Vec<u8>` rather than `&[u8]`. The Lua-function
+/// case must call `get_local_name`, which returns a slice borrowed from a
+/// `GcRef<LuaProto>` that drops at function end — there is no caller lifetime
+/// the slice could be tied to. Cloning the name is cheap (a handful of bytes).
+pub(crate) fn find_local(
+    state: &LuaState,
     ci: &CallInfo,
     n: i32,
     pos: Option<&mut StackIdx>,
-) -> Option<&'a [u8]> {
+) -> Option<Vec<u8>> {
     // C: StkId base = ci->func.p + 1;
     let base = ci.func + 1;
     // C: const char *name = NULL;
-    let mut name: Option<&[u8]> = None;
+    let mut name: Option<Vec<u8>> = None;
 
     if ci.is_lua() {
         if n < 0 {
@@ -508,16 +513,14 @@ pub(crate) fn find_local<'a>(
                 if let Some(out_pos) = pos {
                     *out_pos = vpos;
                 }
-                return Some(vname);
+                return Some(vname.to_vec());
             }
             return None;
         } else {
             // C: name = luaF_getlocalname(ci_func(ci)->p, n, currentpc(ci));
-            // TODO(phase-b): get_local_name returns a slice tied to the proto GcRef,
-            // which is dropped at function end. Needs `Cow<'a, [u8]>` or owned return.
-            let _proto = ci_lua_proto(ci, state);
-            let _ = current_pc(ci);
-            name = None;
+            let proto = ci_lua_proto(ci, state);
+            let pc = current_pc(ci);
+            name = crate::func::get_local_name(&proto, n, pc).map(|s| s.to_vec());
         }
     }
 
@@ -530,7 +533,7 @@ pub(crate) fn find_local<'a>(
         // C: if (limit - base >= n && n > 0)
         if n > 0 && limit.saturating_sub(base.0) >= n as u32 {
             // C: name = isLua(ci) ? "(temporary)" : "(C temporary)";
-            name = Some(if ci.is_lua() { b"(temporary)" } else { b"(C temporary)" });
+            name = Some(if ci.is_lua() { b"(temporary)".to_vec() } else { b"(C temporary)".to_vec() });
         } else {
             return None;
         }
@@ -578,8 +581,7 @@ pub fn get_local(state: &mut LuaState, ar: Option<&LuaDebug>, n: i32) -> Option<
     let mut pos = StackIdx(0);
     // PORT NOTE: reshaped for borrowck — clone name to an owned Vec<u8> so the
     // immutable borrow of `state` ends before the mutable push below.
-    let name_owned: Option<Vec<u8>> = find_local(state, &ci, n, Some(&mut pos))
-        .map(|s| s.to_vec());
+    let name_owned: Option<Vec<u8>> = find_local(state, &ci, n, Some(&mut pos));
 
     if name_owned.is_some() {
         // C: setobjs2s(L, L->top.p, pos); api_incr_top(L);
@@ -600,8 +602,7 @@ pub fn set_local(state: &mut LuaState, ar: &LuaDebug, n: i32) -> Option<Vec<u8>>
     let ci = state.get_ci(ci_idx).clone();
     let mut pos = StackIdx(0);
     // PORT NOTE: reshaped for borrowck — clone name before mutably borrowing state.
-    let name_owned: Option<Vec<u8>> = find_local(state, &ci, n, Some(&mut pos))
-        .map(|s| s.to_vec());
+    let name_owned: Option<Vec<u8>> = find_local(state, &ci, n, Some(&mut pos));
     if name_owned.is_some() {
         // C: setobjs2s(L, pos, L->top.p - 1); L->top.p--;
         let val = state.get_at(state.top_idx() - 1).clone();

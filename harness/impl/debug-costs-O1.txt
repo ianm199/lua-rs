@@ -5,3 +5,5 @@
 5 1.1403303999999999 reference/lua-c/testes/files.lua [sonnet]
 4 8.416709499999998 reference/lua-c/testes/locals.lua [opus]
 2 10.422931000000004 reference/lua-c/testes/gc.lua [opus]
+6 [2026-05-18T19:28:06Z mega]   → committed 67f00a4 (debug/reference/lua-c/testes/errors.lua )
+15.288357549999988 reference/lua-c/testes/errors.lua [sonnet]

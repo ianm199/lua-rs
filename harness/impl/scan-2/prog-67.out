@@ -8,4 +8,8 @@ testing scanner
 +
 +
 +
-[err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)
+
+ >>> pt_BR locale not available: skipping decimal point tests <<<
+
+OK
+[ok] execution completed, status=Ok

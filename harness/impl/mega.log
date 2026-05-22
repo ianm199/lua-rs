@@ -1125,3 +1125,26 @@
 [2026-05-18T18:38:01Z mega]   → committed 71b48a8 (debug/reference/lua-c/testes/errors.lua )
 [2026-05-18T18:43:12Z mega]   [O1.D5] DEBUG dispatch on file: reference/lua-c/testes/files.lua [model=sonnet] [parallel]
 [2026-05-18T18:49:26Z mega]   [O1.D6] DEBUG dispatch on file: reference/lua-c/testes/errors.lua [model=sonnet] [parallel]
+[2026-05-18T19:28:06Z mega]   → committed 67f00a4 (debug/reference/lua-c/testes/errors.lua )
+[2026-05-18T19:28:06Z mega]   [O1.D1] DEBUG done. iter cost=$0.3001427  total=$0.3001
+[2026-05-18T19:28:06Z mega]   [O1.D4] DEBUG done. iter cost=$[2026-05-18T18:38:01Z  total=$0.3001
+[2026-05-18T19:28:06Z mega]   [O1.D8.005384349999998] DEBUG done. iter cost=$reference/lua-c/testes/errors.lua  total=$0.3001
+[2026-05-18T19:28:06Z mega]   [O1.D3] DEBUG done. iter cost=$1.8957129999999998  total=$2.1958
+[2026-05-18T19:28:06Z mega]   [O1.D5] DEBUG done. iter cost=$1.1403303999999999  total=$3.3361
+[2026-05-18T19:28:06Z mega]   [O1.D4] DEBUG done. iter cost=$8.416709499999998  total=$11.7528
+[2026-05-18T19:28:06Z mega]   [O1.D2] DEBUG done. iter cost=$10.422931000000004  total=$22.1757
+[2026-05-18T19:28:06Z mega]   [O1.D6] DEBUG done. iter cost=$[2026-05-18T19:28:06Z  total=$22.1757
+[2026-05-18T19:28:06Z mega]   [O1.D15.288357549999988] DEBUG done. iter cost=$reference/lua-c/testes/errors.lua  total=$22.1757
+[2026-05-18T19:28:06Z mega] ─── outer round 2 (spent: $22.1757) ───
+[2026-05-18T19:28:22Z mega]   scan: 71/79 programs pass cleanly
+[2026-05-18T19:28:22Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-18T19:28:22Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-18T19:28:22Z mega]   [hard-test] reference/lua-c/testes/gc.lua → opus (skip Sonnet)
+[2026-05-18T19:28:22Z mega]   [O2.D1] DEBUG dispatch on file: reference/lua-c/testes/gc.lua [model=opus] [parallel]
+[2026-05-18T19:28:22Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/gengc.lua
+[2026-05-18T19:28:22Z mega]   [O2.D2] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [model=sonnet] [parallel]
+[2026-05-18T19:28:22Z mega]   [hard-test] reference/lua-c/testes/locals.lua → opus (skip Sonnet)
+[2026-05-18T19:28:22Z mega]   [O2.D3] DEBUG dispatch on file: reference/lua-c/testes/locals.lua [model=opus] [parallel]
+[2026-05-18T19:28:22Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/calls.lua
+[2026-05-18T19:28:22Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/nextvar.lua
+[2026-05-18T19:28:22Z mega]   [stuck-escalate] reference/lua-c/testes/files.lua → opus

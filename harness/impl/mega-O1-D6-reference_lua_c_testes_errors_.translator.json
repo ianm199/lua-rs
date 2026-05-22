@@ -1,0 +1,95 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 2318271,
+  "duration_api_ms": 2300584,
+  "ttft_ms": 2892,
+  "num_turns": 271,
+  "result": "Good - build is clean, no temporary instrumentation added. Let me verify:\n\n**Root cause**: `obj_type_name` in `state.rs` and related error-message construction functions used `LuaValue::type_name()` (which returns the basic type name) instead of `luaT_objtypename`-equivalent logic that:\n1. Returns \"light userdata\" for `LuaValue::LightUserData`\n2. Looks up `__name` from metatables for tables and full userdata\n\n**Fixes applied**:\n1. **`tagmethods.rs::obj_type_name`**: Added early return of \"light userdata\" for `LightUserData`\n2. **`state.rs::obj_type_name`**: Returns `Cow<'static, [u8]>` - handles `LightUserData` and looks up `__name` from metatables without interning\n3. **`state.rs`**: Added `full_type_name()` delegating to the mutable `tagmethods::obj_type_name`\n4. **`lua-types/value.rs`**: Added `LuaTable::get_str_bytes()` for bytes-based key lookup without interning\n5. **`api.rs`**: Updated `check_arg_string`, `check_arg_number`, `check_arg_integer` to use `obj_type_name` and `arg_error_impl` (proper function name + caller location)\n6. **`debug.rs`**: Added `c_api_runtime()` (adds caller Lua frame source location) and `arg_error_impl()` (handles method-call \"bad self\" case)\n7. **`state_stub.rs`**: Updated trait implementations to delegate to the new functions\n8. **`debug.rs::typeerror_inner`**, **`order_error`**: Updated to use `&t` for `Cow<'static, [u8]>`\n\n**New state**: The test gets further than before - the fixes for light userdata (line 233-237), `__name` type names (lines 240-250), `io.write`/source location (270-271), and \"bad self\" (line 348) all now pass. The test still fails because there are many more error message format tests, and the function name resolution in `arg_error_impl` returns \"?\" for some complex call sites (e.g., `table.sort` used as comparator). The test still fails at `stdin:39: assertion failed!` but at a later point in the test file.",
+  "stop_reason": "end_turn",
+  "session_id": "b846fd46-7eb8-47ef-956a-4559642f48df",
+  "total_cost_usd": 15.288357549999988,
+  "usage": {
+    "input_tokens": 272,
+    "cache_creation_input_tokens": 241555,
+    "cache_read_input_tokens": 41243651,
+    "output_tokens": 133803,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 241555,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 596,
+        "cache_read_input_tokens": 252466,
+        "cache_creation_input_tokens": 2683,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 2683
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1495,
+      "outputTokens": 15,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00157,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-sonnet-4-6": {
+      "inputTokens": 272,
+      "outputTokens": 133803,
+      "cacheReadInputTokens": 41243651,
+      "cacheCreationInputTokens": 241555,
+      "webSearchRequests": 0,
+      "costUSD": 15.286787549999989,
+      "contextWindow": 600000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "permission_denials": [
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01CuTjBnHdxSrKH2Dzzg9Yxo",
+      "tool_input": {
+        "command": "cat > /tmp/test_errors_partial.lua << 'ENDSRC'\n-- harness preamble\n_soft = true\n_port = true\n_nomsg = true\n_U = false\narg = arg or {}\n_G = _G or _ENV\nif _VERSION == nil then _VERSION = \"Lua 5.4\" end\n\nprint(\"testing errors\")\nlocal debug = require\"debug\"\nlocal mt = getmetatable(_G) or {}\nlocal oldmm = mt.__index\nmt.__index = nil\n\nlocal function checkerr (msg, f, ...)\n  local st, err = pcall(f, ...)\n  assert(not st and string.find(err, msg))\nend\n\nlocal function doit (s)\n  local f, msg = load(s)\n  if not f then return msg end\n  local cond, msg = pcall(f)\n  return (not cond) and msg\nend\n\nlocal function checkmessage (prog, msg, debug)\n  local m = doit(prog)\n  if debug then print(m, msg) end\n  assert(string.find(m, msg, 1, true))\nend\n\ncheckmessage(\"a = {} + 1\", \"arithmetic\")\ncheckmessage(\"a = {} | 1\", \"bitwise operation\")\ncheckmessage(\"a = {} < 1\", \"attempt to compare\")\ncheckmessage(\"a = {} <= 1\", \"attempt to compare\")\ncheckmessage(\"aaa=1; bbbb=2; aaa=math.sin(3)+bbbb(3)\", \"global 'bbbb'\")\nprint(\"passed first block\")\nENDSRC\ntarget/debug/lua-rs \"$(cat /tmp/test_errors_partial.lua)\" 2>&1 | grep -v \"^\\[DBG\\]\"",
+        "description": "Test with preamble and first checkmessage calls"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01HhMKssdtSoScA51BvQoc8f",
+      "tool_input": {
+        "command": "target/debug/lua-rs \"$(< /tmp/test_errors_partial.lua)\" 2>&1 | grep -v \"^\\[DBG\\]\"",
+        "description": "Test partial errors script"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01M3mL6yCHRGRCk2DBvsGhAe",
+      "tool_input": {
+        "command": "target/debug/lua-rs \"$(< /tmp/test_errors_233_250.lua)\" 2>&1 | grep -v \"^\\[DBG\\]\"",
+        "description": "Test lines 231-250"
+      }
+    }
+  ],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "4978ac1c-ded9-4563-b45e-709610a516b8"
+}

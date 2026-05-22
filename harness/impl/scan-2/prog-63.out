@@ -3,4 +3,9 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing strings and string library
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:202: assertion failed!
+testing 'format %a %A'
+
+thread 'main' (13161218) panicked at crates/lua-stdlib/src/string_lib.rs:1673:19:
+attempt to multiply with overflow
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[panic] attempt to multiply with overflow

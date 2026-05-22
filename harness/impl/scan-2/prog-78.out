@@ -4,7 +4,9 @@
 [4/4] Executing chunk...
 testing metatables
 
-thread 'main' (10069759) panicked at crates/lua-types/src/trace_impls.rs:19:9:
-not yet implemented: phase-d: trace LuaValue — match each GC-bearing variant (Str, Table, Function, UserData, Thread) and mark via m.mark or field.trace
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-d: trace LuaValue — match each GC-bearing variant (Str, Table, Function, UserData, Thread) and mark via m.mark or field.trace
+ >>> testC not active: skipping tests for userdata <<<
+
++
++
+OK
+[ok] execution completed, status=Ok

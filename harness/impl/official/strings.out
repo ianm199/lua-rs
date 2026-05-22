@@ -3,4 +3,77 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing strings and string library
-[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:232: assertion failed!
+testing 'format %a %A'
+
+thread 'main' (13176272) panicked at crates/lua-stdlib/src/string_lib.rs:1673:19:
+attempt to multiply with overflow
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panicking.rs:80:14
+   2: core::panicking::panic_const::panic_const_mul_overflow
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panicking.rs:175:17
+   3: lua_stdlib::string_lib::parse_fmt_spec
+   4: lua_stdlib::string_lib::str_format
+             at ./crates/lua-stdlib/src/string_lib.rs:1975:20
+   5: lua_vm::do_::precall
+             at ./crates/lua-vm/src/do_.rs:938:25
+   6: lua_vm::do_::ccall_inner
+   7: lua_vm::do_::callnoyield
+             at ./crates/lua-vm/src/do_.rs:1045:5
+   8: lua_vm::state::LuaState::call_no_yield
+             at ./crates/lua-vm/src/state.rs:1722:9
+   9: lua_vm::state::LuaState::protected_call_raw::{{closure}}
+             at ./crates/lua-vm/src/state.rs:1690:19
+  10: lua_vm::do_::raw_run_protected
+             at ./crates/lua-vm/src/do_.rs:212:18
+  11: lua_vm::do_::pcall
+             at ./crates/lua-vm/src/do_.rs:1529:28
+  12: lua_vm::state::LuaState::protected_call_raw
+             at ./crates/lua-vm/src/state.rs:1688:22
+  13: lua_vm::api::pcall_k
+             at ./crates/lua-vm/src/api.rs:1792:11
+  14: lua_vm::api::<impl lua_vm::state::LuaState>::protected_call
+             at ./crates/lua-vm/src/api.rs:640:9
+  15: lua_stdlib::base::pcall_fn
+             at ./crates/lua-stdlib/src/base.rs:897:26
+  16: lua_vm::do_::precall
+             at ./crates/lua-vm/src/do_.rs:938:25
+  17: lua_vm::state::LuaState::precall
+             at ./crates/lua-vm/src/state.rs:1728:9
+  18: lua_vm::vm::execute
+             at ./crates/lua-vm/src/vm.rs:2271:37
+  19: lua_vm::do_::ccall_inner
+  20: lua_vm::do_::callnoyield
+             at ./crates/lua-vm/src/do_.rs:1045:5
+  21: lua_vm::state::LuaState::call_no_yield
+             at ./crates/lua-vm/src/state.rs:1722:9
+  22: lua_vm::state::LuaState::protected_call_raw::{{closure}}
+             at ./crates/lua-vm/src/state.rs:1690:19
+  23: lua_vm::do_::raw_run_protected
+             at ./crates/lua-vm/src/do_.rs:212:18
+  24: lua_vm::do_::pcall
+             at ./crates/lua-vm/src/do_.rs:1529:28
+  25: lua_vm::state::LuaState::protected_call_raw
+             at ./crates/lua-vm/src/state.rs:1688:22
+  26: lua_vm::api::pcall_k
+             at ./crates/lua-vm/src/api.rs:1792:11
+  27: lua_rs::main::{{closure}}
+             at ./crates/lua-cli/src/main.rs:357:28
+  28: core::ops::function::FnOnce::call_once
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
+  29: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panic/unwind_safe.rs:274:9
+  30: std::panicking::catch_unwind::do_call
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:581:40
+  31: std::panicking::catch_unwind
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:544:19
+  32: std::panic::catch_unwind
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panic.rs:359:14
+  33: lua_rs::main
+             at ./crates/lua-cli/src/main.rs:332:18
+  34: core::ops::function::FnOnce::call_once
+             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+[panic] attempt to multiply with overflow

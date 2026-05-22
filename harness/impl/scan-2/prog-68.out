@@ -5,4 +5,5 @@
 testing local variables and environments
 +
 testing to-be-closed variables
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:270: assertion failed!
+testing errors in __close
+lua: pcall_k failed: Runtime: stdin:511: assertion failed!

@@ -3,7 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 
-memory: 	1552.0
+memory: 	1769.0
 expected error: 	bad 'for' limit (number expected, got number)
 size:	0
 OK
