@@ -308,12 +308,12 @@ fn is_dead_side(
 fn strong_count_of(v: &LuaValue) -> Option<usize> {
     use std::rc::Rc;
     match v {
-        LuaValue::Table(t)    => Some(Rc::strong_count(&t.0)),
-        LuaValue::UserData(u) => Some(Rc::strong_count(&u.0)),
-        LuaValue::Thread(th)  => Some(Rc::strong_count(&th.0)),
+        LuaValue::Table(t)    => Some(t.strong_count()),
+        LuaValue::UserData(u) => Some(u.strong_count()),
+        LuaValue::Thread(th)  => Some(th.strong_count()),
         LuaValue::Function(c) => match c {
-            LuaClosure::Lua(x)    => Some(Rc::strong_count(&x.0)),
-            LuaClosure::C(x)      => Some(Rc::strong_count(&x.0)),
+            LuaClosure::Lua(x)    => Some(x.strong_count()),
+            LuaClosure::C(x)      => Some(x.strong_count()),
             LuaClosure::LightC(_) => None,
         },
         _ => None,
@@ -530,9 +530,9 @@ pub fn sweep_weak_values_pre_finalizer(
 fn same_rc(a: &LuaValue, b: &LuaValue) -> bool {
     use std::rc::Rc;
     match (a, b) {
-        (LuaValue::Table(t1), LuaValue::Table(t2))       => Rc::ptr_eq(&t1.0, &t2.0),
-        (LuaValue::UserData(u1), LuaValue::UserData(u2)) => Rc::ptr_eq(&u1.0, &u2.0),
-        (LuaValue::Thread(th1), LuaValue::Thread(th2))   => Rc::ptr_eq(&th1.0, &th2.0),
+        (LuaValue::Table(t1), LuaValue::Table(t2))       => GcRef::ptr_eq(&t1, &t2),
+        (LuaValue::UserData(u1), LuaValue::UserData(u2)) => GcRef::ptr_eq(&u1, &u2),
+        (LuaValue::Thread(th1), LuaValue::Thread(th2))   => GcRef::ptr_eq(&th1, &th2),
         (LuaValue::Function(c1), LuaValue::Function(c2)) => closure_eq(c1, c2),
         _ => false,
     }
