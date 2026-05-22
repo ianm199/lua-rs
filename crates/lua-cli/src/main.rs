@@ -94,6 +94,16 @@ fn e_tag(e: &LuaError) -> &'static str {
     }
 }
 
+#[cfg(unix)]
+fn os_str_bytes(s: &std::ffi::OsString) -> Vec<u8> {
+    use std::os::unix::ffi::OsStrExt;
+    s.as_bytes().to_vec()
+}
+#[cfg(not(unix))]
+fn os_str_bytes(s: &std::ffi::OsString) -> Vec<u8> {
+    s.to_string_lossy().into_owned().into_bytes()
+}
+
 fn main() -> ExitCode {
     let args_os: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if args_os.len() < 2 {
@@ -101,28 +111,47 @@ fn main() -> ExitCode {
             .first()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "lua-rs".to_string());
-        eprintln!("usage: {} '<lua source>'", prog);
-        eprintln!("example: {} 'print(\"hello\")'", prog);
+        eprintln!("usage: {prog} <script.lua | -e 'source'>");
+        eprintln!("examples:");
+        eprintln!("  {prog} script.lua");
+        eprintln!("  {prog} -e 'print(\"hello\")'");
         return ExitCode::from(2);
     }
-    #[cfg(unix)]
-    let source: Vec<u8> = {
-        use std::os::unix::ffi::OsStrExt;
-        args_os[1].as_bytes().to_vec()
-    };
-    #[cfg(not(unix))]
-    let source: Vec<u8> = args_os[1].to_string_lossy().into_owned().into_bytes();
 
-    eprintln!("[1/4] Creating LuaState...");
+    let source: Vec<u8> = if args_os[1] == "-e" {
+        if args_os.len() < 3 {
+            eprintln!("-e requires an argument");
+            return ExitCode::from(2);
+        }
+        os_str_bytes(&args_os[2])
+    } else {
+        let path = std::path::Path::new(&args_os[1]);
+        if path.is_file() {
+            match std::fs::read(path) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    eprintln!("cannot read {}: {}", path.display(), e);
+                    return ExitCode::from(2);
+                }
+            }
+        } else {
+            os_str_bytes(&args_os[1])
+        }
+    };
+
+    let verbose = std::env::var("LUA_RS_VERBOSE").is_ok();
+    macro_rules! step { ($($t:tt)*) => { if verbose { eprintln!($($t)*); } }; }
+
+    step!("[1/4] Creating LuaState...");
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut state = new_state().ok_or("new_state returned None")?;
         state.global_mut().parser_hook = Some(parser_hook);
         state.global_mut().file_loader_hook = Some(file_loader_hook);
 
-        eprintln!("[2/4] Opening standard library...");
+        step!("[2/4] Opening standard library...");
         open_libs(&mut state).map_err(|e| format!("open_libs failed: {}", render_lua_error(&e)))?;
 
-        eprintln!("[3/4] Loading source (parse + compile)...");
+        step!("[3/4] Loading source (parse + compile)...");
         let status = load_string(&mut state, &source)
             .map_err(|e| format!("load_string failed: {}", render_lua_error(&e)))?;
         if status != 0 {
@@ -136,7 +165,7 @@ fn main() -> ExitCode {
             ));
         }
 
-        eprintln!("[4/4] Executing chunk...");
+        step!("[4/4] Executing chunk...");
         let final_status = pcall_k(&mut state, 0, MULTRET, 0, 0, None)
             .map_err(|e| format!("pcall_k failed: {}", render_lua_error(&e)))?;
 
@@ -145,11 +174,14 @@ fn main() -> ExitCode {
 
     match result {
         Ok(Ok(status)) => {
-            eprintln!("[ok] execution completed, status={:?}", status);
+            if verbose {
+                eprintln!("[ok] execution completed, status={:?}", status);
+            }
+            let _ = status;
             ExitCode::SUCCESS
         }
         Ok(Err(msg)) => {
-            eprintln!("[err] {}", msg);
+            eprintln!("lua: {}", msg);
             ExitCode::from(1)
         }
         Err(panic) => {
