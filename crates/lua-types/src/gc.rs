@@ -17,6 +17,25 @@ impl<T: ?Sized> GcRef<T> {
     pub fn identity(&self) -> usize { Rc::as_ptr(&self.0) as *const () as usize }
 }
 
+impl<T: ?Sized + lua_gc::Trace> GcRef<T> {
+    /// Cycle-aware trace dispatch for the Phase A/B/C/D-0 window.
+    ///
+    /// `GcRef<T>` is an `Rc<T>` during this window, so calling `trace`
+    /// dispatches directly through `Deref` to the underlying value's
+    /// own `trace` method — there is no gray queue and no color flag.
+    /// Without protection, object graphs containing cycles (such as
+    /// `_G._G == _G`) recurse until the OS stack overflows. This helper
+    /// records the underlying allocation's identity in `Marker` and
+    /// skips the recursive call when the same object is encountered
+    /// again in the same cycle. Phase D's real GC subsumes this via
+    /// `Color::Gray`; the visited set then becomes redundant.
+    pub fn trace_obj(&self, m: &mut lua_gc::Marker) {
+        if m.try_visit(self.identity()) {
+            (**self).trace(m);
+        }
+    }
+}
+
 impl<T: ?Sized> Clone for GcRef<T> {
     fn clone(&self) -> Self { GcRef(self.0.clone()) }
 }

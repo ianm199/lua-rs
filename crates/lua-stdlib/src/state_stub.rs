@@ -1039,6 +1039,31 @@ impl LuaStateStubExt for LuaState {
         Ok(lua_vm::api::gc(self, args))
     }
 
+    fn gc_set_param(&mut self, op: i32, value: i32) -> Result<i32, LuaError> {
+        let args = match op {
+            6 => lua_vm::api::GcArgs::SetPause { value },
+            7 => lua_vm::api::GcArgs::SetStepMul { value },
+            _ => return Err(LuaError::runtime(format_args!(
+                "invalid GC param option {}", op
+            ))),
+        };
+        Ok(lua_vm::api::gc(self, args))
+    }
+
+    fn gc_gen(&mut self, minor_mul: i32, major_mul: i32) -> Result<i32, LuaError> {
+        Ok(lua_vm::api::gc(
+            self,
+            lua_vm::api::GcArgs::Gen { minormul: minor_mul, majormul: major_mul },
+        ))
+    }
+
+    fn gc_inc(&mut self, pause: i32, step_mul: i32, step_size: i32) -> Result<i32, LuaError> {
+        Ok(lua_vm::api::gc(
+            self,
+            lua_vm::api::GcArgs::Inc { pause, stepmul: step_mul, stepsize: step_size },
+        ))
+    }
+
     fn get_meta_field(&mut self, idx: i32, name: &[u8]) -> Result<bool, LuaError> {
         Ok(crate::auxlib::get_metafield(self, idx, name)? != LuaType::Nil)
     }
