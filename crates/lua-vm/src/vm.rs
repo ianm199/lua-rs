@@ -2429,7 +2429,7 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                         // C: for (; n > 0; n--) { val = s2v(ra + n as i32); h->array[last-1] = *val; last--; }
                         for k in (1..=n).rev() {
                             let val = state.get_at(ra + k as i32).clone();
-                            state.table_array_set(&t_val, (last - n + k - 1) as usize, val.clone())?;
+                            state.table_array_set(&t_val, (last - 1) as usize, val.clone())?;
                             last -= 1;
                             state.gc_barrier_back(&t_val, &val);
                         }
