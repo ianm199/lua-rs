@@ -1041,3 +1041,27 @@
 [2026-05-18T13:46:34Z mega] ═════════════════════════════════════════════════════════════════
 [2026-05-18T13:46:34Z mega] mega-loop end. Total cost: $0  Outer rounds: 1
 [2026-05-18T13:46:34Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:50:44Z mega] loaded 79 test programs (with expected outputs)
+[2026-05-18T13:50:44Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:50:44Z mega] mega-loop start. 79 test programs.
+[2026-05-18T13:50:44Z mega]   MAX_OUTER=1  MAX_PER_OUTER=0  PER_AGENT_BUDGET=$20.00  SESSION_BUDGET=$0.01
+[2026-05-18T13:50:44Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:50:44Z mega] ─── outer round 1 (spent: $0) ───
+[2026-05-18T13:50:47Z mega]   scan: 67/79 programs pass cleanly
+[2026-05-18T13:50:48Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-18T13:50:48Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-18T13:50:48Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:50:48Z mega] mega-loop end. Total cost: $0  Outer rounds: 1
+[2026-05-18T13:50:48Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:53:17Z mega] loaded 79 test programs (with expected outputs)
+[2026-05-18T13:53:17Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:53:17Z mega] mega-loop start. 79 test programs.
+[2026-05-18T13:53:17Z mega]   MAX_OUTER=1  MAX_PER_OUTER=0  PER_AGENT_BUDGET=$20.00  SESSION_BUDGET=$0.01
+[2026-05-18T13:53:17Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:53:17Z mega] ─── outer round 1 (spent: $0) ───
+[2026-05-18T13:53:21Z mega]   scan: 67/79 programs pass cleanly
+[2026-05-18T13:53:21Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-18T13:53:21Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-18T13:53:21Z mega] ═════════════════════════════════════════════════════════════════
+[2026-05-18T13:53:21Z mega] mega-loop end. Total cost: $0  Outer rounds: 1
+[2026-05-18T13:53:21Z mega] ═════════════════════════════════════════════════════════════════

@@ -684,34 +684,14 @@ pub struct GlobalState {
     // C: lu_byte gcstepsize — log2 of GC granularity
     pub gcstepsize: u8,
 
-    // C: GCObject *allgc — all collectable objects; Phase A–C leaks (Rc cycles)
-    // types.tsv: global_State.allgc → Vec<GcRef<dyn Collectable>>
-    pub allgc: Vec<GcRef<dyn Collectable>>,
-
-    // C: GCObject **sweepgc — sweep cursor into allgc; Phase D
-    // types.tsv: global_State.sweepgc → (removed); replaced by usize cursor
+    // Phase-D NOTE: the C-Lua intrusive GC lists (allgc, sweepgc, finobj,
+    // gray, grayagain, weak, ephemeron, allweak) were declared here as
+    // `Vec<GcRef<dyn Collectable>>` during Phase A but never populated or
+    // read. The real GC owns its own allgc chain inside `self.heap`
+    // (lua_gc::Heap). Removed during D-1e-prep to clear the `?Sized` blocker
+    // for swapping `GcRef<T> = Gc<T>` (Gc requires T: Sized for unsizing).
+    // sweepgc_cursor stayed because non-list bookkeeping kept it.
     pub sweepgc_cursor: usize,
-
-    // C: GCObject *finobj — finalizable objects; Phase D
-    // types.tsv: global_State.finobj → Vec<GcRef<dyn Collectable>>
-    pub finobj: Vec<GcRef<dyn Collectable>>,
-
-    // C: GCObject *gray — GC gray list; Phase D
-    // types.tsv: global_State.gray → Vec<GcRef<dyn Collectable>>
-    pub gray: Vec<GcRef<dyn Collectable>>,
-
-    // C: GCObject *grayagain — Phase D
-    pub grayagain: Vec<GcRef<dyn Collectable>>,
-
-    // C: GCObject *weak — weak-value tables; Phase D
-    // types.tsv: global_State.weak → Vec<GcRef<LuaTable>>
-    pub weak: Vec<GcRef<LuaTable>>,
-
-    // C: GCObject *ephemeron — ephemeron tables; Phase D
-    pub ephemeron: Vec<GcRef<LuaTable>>,
-
-    // C: GCObject *allweak — all-weak tables; Phase D
-    pub allweak: Vec<GcRef<LuaTable>>,
 
     /// Phase-B cross-table weak-sweep registry.
     ///
@@ -746,13 +726,10 @@ pub struct GlobalState {
     /// incremental GC lands in Phase D.
     pub pending_finalizers: Vec<GcRef<lua_types::value::LuaTable>>,
 
-    // C: GCObject *tobefnz — pending finalizers; Phase D
-    // types.tsv: global_State.tobefnz → Vec<GcRef<dyn Collectable>>
-    pub tobefnz: Vec<GcRef<dyn Collectable>>,
-
-    // C: GCObject *fixedgc — non-collectable objects (reserved-word strings, etc.)
-    // types.tsv: global_State.fixedgc → Vec<GcRef<dyn Collectable>>
-    pub fixedgc: Vec<GcRef<dyn Collectable>>,
+    // Phase-D NOTE: tobefnz + fixedgc removed (dead since Phase A — see
+    // sibling note above re allgc et al). Pending finalizers live in
+    // `pending_finalizers` above; fixed objects live in heap.allgc with the
+    // GC's own `fixed` bit.
 
     // Generational cohort markers — Phase D only
     // types.tsv: global_State.survival/old1/reallyold/firstold1/finobjsur/finobjold1/finobjrold
@@ -3018,20 +2995,7 @@ pub fn new_state() -> Option<LuaState> {
         gcstepmul: (LUAI_GCMUL / 4) as u8,
         // C: g->gcstepsize = LUAI_GCSTEPSIZE;
         gcstepsize: LUAI_GCSTEPSIZE,
-        // C: g->allgc = obj2gco(L); — set after main thread created
-        allgc: Vec::new(),
         sweepgc_cursor: 0,
-        // C: g->finobj = g->tobefnz = g->fixedgc = NULL;
-        finobj: Vec::new(),
-        tobefnz: Vec::new(),
-        fixedgc: Vec::new(),
-        // GC lists (Phase D)
-        gray: Vec::new(),
-        grayagain: Vec::new(),
-        // C: g->weak = g->ephemeron = g->allweak = NULL;
-        weak: Vec::new(),
-        ephemeron: Vec::new(),
-        allweak: Vec::new(),
         weak_tables_registry: Vec::new(),
         gc_tracked_long_strings: Vec::new(),
         pending_finalizers: Vec::new(),

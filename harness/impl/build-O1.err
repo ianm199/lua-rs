@@ -1,3 +1,17 @@
+warning: unused import: `std::rc::Rc`
+   --> crates/lua-types/src/value.rs:309:9
+    |
+309 |     use std::rc::Rc;
+    |         ^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `std::rc::Rc`
+   --> crates/lua-types/src/value.rs:531:9
+    |
+531 |     use std::rc::Rc;
+    |         ^^^^^^^^^^^
+
 warning: unused imports: `CallInfoIdx`, `CallInfo`, and `GlobalState`
   --> crates/lua-vm/src/api.rs:16:44
    |
