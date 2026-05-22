@@ -239,22 +239,10 @@ pub(crate) fn get_func_line(f: &LuaProto, pc: i32) -> i32 {
     while basepc < pc {
         basepc += 1;
         // C: lua_assert(f->lineinfo[basepc] != ABSLINEINFO)
-        if f.lineinfo[basepc as usize] == ABS_LINE_INFO {
-            eprintln!(
-                "[DBG] get_func_line: target pc={} hit ABSLINEINFO at basepc={}; lineinfo.len={} abslineinfo.len={} linedefined={} source={:?}",
-                pc, basepc, f.lineinfo.len(), f.abslineinfo.len(), f.linedefined,
-                std::str::from_utf8(f.source_bytes()).unwrap_or("?")
-            );
-            for (idx, e) in f.abslineinfo.iter().enumerate() {
-                eprintln!("[DBG]   abslineinfo[{}] pc={} line={}", idx, e.pc, e.line);
-            }
-            for (idx, b) in f.lineinfo.iter().enumerate() {
-                if *b == ABS_LINE_INFO {
-                    eprintln!("[DBG]   lineinfo[{}] = ABSLINEINFO", idx);
-                }
-            }
-            panic!("get_func_line: hit ABSLINEINFO in incremental walk");
-        }
+        debug_assert!(
+            f.lineinfo[basepc as usize] != ABS_LINE_INFO,
+            "get_func_line: hit ABSLINEINFO in incremental walk"
+        );
         // C: baseline += f->lineinfo[basepc]
         baseline += f.lineinfo[basepc as usize] as i32;
     }

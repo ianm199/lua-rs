@@ -20,7 +20,7 @@
 //!   written as qualified paths and will resolve in Phase B.
 //! * `LuaState` is from `lua-vm`; referenced here as an unresolved import.
 
-use lua_types::{GcRef, LuaError, LuaString, LuaValue, LuaProto, UpvalDesc, LocalVar};
+use lua_types::{AbsLineInfo, GcRef, LuaError, LuaString, LuaValue, LuaProto, UpvalDesc, LocalVar};
 
 // TODO(port): these imports resolve in Phase B when inter-crate deps land.
 // use lua_vm::LuaState;
@@ -558,6 +558,9 @@ pub use lua_vm::state::LuaState;
 // section once lua-code is reachable from lua-parse with unified types.
 
 fn emit_inst(fs: &mut FuncState, line: i32, inst: lua_code::opcodes::Instruction) -> i32 {
+    const MAX_IWTH_ABS: i32 = 128;
+    const LIM_LINE_DIFF: i32 = 0x80;
+    const ABS_LINE_INFO: i8 = -0x80i8;
     let pc = fs.pc as usize;
     if fs.f.code.len() <= pc {
         fs.f.code.resize(pc + 1, lua_types::opcode::Instruction::default());
@@ -566,7 +569,20 @@ fn emit_inst(fs: &mut FuncState, line: i32, inst: lua_code::opcodes::Instruction
     if fs.f.lineinfo.len() <= pc {
         fs.f.lineinfo.resize(pc + 1, 0i8);
     }
-    fs.f.lineinfo[pc] = (line - fs.previousline).clamp(i8::MIN as i32, i8::MAX as i32) as i8;
+    let linedif_raw = line - fs.previousline;
+    let need_abs = linedif_raw.abs() >= LIM_LINE_DIFF || {
+        let over = fs.iwthabs as i32 >= MAX_IWTH_ABS;
+        if !over { fs.iwthabs += 1; }
+        over
+    };
+    if need_abs {
+        fs.f.abslineinfo.push(AbsLineInfo { pc: pc as i32, line });
+        fs.nabslineinfo += 1;
+        fs.f.lineinfo[pc] = ABS_LINE_INFO;
+        fs.iwthabs = 1;
+    } else {
+        fs.f.lineinfo[pc] = linedif_raw as i8;
+    }
     fs.previousline = line;
     let result = fs.pc;
     fs.pc += 1;

@@ -1,0 +1,20 @@
+[1/4] Creating LuaState...
+[2/4] Opening standard library...
+[3/4] Loading source (parse + compile)...
+[4/4] Executing chunk...
+testing strings and string library
+L20 OK
+L21 OK
+compares done
+about to enter %p block
+L174 OK
+L179 OK
+L183 OK
+short s1 %p=0x600002ab1600
+short s2 %p=0x600002ab1600
+L189 OK
+long s1 %p=0x600002ab5de0
+long s2 %p=0x600002ab5d50
+L194 OK
+section1 done
+[ok] execution completed, status=Ok
