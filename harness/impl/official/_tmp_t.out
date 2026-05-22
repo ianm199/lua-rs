@@ -3,12 +3,6 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing closures
-calling f(10)
-f(10) returned
-set x
-set meta
-loop too long, count=	5001
-after gc loop, count=	5001	A=	5001
-a1 ok
-a1b ok
+STEP1
+STEP2
 [ok] execution completed, status=Ok

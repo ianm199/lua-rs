@@ -28,23 +28,6 @@ local function f(x)
   return a
 end
 
-print("calling f(10)")
+print("STEP1")
 local a = f(10)
-print("f(10) returned")
--- force a GC in this level
-local x = {[1] = {}}   -- to detect a GC
-print("set x")
-setmetatable(x, {__mode = 'kv'})
-print("set meta")
-local count = 0
-while x[1] do   -- repeat until GC
-  local a = A..A..A..A  -- create garbage
-  A = A+1
-  count = count + 1
-  if count > 5000 then print("loop too long, count=", count); break end
-end
-print("after gc loop, count=", count, "A=", A)
-assert(a[1]() == 20+A)
-print("a1 ok")
-assert(a[1]() == 30+A)
-print("a1b ok")
+print("STEP2")
