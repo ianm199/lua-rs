@@ -3,4 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing syntax
-[err] pcall_k failed: Runtime: -- harness preamble: emulate the globals lua-c testes/all.l:62: assertion failed!
+[DBG-ASSERT] failing, top=1
+[DBG-ASSERT] arg1: type=Boolean repr=""
+[DBG-ASSERT] stack[1]: src="-- harness preamble: emulate the globals lua-c testes/all.l" line=63
+[err] pcall_k failed: Runtime: -- harness preamble: emulate the globals lua-c testes/all.l:63: assertion failed!

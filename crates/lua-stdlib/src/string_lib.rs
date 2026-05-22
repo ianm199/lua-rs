@@ -294,11 +294,13 @@ pub fn str_rep(state: &mut LuaState) -> Result<usize, LuaError> {
     if n <= 0 {
         state.push_string(b"")?;
     } else {
-        // C: if (l_unlikely(l + lsep < l || l + lsep > MAXSIZE / n))
-        //        return luaL_error(L, "resulting string too large");
-        let total = (l + lsep).checked_mul(n as usize)
-            .and_then(|t| t.checked_sub(lsep))
+        const MAXSIZE: usize = i32::MAX as usize;
+        let per = l.checked_add(lsep)
             .ok_or_else(|| LuaError::runtime(format_args!("resulting string too large")))?;
+        if per > MAXSIZE / (n as usize) {
+            return Err(LuaError::runtime(format_args!("resulting string too large")));
+        }
+        let total = per * (n as usize) - lsep;
 
         let mut buf: Vec<u8> = Vec::with_capacity(total);
         let s_data = s.to_vec();

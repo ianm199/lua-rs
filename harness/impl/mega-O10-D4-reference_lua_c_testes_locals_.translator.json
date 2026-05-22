@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 261648,
+  "duration_api_ms": 260388,
+  "ttft_ms": 6717,
+  "num_turns": 34,
+  "result": "Build is green.\n\n**Root cause:** `aux_upvalue` at `crates/lua-vm/src/api.rs:1988` returned a hardcoded placeholder name `b\"(upvalue)\"` for Lua closures instead of reading `lcl.proto.upvalues[n-1].name`. This made `debug.getupvalue(f, 1)` return `\"(upvalue)\"` instead of `\"_ENV\"` for loaded chunks, causing `assert(a == '_ENV')` at locals.lua:75 to fail.\n\n**Fix:** Changed `aux_upvalue` to return the real name from `lcl.proto.upvalues[n-1].name.as_bytes()` (falling back to empty bytes if the slot has no recorded name). Bumped the return type of `aux_upvalue`/`get_upvalue`/`setup_value` from `Option<(&'static [u8], …)>` / `Option<&'static [u8]>` to owned `Vec<u8>` since upvalue names live in the GC heap, not in static storage. Updated the two `state_stub.rs` callers to drop their now-redundant `.to_vec()`.\n\n**New state:** Not re-tested per instructions. `cargo build -p lua-cli` succeeds; the chunk's `_ENV` upvalue will now be reported with its real name, so the original `assert(a == '_ENV')` should pass and execution should proceed past locals.lua:75.",
+  "stop_reason": "end_turn",
+  "session_id": "d04cae99-aa8b-4504-a717-81e7a5b07a6c",
+  "total_cost_usd": 2.32799525,
+  "usage": {
+    "input_tokens": 39,
+    "cache_creation_input_tokens": 86463,
+    "cache_read_input_tokens": 2702653,
+    "output_tokens": 17375,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 86463,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 475,
+        "cache_read_input_tokens": 105173,
+        "cache_creation_input_tokens": 189,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 189
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1620,
+      "outputTokens": 17,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001705,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 39,
+      "outputTokens": 17375,
+      "cacheReadInputTokens": 2702653,
+      "cacheCreationInputTokens": 86463,
+      "webSearchRequests": 0,
+      "costUSD": 2.32629025,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "ee527e91-0742-4e95-918a-a2d9ab0b0c4f"
+}
