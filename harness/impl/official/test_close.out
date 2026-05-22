@@ -2,9 +2,6 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing syntax
-+
-testing short-circuit optimizations (0)
-+
-OK
-[ok] execution completed, status=Ok
+st=	false
+msg=	nil
+lua: pcall_k failed: Runtime: bad argument #1 (string expected, got nil)

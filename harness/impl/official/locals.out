@@ -5,4 +5,5 @@
 testing local variables and environments
 +
 testing to-be-closed variables
-[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:271: assertion failed!
+testing errors in __close
+lua: pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:493: assertion failed!

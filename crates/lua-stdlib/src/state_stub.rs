@@ -1169,7 +1169,7 @@ impl LuaStateStubExt for LuaState {
         msg: Option<&[u8]>,
         level: i32,
     ) -> Result<(), LuaError> {
-        crate::auxlib::traceback(self, other, msg, level)
+        crate::auxlib::traceback(self, Some(other), msg, level)
     }
 
     fn upvalue_id(&mut self, fidx: i32, n: i32) -> Result<*mut std::ffi::c_void, LuaError> {

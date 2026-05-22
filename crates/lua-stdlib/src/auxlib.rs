@@ -261,16 +261,24 @@ fn last_level(state: &mut LuaState) -> i32 {
 /// If `msg` is non-None it is prepended on its own line.
 /// Leaves the result string on top of `state`.
 ///
+/// When `other` is `None`, the traceback is built for `state` itself (the
+/// common single-thread case). Rust's borrow checker forbids passing the same
+/// `&mut LuaState` twice, so we use an `Option` to express the aliasing intent
+/// rather than a separate parameter.
+///
 /// C: `LUALIB_API void luaL_traceback(lua_State *L, lua_State *L1, const char *msg, int level)`
 pub fn traceback(
     state: &mut LuaState,
-    other: &mut LuaState,
+    other: Option<&mut LuaState>,
     msg: Option<&[u8]>,
     level: i32,
 ) -> Result<(), LuaError> {
     let mut b = LuaBuffer::new();
     let mut ar = LuaDebug::default();
-    let last = last_level(other);
+    let last = match &mut other {
+        Some(o) => last_level(o),
+        None => last_level(state),
+    };
     // C: int limit2show = (last - level > LEVELS1 + LEVELS2) ? LEVELS1 : -1;
     let mut limit2show: i32 = if last - level > LEVELS1 + LEVELS2 { LEVELS1 } else { -1 };
     buf_init(state, &mut b);
@@ -280,7 +288,14 @@ pub fn traceback(
     }
     add_lstring(&mut b, b"stack traceback:");
     let mut level = level;
-    while other.get_stack(level, &mut ar) {
+    loop {
+        let got = match &mut other {
+            Some(o) => o.get_stack(level, &mut ar),
+            None => state.get_stack(level, &mut ar),
+        };
+        if !got {
+            break;
+        }
         level += 1;
         if limit2show == 0 {
             // C: int n = last - level - LEVELS2 + 1;
@@ -292,7 +307,10 @@ pub fn traceback(
         } else {
             limit2show -= 1;
             // C: lua_getinfo(L1, "Slnt", &ar);
-            other.get_info(b"Slnt", &mut ar)?;
+            match &mut other {
+                Some(o) => o.get_info(b"Slnt", &mut ar)?,
+                None => state.get_info(b"Slnt", &mut ar)?,
+            }
             if ar.currentline <= 0 {
                 // C: lua_pushfstring(L, "\n\t%s: in ", ar.short_src);
                 let src = ar.short_src.clone();

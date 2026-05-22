@@ -1086,3 +1086,14 @@
 [2026-05-18T18:02:34Z mega]   HARD_TESTS=gc.lua,locals.lua
 [2026-05-18T18:02:34Z mega] ═════════════════════════════════════════════════════════════════
 [2026-05-18T18:02:34Z mega] ─── outer round 1 (spent: $0) ───
+[2026-05-18T18:02:50Z mega]   scan: 71/79 programs pass cleanly
+[2026-05-18T18:02:50Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-18T18:02:50Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-18T18:02:50Z mega]   [hard-test] reference/lua-c/testes/gc.lua → opus (skip Sonnet)
+[2026-05-18T18:02:50Z mega]   [O1.D1] DEBUG dispatch on file: reference/lua-c/testes/gc.lua [model=opus] [parallel]
+[2026-05-18T18:02:50Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/gengc.lua
+[2026-05-18T18:02:50Z mega]   [O1.D2] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [model=sonnet] [parallel]
+[2026-05-18T18:02:50Z mega]   [hard-test] reference/lua-c/testes/locals.lua → opus (skip Sonnet)
+[2026-05-18T18:02:50Z mega]   [O1.D3] DEBUG dispatch on file: reference/lua-c/testes/locals.lua [model=opus] [parallel]
+[2026-05-18T18:02:50Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/calls.lua
+[2026-05-18T18:02:50Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/nextvar.lua

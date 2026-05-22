@@ -2,9 +2,9 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing syntax
-+
-testing short-circuit optimizations (0)
-+
-OK
+debug=	table: 0x600002820a20
+debug.traceback=	function: 0x9b
+call:	nil
+call2:	nil
+st=	false	msg=	nil	type:	nil
 [ok] execution completed, status=Ok

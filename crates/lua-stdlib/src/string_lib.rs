@@ -1688,6 +1688,9 @@ fn pad_int(buf: &mut Vec<u8>, sign_prefix: &[u8], digits: &[u8], spec: &FmtSpec)
 }
 
 fn signed_int_parts(n: i64, spec: &FmtSpec) -> (Vec<u8>, Vec<u8>) {
+    if n == 0 && spec.precision == Some(0) {
+        return (Vec::new(), Vec::new());
+    }
     let (sign, abs_digits) = if n < 0 {
         (b"-".to_vec(), {
             let u = (n as i128).unsigned_abs();
@@ -1707,11 +1710,15 @@ fn signed_int_parts(n: i64, spec: &FmtSpec) -> (Vec<u8>, Vec<u8>) {
 }
 
 fn unsigned_int_parts(n: u64, base: u32, upper: bool, spec: &FmtSpec) -> (Vec<u8>, Vec<u8>) {
-    let digits = match base {
-        8 => format!("{:o}", n).into_bytes(),
-        16 if upper => format!("{:X}", n).into_bytes(),
-        16 => format!("{:x}", n).into_bytes(),
-        _ => format!("{}", n).into_bytes(),
+    let digits = if n == 0 && spec.precision == Some(0) {
+        Vec::new()
+    } else {
+        match base {
+            8 => format!("{:o}", n).into_bytes(),
+            16 if upper => format!("{:X}", n).into_bytes(),
+            16 => format!("{:x}", n).into_bytes(),
+            _ => format!("{}", n).into_bytes(),
+        }
     };
     let prefix: Vec<u8> = if spec.alt_form && n != 0 {
         match base {

@@ -8,3 +8,6 @@ functions with errors
 long strings
 steps
 steps (2)
+clearing tables
+weak tables
+lua: pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:346: assertion failed!
