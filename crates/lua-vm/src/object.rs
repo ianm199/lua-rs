@@ -437,7 +437,7 @@ fn str2dloc(s: &[u8], mode: u8) -> Option<(f64, usize)> {
         // TODO(port): replace with a bytes-native float parser in Phase B
         // (e.g., the `fast-float` crate) to satisfy the from_utf8 ban fully.
         let text = core::str::from_utf8(s).ok()?;
-        let trimmed = text.trim_start();
+        let trimmed = text.trim();
         // Reject "inf", "infinity", "nan" — Lua does not accept these.
         let lower = trimmed.to_ascii_lowercase();
         if lower.starts_with("inf") || lower.starts_with("nan") {

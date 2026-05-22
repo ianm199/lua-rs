@@ -4,3 +4,4 @@
 1 2.343286 reference/lua-c/testes/vararg.lua
 5 2.2999942499999992 reference/lua-c/testes/strings.lua
 8 1.6958407499999997 reference/lua-c/testes/tpack.lua
+6 2.9264784999999987 reference/lua-c/testes/bitwise.lua

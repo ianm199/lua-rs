@@ -1548,7 +1548,31 @@ impl LuaState {
         Ok(())
     }
 
-    pub fn arith_op(&mut self, _op: i32, _p1: &LuaValue, _p2: &LuaValue) -> Result<LuaValue, LuaError> { todo!("phase-b: arith_op") }
+    pub fn arith_op(&mut self, op: i32, p1: &LuaValue, p2: &LuaValue) -> Result<LuaValue, LuaError> {
+        let arith_op = match op {
+            0  => lua_types::arith::ArithOp::Add,
+            1  => lua_types::arith::ArithOp::Sub,
+            2  => lua_types::arith::ArithOp::Mul,
+            3  => lua_types::arith::ArithOp::Mod,
+            4  => lua_types::arith::ArithOp::Pow,
+            5  => lua_types::arith::ArithOp::Div,
+            6  => lua_types::arith::ArithOp::Idiv,
+            7  => lua_types::arith::ArithOp::Band,
+            8  => lua_types::arith::ArithOp::Bor,
+            9  => lua_types::arith::ArithOp::Bxor,
+            10 => lua_types::arith::ArithOp::Shl,
+            11 => lua_types::arith::ArithOp::Shr,
+            12 => lua_types::arith::ArithOp::Unm,
+            13 => lua_types::arith::ArithOp::Bnot,
+            _  => return Err(LuaError::runtime(format_args!("invalid arith op {}", op))),
+        };
+        let mut res = LuaValue::Nil;
+        if crate::object::raw_arith(self, arith_op, p1, p2, &mut res)? {
+            Ok(res)
+        } else {
+            Err(LuaError::arith_error(p1, p2, "perform arithmetic on"))
+        }
+    }
     pub fn concat(&mut self, n: i32) -> Result<(), LuaError> {
         crate::vm::concat(self, n)
     }

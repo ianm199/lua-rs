@@ -4,47 +4,15 @@
 [4/4] Executing chunk...
 testing numbers and math lib
 64-bit integers, 53-bit (mantissa) floats
+[arith] op=Add n1=true n2=true top=StackIdx(47)
+[arith] op=Unm n1=true n2=true top=StackIdx(47)
+[arith] op=Add n1=true n2=true top=StackIdx(47)
+[arith] op=Sub n1=true n2=true top=StackIdx(47)
+[arith] op=Unm n1=true n2=true top=StackIdx(47)
+[arith] op=Unm n1=true n2=true top=StackIdx(47)
+[arith] op=Mod n1=true n2=true top=StackIdx(47)
 
-thread 'main' (7501808) panicked at crates/lua-vm/src/func.rs:485:9:
-open upvalue index must be below stack top
-stack backtrace:
-   0: __rustc::rust_begin_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:689:5
-   1: core::panicking::panic_fmt
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panicking.rs:80:14
-   2: lua_vm::func::close_upval
-             at ./crates/lua-vm/src/func.rs:485:9
-   3: lua_vm::func::close
-             at ./crates/lua-vm/src/func.rs:540:5
-   4: lua_vm::do_::close_aux
-             at ./crates/lua-vm/src/do_.rs:1455:5
-   5: lua_vm::do_::close_protected::{{closure}}
-             at ./crates/lua-vm/src/do_.rs:1476:61
-   6: lua_vm::do_::raw_run_protected
-             at ./crates/lua-vm/src/do_.rs:212:18
-   7: lua_vm::do_::close_protected
-             at ./crates/lua-vm/src/do_.rs:1476:32
-   8: lua_vm::do_::pcall
-             at ./crates/lua-vm/src/do_.rs:1528:18
-   9: lua_vm::state::LuaState::protected_call_raw
-             at ./crates/lua-vm/src/state.rs:1452:22
-  10: lua_vm::api::pcall_k
-             at ./crates/lua-vm/src/api.rs:1608:11
-  11: lua_rs::main::{{closure}}
-             at ./crates/lua-cli/src/main.rs:140:28
-  12: core::ops::function::FnOnce::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
-  13: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panic/unwind_safe.rs:274:9
-  14: std::panicking::catch_unwind::do_call
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:581:40
-  15: std::panicking::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:544:19
-  16: std::panic::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panic.rs:359:14
-  17: lua_rs::main
-             at ./crates/lua-cli/src/main.rs:117:18
-  18: core::ops::function::FnOnce::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
-note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
-[panic] open upvalue index must be below stack top
+thread 'main' (7528403) panicked at crates/lua-vm/src/vm.rs:1114:5:
+not yet implemented: phase-b: int_floor_mod
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[panic] not yet implemented: phase-b: int_floor_mod
