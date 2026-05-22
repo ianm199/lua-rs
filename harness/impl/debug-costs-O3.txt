@@ -1,1 +1,2 @@
 2 1.03769125 reference/lua-c/testes/sort.lua
+1 1.6472562500000005 reference/lua-c/testes/goto.lua

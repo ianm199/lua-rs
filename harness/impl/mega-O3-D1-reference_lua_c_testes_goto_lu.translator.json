@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 191980,
+  "duration_api_ms": 191276,
+  "ttft_ms": 2656,
+  "num_turns": 33,
+  "result": "Final state: build is green; the original failure at line 274/275 (the assertion `X == true` after a `goto` jumping back out of scope of a `<close>` variable) is resolved. The test now hits a different downstream assertion, which is a separate bug.\n\n**Root cause:** `getlocalattribute` (crates/lua-parse/src/lib.rs:4059) was a Phase-A placeholder that always returned `VarKind::Reg`, ignoring `<const>` and `<close>` attributes. As a consequence, `localstat` never set `toclose`, `checktoclose` never called `marktobeclosed`, and (compounded) `checktoclose` had its `OP_TBC` emission commented out. Together these meant `local a <close> = …` was compiled as a regular local: no TBC mark, no `bl.upval=true`, no `__close` invocation when control left the block via `goto`.\n\n**Fix:** In `getlocalattribute`, compare `attr_name.as_bytes()` against `b\"const\"` / `b\"close\"` and return the matching `VarKind`, with a syntax error for unknown attributes. In `checktoclose`, emit the previously-stubbed `OP_TBC` instruction via `emit_inst` after `marktobeclosed`.\n\n**New state:** The previously-failing assertion at combined line 275 (= original 266, the `<close>` upvalue-closing test) no longer fires. The program now fails at a later, location-less `assertion failed!` — a separate bug for the next debug iteration. Build (`cargo build -q -p lua-cli`) is green; no temporary instrumentation was added.",
+  "stop_reason": "end_turn",
+  "session_id": "19afb9a4-9046-4757-b1f0-30e1466e2f9c",
+  "total_cost_usd": 1.6472562500000005,
+  "usage": {
+    "input_tokens": 38,
+    "cache_creation_input_tokens": 60215,
+    "cache_read_input_tokens": 2015083,
+    "output_tokens": 10465,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 60215,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 821,
+        "cache_read_input_tokens": 78865,
+        "cache_creation_input_tokens": 249,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 249
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1476,
+      "outputTokens": 16,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001556,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 38,
+      "outputTokens": 10465,
+      "cacheReadInputTokens": 2015083,
+      "cacheCreationInputTokens": 60215,
+      "webSearchRequests": 0,
+      "costUSD": 1.6457002500000004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "558b9f77-b052-4e58-a481-dbf5754e13b3"
+}
