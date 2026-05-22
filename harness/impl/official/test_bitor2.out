@@ -7,7 +7,7 @@ tonumber result =	1.844674407371e+19	number
 step 2
 tointeger result =	false	boolean
 step 3
-string metatable =	table: 0x600002418900
+string metatable =	table: 0x60000285c900
 step 4
 step 5
 ok =	false

@@ -8,5 +8,4 @@ testing scanner
 +
 +
 +
-[DBG concat] top-2-type=Discriminant(5) top-1=]====]
-lua: pcall_k failed: Runtime: attempt to concatenate a table value
+lua: pcall_k failed: Runtime: cannot resume dead coroutine

@@ -3,79 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing strings and string library
-[DBG SLOT9 TABLE WRITE] write #22
-[DBG SLOT9 TABLE WRITE] write #26
-[DBG SLOT9 TABLE WRITE] write #30
-[DBG SLOT9 TABLE WRITE] write #34
-[DBG SLOT9 TABLE WRITE] write #38
-[DBG SLOT9 TABLE WRITE] write #42
-[DBG SLOT9 TABLE WRITE] write #46
-[DBG SLOT9 TABLE WRITE] write #50
-[DBG SLOT9 TABLE WRITE] write #54
-[DBG SLOT9 TABLE WRITE] write #58
-[DBG SLOT9 TABLE WRITE] write #66
-[DBG SLOT9 TABLE WRITE] write #70
-[DBG SLOT9 TABLE WRITE] write #74
-[DBG SLOT9 TABLE WRITE] write #87
-[DBG SLOT9 TABLE WRITE] write #91
-[DBG SLOT9 TABLE WRITE] write #95
-[DBG SLOT9 TABLE WRITE] write #99
-[DBG SLOT9 TABLE WRITE] write #103
-[DBG SLOT9 TABLE WRITE] write #107
-[DBG SLOT9 TABLE WRITE] write #111
-[DBG SLOT9 TABLE WRITE] write #115
-[DBG SLOT9 TABLE WRITE] write #119
-[DBG SLOT9 TABLE WRITE] write #123
-[DBG SLOT9 TABLE WRITE] write #127
-[DBG SLOT9 TABLE WRITE] write #131
-[DBG SLOT9 TABLE WRITE] write #135
-[DBG SLOT9 TABLE WRITE] write #139
-[DBG SLOT9 TABLE WRITE] write #143
-[DBG SLOT9 TABLE WRITE] write #147
-[DBG SLOT9 TABLE WRITE] write #151
-[DBG SLOT9 TABLE WRITE] write #155
-[DBG SLOT9 TABLE WRITE] write #159
-[DBG SLOT9 TABLE WRITE] write #163
-[DBG SLOT9 TABLE WRITE] write #175
-[DBG SLOT9 TABLE WRITE] write #179
-[DBG SLOT9 TABLE WRITE] write #183
-[DBG SLOT9 TABLE WRITE] write #187
-[DBG SLOT9 TABLE WRITE] write #191
-[DBG SLOT9 TABLE WRITE] write #200
-[DBG SLOT9 TABLE WRITE] write #204
-[DBG SLOT9 TABLE WRITE] write #208
-[DBG SLOT9 TABLE WRITE] write #212
-[DBG SLOT9 TABLE WRITE] write #222
-[DBG SLOT9 TABLE WRITE] write #226
-[DBG SLOT9 TABLE WRITE] write #230
-[DBG SLOT9 TABLE WRITE] write #272
-[DBG SLOT9 TABLE WRITE] write #275
-[DBG SLOT9 TABLE WRITE] write #335
-[DBG SLOT9 TABLE WRITE] write #336
-[DBG SLOT9 TABLE WRITE] write #339
-[DBG SLOT9 TABLE WRITE] write #362
 testing 'format %a %A'
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG TFORCALL PRE-CALL] calling Lua function, ra=11, ra+4=15
-[DBG aux_wrap] called
-[DBG aux_resume #0] start, narg=0
-[DBG aux_resume #0] parent_open_upval_slots: [(0, 5)]
-[DBG aux_resume #0] copying slot 5 (type Discriminant(6)) to cross_thread_upvals
-[DBG aux_resume #0] FLUSH: writing type Discriminant(6) to slot 5
-[DBG aux_resume #0] pushing 1 results, state.top before=0
-[DBG aux_resume #0]   result[0] = Discriminant(4)
-[DBG aux_resume #0] state.top after push=1
 
  >>> testC not active: skipping 'pushfstring' tests <<<
 

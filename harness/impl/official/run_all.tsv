@@ -1,4 +1,4 @@
-all	FAIL	lua: pcall_k failed: Runtime: stdin:157: cannot open main.lua: No such file or directory (os error 2
+all	TIMEOUT	-
 api	PASS	-
 attrib	PASS	-
 big	PASS	-
@@ -10,24 +10,24 @@ calls_isolated_tmp	PASS	-
 closure	PASS	-
 code	PASS	-
 constructs	PASS	-
-coroutine	FAIL	lua: pcall_k failed: Runtime: stdin:165: assertion failed!
+coroutine	FAIL	lua: pcall_k failed: Runtime: stdin:327: assertion failed!
 cstack	FAIL	testing stack overflow detection
-db	FAIL	lua: pcall_k failed: Runtime: stdin:50: assertion failed!
-errors	FAIL	lua: pcall_k failed: Runtime: stdin:38: assertion failed!
+db	FAIL	lua: pcall_k failed: Runtime: stdin:28: assertion failed!
+errors	FAIL	lua: pcall_k failed: Runtime: stdin:591: assertion failed!
 events	PASS	-
 files-debug	PASS	-
-files	FAIL	thread 'main' (15857989) panicked at crates/lua-vm/src/do_.rs:1109:9:
-gc	FAIL	lua: pcall_k failed: Runtime: stdin:552: assertion failed!
+files	FAIL	thread 'main' (23618728) panicked at crates/lua-stdlib/src/io_lib.rs:1563:5:
+gc	TIMEOUT	-
 gc_part	PASS	-
 gctmp	PASS	-
-gengc	FAIL	lua: pcall_k failed: Runtime: stdin:99: attempt to index a nil value (upvalue 'x')
+gengc	FAIL	lua: pcall_k failed: Runtime: stdin:130: assertion failed!
 goto	PASS	-
 heavy	PASS	-
-literals	FAIL	lua: pcall_k failed: Runtime: attempt to concatenate a table value
-locals	FAIL	lua: pcall_k failed: Runtime: stdin:861: assertion failed!
+literals	FAIL	lua: pcall_k failed: Runtime: cannot resume dead coroutine
+locals	FAIL	lua: pcall_k failed: Runtime: stdin:982: assertion failed!
 main	PASS	-
 math	PASS	-
-nextvar	FAIL	lua: pcall_k failed: Runtime: stdin:611: bad 'for' limit (number expected, got number)
+nextvar	FAIL	lua: pcall_k failed: Runtime: stdin:16: assertion failed!
 pm	PASS	-
 repro_closure	PASS	-
 sort	PASS	-

@@ -7,4 +7,4 @@ testing errors
  >>> testC not active: skipping tests for messages in C <<<
 
 +
-lua: pcall_k failed: Runtime: stdin:591: assertion failed!
+lua: pcall_k failed: Runtime: stdin:389: attempt to index a nil value (local 'msg')

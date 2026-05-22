@@ -3,13 +3,6 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing closures
-[DBG SLOT9 TABLE WRITE] write #1001
-[DBG SLOT9 TABLE WRITE] write #2173
-[DBG SLOT9 TABLE WRITE] write #2195
-[DBG SLOT9 TABLE WRITE] write #2200
-[DBG SLOT9 TABLE WRITE] write #2204
-[DBG SLOT9 TABLE WRITE] write #2211
-[DBG SLOT9 TABLE WRITE] write #2213
 +
 OK
 [ok] execution completed, status=Ok

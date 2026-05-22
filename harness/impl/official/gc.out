@@ -15,4 +15,3 @@ weak tables
  >>> testC not active: skipping userdata GC tests <<<
 
 self-referenced threads
-lua: pcall_k failed: Runtime: stdin:552: assertion failed!

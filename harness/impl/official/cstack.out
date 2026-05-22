@@ -13,4 +13,4 @@ final count: 	99
 testing limits in coroutines inside deep calls
 final count: 	196
 chain of 'coroutine.close'
-...lua: pcall_k failed: Runtime: stdin:116: assertion failed!
+........................................................................................................................................lua: pcall_k failed: Runtime: stdin:108: assertion failed!

@@ -7,4 +7,4 @@ testing local variables and environments
 testing to-be-closed variables
 testing errors in __close
 to-be-closed variables in coroutines
-lua: pcall_k failed: Runtime: stdin:982: assertion failed!
+lua: pcall_k failed: Runtime: stdin:983: assertion failed!

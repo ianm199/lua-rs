@@ -1,0 +1,300 @@
+[1/4] Creating LuaState...
+[2/4] Opening standard library...
+[3/4] Loading source (parse + compile)...
+[4/4] Executing chunk...
+testing scanner
+[DBG SLOT9 TABLE WRITE] write #69
++
++
++
++
++
+[DBG aux_wrap] called
+[DBG aux_resume #0] start, narg=2
+[DBG aux_resume #0] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #0] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #0] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #0] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #0] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #0] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #0] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #0] pushing 1 results, state.top before=0
+[DBG aux_resume #0]   result[0] = Discriminant(4)
+[DBG aux_resume #0] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #1] start, narg=2
+[DBG aux_resume #1] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #1] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #1] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #1] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #1] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #1] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #1] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #1] pushing 1 results, state.top before=0
+[DBG aux_resume #1]   result[0] = Discriminant(4)
+[DBG aux_resume #1] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #2] start, narg=2
+[DBG aux_resume #2] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #2] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #2] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #2] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #2] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #2] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #2] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #2] pushing 1 results, state.top before=0
+[DBG aux_resume #2]   result[0] = Discriminant(4)
+[DBG aux_resume #2] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #3] start, narg=2
+[DBG aux_resume #3] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #3] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #3] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #3] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #3] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #3] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #3] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #3] pushing 1 results, state.top before=0
+[DBG aux_resume #3]   result[0] = Discriminant(4)
+[DBG aux_resume #3] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #4] start, narg=2
+[DBG aux_resume #4] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #4] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #4] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #4] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #4] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #4] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #4] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #4] pushing 1 results, state.top before=0
+[DBG aux_resume #4]   result[0] = Discriminant(4)
+[DBG aux_resume #4] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #5] start, narg=2
+[DBG aux_resume #5] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #5] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #5] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #5] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #5] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #5] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #5] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #5] pushing 1 results, state.top before=0
+[DBG aux_resume #5]   result[0] = Discriminant(4)
+[DBG aux_resume #5] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #6] start, narg=2
+[DBG aux_resume #6] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #6] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #6] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #6] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #6] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #6] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #6] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #6] pushing 1 results, state.top before=0
+[DBG aux_resume #6]   result[0] = Discriminant(4)
+[DBG aux_resume #6] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #7] start, narg=2
+[DBG aux_resume #7] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #7] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #7] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #7] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #7] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #7] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #7] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #7] pushing 1 results, state.top before=0
+[DBG aux_resume #7]   result[0] = Discriminant(4)
+[DBG aux_resume #7] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #8] start, narg=2
+[DBG aux_resume #8] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #8] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #8] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #8] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #8] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #8] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #8] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #8] pushing 1 results, state.top before=0
+[DBG aux_resume #8]   result[0] = Discriminant(4)
+[DBG aux_resume #8] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #9] start, narg=2
+[DBG aux_resume #9] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #9] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #9] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #9] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #9] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #9] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #9] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #9] pushing 1 results, state.top before=0
+[DBG aux_resume #9]   result[0] = Discriminant(4)
+[DBG aux_resume #9] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #10] start, narg=2
+[DBG aux_resume #10] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #10] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #10] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #10] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #10] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #10] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #10] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #10] pushing 1 results, state.top before=0
+[DBG aux_resume #10]   result[0] = Discriminant(4)
+[DBG aux_resume #10] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #11] start, narg=2
+[DBG aux_resume #11] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #11] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #11] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #11] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #11] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #11] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #11] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #11] pushing 1 results, state.top before=0
+[DBG aux_resume #11]   result[0] = Discriminant(4)
+[DBG aux_resume #11] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #12] start, narg=2
+[DBG aux_resume #12] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #12] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #12] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #12] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #12] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #12] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #12] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #12] pushing 1 results, state.top before=0
+[DBG aux_resume #12]   result[0] = Discriminant(4)
+[DBG aux_resume #12] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #13] start, narg=2
+[DBG aux_resume #13] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #13] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #13] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #13] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #13] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #13] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #13] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #13] pushing 1 results, state.top before=0
+[DBG aux_resume #13]   result[0] = Discriminant(4)
+[DBG aux_resume #13] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #14] start, narg=2
+[DBG aux_resume #14] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #14] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #14] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #14] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #14] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #14] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #14] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #14] pushing 1 results, state.top before=0
+[DBG aux_resume #14]   result[0] = Discriminant(4)
+[DBG aux_resume #14] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #15] start, narg=2
+[DBG aux_resume #15] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #15] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #15] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #15] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #15] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #15] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #15] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #15] pushing 1 results, state.top before=0
+[DBG aux_resume #15]   result[0] = Discriminant(4)
+[DBG aux_resume #15] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #16] start, narg=2
+[DBG aux_resume #16] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #16] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #16] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #16] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #16] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #16] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #16] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #16] pushing 1 results, state.top before=0
+[DBG aux_resume #16]   result[0] = Discriminant(4)
+[DBG aux_resume #16] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #17] start, narg=2
+[DBG aux_resume #17] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #17] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #17] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #17] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #17] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #17] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #17] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #17] pushing 1 results, state.top before=0
+[DBG aux_resume #17]   result[0] = Discriminant(4)
+[DBG aux_resume #17] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #18] start, narg=2
+[DBG aux_resume #18] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #18] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #18] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #18] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #18] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #18] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #18] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #18] pushing 1 results, state.top before=0
+[DBG aux_resume #18]   result[0] = Discriminant(4)
+[DBG aux_resume #18] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #19] start, narg=2
+[DBG aux_resume #19] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #19] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #19] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #19] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #19] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #19] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #19] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #19] pushing 1 results, state.top before=0
+[DBG aux_resume #19]   result[0] = Discriminant(4)
+[DBG aux_resume #19] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #20] start, narg=2
+[DBG aux_resume #20] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #20] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #20] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #20] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #20] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #20] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #20] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #20] pushing 1 results, state.top before=0
+[DBG aux_resume #20]   result[0] = Discriminant(4)
+[DBG aux_resume #20] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #21] start, narg=2
+[DBG aux_resume #21] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #21] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #21] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #21] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #21] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #21] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #21] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #21] pushing 1 results, state.top before=0
+[DBG aux_resume #21]   result[0] = Discriminant(4)
+[DBG aux_resume #21] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #22] start, narg=2
+[DBG aux_resume #22] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #22] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #22] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #22] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #22] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #22] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #22] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #22] pushing 1 results, state.top before=0
+[DBG aux_resume #22]   result[0] = Discriminant(4)
+[DBG aux_resume #22] state.top after push=1
+[DBG aux_wrap] called
+[DBG aux_resume #23] start, narg=2
+[DBG aux_resume #23] parent_open_upval_slots: [(0, 15), (0, 14), (0, 13)]
+[DBG aux_resume #23] copying slot 15 (type Discriminant(6)) to cross_thread_upvals
+[DBG aux_resume #23] copying slot 14 (type Discriminant(2)) to cross_thread_upvals
+[DBG aux_resume #23] copying slot 13 (type Discriminant(5)) to cross_thread_upvals
+[DBG aux_resume #23] FLUSH: writing type Discriminant(6) to slot 15
+[DBG aux_resume #23] FLUSH: writing type Discriminant(2) to slot 14
+[DBG aux_resume #23] FLUSH: writing type Discriminant(5) to slot 13
+[DBG aux_resume #23] pushing 1 results, state.top before=0
+[DBG aux_resume #23]   result[0] = Discriminant(4)
+[DBG aux_resume #23] state.top after push=1
+lua: pcall_k failed: Runtime: attempt to concatenate a table value

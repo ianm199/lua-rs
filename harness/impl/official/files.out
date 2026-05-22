@@ -5,7 +5,7 @@
 testing i/o
 +
 
-thread 'main' (15857989) panicked at crates/lua-vm/src/do_.rs:1109:9:
-finishCcall: no continuation or non-yieldable
+thread 'main' (23618728) panicked at crates/lua-stdlib/src/io_lib.rs:1563:5:
+g_read should return at least one value
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] finishCcall: no continuation or non-yieldable
+[panic] g_read should return at least one value
