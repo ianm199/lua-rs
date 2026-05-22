@@ -456,6 +456,32 @@ impl LuaState {
         set_field(self, idx, name)?;
         Ok(false)
     }
+
+    /// Allocate a fresh full-userdata block of `size` bytes with `nuvalue`
+    /// nil-initialised user-value slots, push it on the stack, and return a
+    /// `GcRef` to it. The `_name` parameter is advisory — callers typically
+    /// follow up with `set_metatable_by_name(name)` to attach the registered
+    /// metatable.
+    ///
+    /// C-correspondent: `lua_newuserdatauv(L, size, nuvalue)` (no name
+    /// parameter on the C side; the Rust signature carries it for callers'
+    /// convenience).
+    pub fn new_userdata_typed(
+        &mut self,
+        _name: &[u8],
+        size: usize,
+        nuvalue: i32,
+    ) -> Result<GcRef<LuaUserData>, LuaError> {
+        debug_assert!(nuvalue >= 0 && nuvalue < u16::MAX as i32, "invalid value");
+        let u = GcRef::new(LuaUserData {
+            data: vec![0u8; size].into_boxed_slice(),
+            uv: vec![LuaValue::Nil; nuvalue as usize],
+            metatable: None,
+        });
+        self.push(LuaValue::UserData(u.clone()));
+        self.gc().check_step();
+        Ok(u)
+    }
 }
 
 // ── access functions (stack → Rust) ──────────────────────────────────────────

@@ -188,3 +188,6 @@
 {"ts":"2026-05-16T18:49:14Z","action":"dispatch_done","detail":"type=implement func=new_metatable cost=1.251967","total_cost":0.00}
 {"ts":"2026-05-16T18:49:15Z","action":"panic_detected","detail":"func=new_lib_table iter=10","total_cost":0.00}
 {"ts":"2026-05-16T18:49:15Z","action":"dispatch_start","detail":"type=implement func=new_lib_table iter=10","total_cost":0.00}
+{"ts":"2026-05-16T18:50:34Z","action":"dispatch_done","detail":"type=implement func=new_lib_table cost=0.64941025","total_cost":0.00}
+{"ts":"2026-05-16T18:50:35Z","action":"panic_detected","detail":"func=new_userdata_typed iter=11","total_cost":0.00}
+{"ts":"2026-05-16T18:50:35Z","action":"dispatch_start","detail":"type=implement func=new_userdata_typed iter=11","total_cost":0.00}
