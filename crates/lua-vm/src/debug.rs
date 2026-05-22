@@ -730,14 +730,6 @@ fn aux_get_info(
             b'n' => {
                 let mut name: Option<Vec<u8>> = None;
                 ar.namewhat = get_func_name(state, ci, &mut name);
-                eprintln!("[debug.getinfo n] ci={:?} prev_ci={:?} namewhat={:?} name={:?}",
-                    ci.map(|c| (c.func.0, c.callstatus, c.previous)),
-                    ci.and_then(|c| c.previous).map(|p| {
-                        let pc = state.get_ci(p);
-                        (pc.func.0, pc.callstatus, pc.is_lua(), pc.saved_pc())
-                    }),
-                    ar.namewhat,
-                    name.as_ref().map(|v| String::from_utf8_lossy(v).to_string()));
                 if ar.namewhat.is_none() {
                     // C: ar->namewhat = ""; ar->name = NULL;
                     ar.namewhat = Some(b"");
@@ -938,7 +930,6 @@ fn basic_get_obj_name<'a>(
     let pc = *ppc;
     // C: *name = luaF_getlocalname(p, reg + 1, pc);
     //    if (*name) return "local";
-    // TODO(port): luaF_getlocalname lives in crate::func
     if let Some(local_name) = get_local_name(p, reg + 1, pc) {
         *name = local_name;
         return Some(b"local");
@@ -1197,14 +1188,7 @@ fn funcname_from_call<'a>(
     // C: else if (isLua(ci)) return funcnamefromcode(L, ci_func(ci)->p, currentpc(ci), name);
     if ci.is_lua() {
         let proto = ci_lua_proto(ci, state);
-        let pc = current_pc(ci);
-        let op = if (pc as usize) < proto.code.len() {
-            Some(proto.code[pc as usize].opcode())
-        } else { None };
-        eprintln!("[funcname_from_call] is_lua=true pc={} code_len={} op={:?} code[pc]_raw={:?}",
-            pc, proto.code.len(), op,
-            proto.code.get(pc as usize).map(|i| i.raw()));
-        return funcname_from_code(state, &proto, pc, name);
+        return funcname_from_code(state, &proto, current_pc(ci), name);
     }
     None
 }
@@ -1797,16 +1781,12 @@ fn chunk_id(out: &mut [u8; LUA_IDSIZE], source: &[u8], _srclen: usize) {
 /// Returns `None` if not found (variable is not live at `pc`).
 ///
 /// C: `luaF_getlocalname(const Proto *p, int n, int pc)` from `lfunc.c`.
-/// TODO(port): full implementation lives in crate::func (lfunc.c → func.rs)
 fn get_local_name(p: &LuaProto, n: i32, pc: i32) -> Option<&[u8]> {
-    // TODO(port): iterate p.locvars to find the n-th live variable at pc
-    let _ = (p, n, pc);
-    None
+    crate::func::get_local_name(p, n, pc)
 }
 
 /// Gets the n-th local name from a Lua closure (for non-active function query).
 /// C: `luaF_getlocalname(cl->p, n, 0)`.
-/// TODO(port): full implementation lives in crate::func
 fn get_local_name_from_closure(cl: &LuaClosureLua, n: i32, pc: i32) -> Option<&[u8]> {
     get_local_name(&cl.proto, n, pc)
 }

@@ -771,6 +771,12 @@ pub struct GlobalState {
     /// vector instead of the real function pointer. `push_c_function`
     /// registers the function and stores the resulting index in the closure.
     pub c_functions: Vec<LuaCFunction>,
+
+    /// Phase-D heap. Owns the allgc intrusive list and runs collections.
+    /// During Phase A-C this is `paused=true`, so allocations don't auto-
+    /// register and `step` is a no-op. Phase D-1d wires `unpause()` after
+    /// state initialization, at which point `step` runs during VM dispatch.
+    pub heap: lua_gc::Heap,
 }
 
 impl GlobalState {
@@ -2792,6 +2798,7 @@ pub fn new_state() -> Option<LuaState> {
         interned_lt: std::collections::HashMap::new(),
         warnf: None,
         c_functions: Vec::new(),
+        heap: lua_gc::Heap::new(),
     };
 
     let global_rc = Rc::new(RefCell::new(global));

@@ -2,9 +2,12 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
+[pcall] caught err entry_top=10 cur_top=11 old_top=8 openupval.len=0 status=ErrRun
+[pcall] caught err entry_top=23 cur_top=0 old_top=22 openupval.len=1 status=ErrRun
 'os.tmpname' file cannot be open; skipping file tests
 +
 testing date/time
+[pcall] caught err entry_top=2 cur_top=1 old_top=1 openupval.len=1 status=ErrRun
 [close_upval] uv_idx=5 top=2 level=1 openupval.len=1
   openupval[0] = Open(thread=0, idx=5)
 backtrace:
@@ -27,7 +30,7 @@ backtrace:
    8: lua_vm::do_::close_protected
              at ./crates/lua-vm/src/do_.rs:1481:32
    9: lua_vm::do_::pcall
-             at ./crates/lua-vm/src/do_.rs:1547:18
+             at ./crates/lua-vm/src/do_.rs:1552:18
   10: lua_vm::state::LuaState::protected_call_raw
              at ./crates/lua-vm/src/state.rs:1480:22
   11: lua_vm::api::pcall_k
@@ -72,7 +75,7 @@ backtrace:
   31: _main
 
 
-thread 'main' (9950306) panicked at crates/lua-vm/src/func.rs:499:9:
+thread 'main' (9964917) panicked at crates/lua-vm/src/func.rs:499:9:
 open upvalue index must be below stack top
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [panic] open upvalue index must be below stack top

@@ -10,3 +10,4 @@ workspace = true
 
 [dependencies]
 lua-types.workspace = true
+lua-gc.workspace = true

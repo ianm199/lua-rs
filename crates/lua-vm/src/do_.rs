@@ -1518,10 +1518,15 @@ where
     // site before the throw. In Rust the error rides inside LuaError and
     // propagates via `?`, so the handler is never invoked along the way; we
     // synthesise that invocation here once we've caught the Err.
+    let entry_top = state.top;
     let mut status = match raw_run_protected(state, func) {
         Ok(()) => LuaStatus::Ok,
         Err(e) => {
             let s = e.to_status();
+            eprintln!(
+                "[pcall] caught err entry_top={} cur_top={} old_top={} openupval.len={} status={:?}",
+                entry_top.0, state.top.0, old_top.0, state.openupval.len(), s
+            );
             state.push(e.into_value());
             if ef != 0 && error_status(s) && s != LuaStatus::ErrErr {
                 let errfunc_idx = StackIdx(ef as u32);

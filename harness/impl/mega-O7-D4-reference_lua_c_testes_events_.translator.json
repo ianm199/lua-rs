@@ -1,0 +1,111 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 591766,
+  "duration_api_ms": 573981,
+  "ttft_ms": 2402,
+  "num_turns": 66,
+  "result": "Build is clean (only pre-existing unused-import warnings). The fix is complete.\n\n## Report\n\n**Root cause:** `crates/lua-parse/src/lib.rs` `cg_discharge_vars` for `ExprKind::Indexed` (line 1426) freed the table and key registers in the wrong order. `cg_free_reg_if_temp` (line 1753) only decrements `freereg` when `reg == freereg - 1`; called with the lower register first, it silently no-ops. So after compiling `a[n-3]` where `a` is in R2 and `n-3` in R3 (freereg=R4), only R3 got freed — R2 stayed \"live\" with the table value, and the subsequent GETTABLE result was patched into a fresh register R3 instead of overwriting R2. R2 then leaked through the next call's argument list, producing the spurious \"table\" value seen in `__index` results.\n\n**Fix:** In the `ExprKind::Indexed` arm, free the higher register first (matches C-Lua's `freeregs`):\n```rust\nif idx_reg > t_reg { free(idx_reg); free(t_reg); }\nelse                { free(t_reg); free(idx_reg); }\n```\n\n**New state:** The minimal repro (`a[i*3]` through a 3-deep `__index` chain ending in a function returning `a[n-3]+4`) now passes all 11 iterations and prints \"OK\". `cargo build -p lua-cli` is green. I did not re-run the full events.lua test per the instructions — the mega-loop will re-test it.",
+  "stop_reason": "end_turn",
+  "session_id": "6106524e-1c1f-4813-984c-932d71aeb875",
+  "total_cost_usd": 4.227425749999999,
+  "usage": {
+    "input_tokens": 71,
+    "cache_creation_input_tokens": 105995,
+    "cache_read_input_tokens": 5292012,
+    "output_tokens": 36635,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 105995,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 636,
+        "cache_read_input_tokens": 124452,
+        "cache_creation_input_tokens": 442,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 442
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2621,
+      "outputTokens": 20,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.002721,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 71,
+      "outputTokens": 36635,
+      "cacheReadInputTokens": 5292012,
+      "cacheCreationInputTokens": 105995,
+      "webSearchRequests": 0,
+      "costUSD": 4.22470475,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01JkyHVSuNBKaAUxhWC3TXCr",
+      "tool_input": {
+        "command": "target/debug/lua-rs \"$(cat /tmp/repro.lua)\" 2>&1 | tail -30",
+        "description": "Run minimal repro"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01FEBm9y41YwYGWXQAh5Bby8",
+      "tool_input": {
+        "command": "target/debug/lua-rs \"$(< /tmp/repro.lua)\" 2>&1 | tail -30",
+        "description": "Run minimal repro"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01SA1MdSWXLgjdNSYhMqr1ou",
+      "tool_input": {
+        "command": "SRC=$(< /tmp/repro.lua); target/debug/lua-rs \"$SRC\" 2>&1 | tail -30",
+        "description": "Run repro program"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01LVRA76NnbLq3ReozUTgNMy",
+      "tool_input": {
+        "command": "target/debug/lua-rs \"$(head /tmp/repro.lua)\" 2>&1 | head -5",
+        "description": "Run lua-rs binary on test source"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_015XHQAA1mhgWKGNG6VXUYSk",
+      "tool_input": {
+        "command": "target/debug/lua-rs 'do\n  local a;\n  a = setmetatable({}, {__index = setmetatable({},\n                     {__index = setmetatable({},\n                     {__index = function (_,n) print(\"FN called n=\", n); return a[n-3]+4, \"lixo\" end})})})\n  a[0] = 20\n  local v = a[3]\n  print(\"v=\", v)\nend' >/tmp/out 2>&1; tail -50 /tmp/out",
+        "description": "Run trace dumping to file"
+      }
+    }
+  ],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "abdfbb80-7417-4807-b805-b945a7814d2e"
+}
