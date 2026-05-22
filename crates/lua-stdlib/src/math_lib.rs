@@ -760,8 +760,8 @@ pub fn luaopen_math(state: &mut LuaState) -> Result<usize, LuaError> {
 //   source:        src/lmathlib.c  (782 lines, 28 functions)
 //   target_crate:  lua-stdlib
 //   confidence:    medium
-//   todos:         8
-//   port_notes:    4
+//   todos:         16
+//   port_notes:    8
 //   unsafe_blocks: 0
 //   notes:         All basic math functions are mechanically faithful. The
 //                  PRNG xoshiro256** algorithm is correctly translated using
