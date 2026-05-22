@@ -165,6 +165,41 @@ fn aux_resume(state: &mut LuaState, co: GcRef<lua_types::value::LuaThread>, narg
         .collect();
     lua_vm::api::set_top(state, (top_before - narg) as i32).ok();
 
+    // Collect the open-upvalue indices of the coroutine's body closure so we
+    // can snapshot the main thread's stack before the resume and write it back
+    // afterward.  Only needed for the first resume (status == Ok); on later
+    // resumes (Yield) the upvalues that matter have already been snapshotted or
+    // closed by the first run.
+    let open_upval_indices: Vec<u32> = {
+        let co_state = entry_rc.borrow();
+        // The body function was pushed at stack[1] by new_thread.
+        if let LuaValue::Function(lua_types::closure::LuaClosure::Lua(ref lcl)) =
+            co_state.get_at(lua_vm::state::StackIdx(1))
+        {
+            (0..lcl.upvals.len())
+                .filter_map(|i| {
+                    let uv = lcl.upval(i);
+                    let slot = uv.slot().clone();
+                    match slot {
+                        lua_types::UpValState::Open { thread_id: 0, idx } => Some(idx.0),
+                        _ => None,
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    };
+
+    eprintln!("[DBG aux_resume] open_upval_indices={:?}", open_upval_indices);
+    // Populate the parent-stack snapshot so upvalue_get/upvalue_set inside
+    // the coroutine proxy through it rather than reading the coroutine's stack.
+    for &idx in &open_upval_indices {
+        let val = state.get_at(lua_vm::state::StackIdx(idx));
+        eprintln!("[DBG aux_resume] snapshot idx={} val={:?}", idx, val);
+        state.global_mut().parent_stack_snapshot.insert(idx, val);
+    }
+
     let (status, results_or_err): (LuaStatus, Vec<LuaValue>) = {
         let mut co_state = entry_rc.borrow_mut();
         if co_state.check_stack(narg + 1).is_err() {
@@ -198,6 +233,17 @@ fn aux_resume(state: &mut LuaState, co: GcRef<lua_types::value::LuaThread>, narg
         co_state.set_top(lua_vm::state::StackIdx(new_co_top.max(0) as u32));
         (status, vals)
     };
+
+    // Write back the snapshot values to the main thread's stack, then clear.
+    // This propagates any writes the coroutine made to the parent's upvalues.
+    let snapshot: Vec<(u32, LuaValue)> = state
+        .global_mut()
+        .parent_stack_snapshot
+        .drain()
+        .collect();
+    for (idx, val) in snapshot {
+        state.set_at(lua_vm::state::StackIdx(idx), val);
+    }
 
     match status {
         LuaStatus::Ok | LuaStatus::Yield => {
@@ -282,6 +328,10 @@ fn aux_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
         let err_val = state.value_at(top);
         Err(LuaError::from_value(err_val))
     } else {
+        // DEBUG: show what aux_wrap returned
+        let top = state.get_top();
+        let result_type = if r == 0 { "nil(end)".to_string() } else { format!("{:?}", std::mem::discriminant(&state.value_at(top))) };
+        eprintln!("[DBG aux_wrap] r={} top={} result={}", r, top, result_type);
         Ok(r as usize)
     }
 }
@@ -341,7 +391,6 @@ fn close_open_upvals_for_coroutine(state: &mut LuaState, val: &LuaValue) {
 pub fn co_create(state: &mut LuaState) -> Result<usize, LuaError> {
     state.check_arg_type(1, LuaType::Function)?;
     let body = state.value_at(1);
-    close_open_upvals_for_coroutine(state, &body);
     let _nl = state.new_thread(Some(body))?;
     Ok(1)
 }

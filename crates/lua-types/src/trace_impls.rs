@@ -102,9 +102,13 @@ impl Trace for LuaTable {
         while let Some((k, v)) = self.next_pair(&key) {
             if trace_keys {
                 k.trace(m);
+            } else if let LuaValue::Str(s) = &k {
+                s.trace(m);
             }
             if trace_values {
                 v.trace(m);
+            } else if let LuaValue::Str(s) = &v {
+                s.trace(m);
             }
             key = k;
         }

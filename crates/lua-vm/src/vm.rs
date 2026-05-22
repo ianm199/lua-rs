@@ -1001,6 +1001,8 @@ pub(crate) fn concat(state: &mut LuaState, total: i32) -> Result<(), LuaError> {
         let top1_stringlike = matches!(v_tm1, LuaValue::Str(_))
             || matches!(v_tm1, LuaValue::Int(_) | LuaValue::Float(_));
         if !top2_coercible || !top1_stringlike {
+            let s1 = if let LuaValue::Str(s) = &v_tm1 { String::from_utf8_lossy(s.as_bytes()).to_string() } else { format!("{:?}", v_tm1) };
+            eprintln!("[DBG concat] top-2-type={:?} top-1={}", std::mem::discriminant(&v_tm2), s1);
             state.try_concat_tm(&v_tm1, &v_tm2)?;
             // C: n stays at 2; the shared `total -= n-1; L->top.p -= n-1`
             // at the bottom of the do-while runs for this branch too.

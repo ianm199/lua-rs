@@ -943,6 +943,13 @@ pub struct GlobalState {
     /// at `1` because `0` is reserved for the main thread.
     pub next_thread_id: u64,
 
+    /// Snapshot of the parent (main) thread's stack slots for open upvalues,
+    /// keyed by absolute stack index.  Set by `aux_resume` before resuming a
+    /// coroutine so that the coroutine can read upvalues that point to the
+    /// main thread's stack; written back to the main thread after the resume.
+    /// Empty when no coroutine is running.
+    pub parent_stack_snapshot: std::collections::HashMap<u32, LuaValue>,
+
     // C: TString *memerrmsg — preallocated OOM error message
     // types.tsv: global_State.memerrmsg → GcRef<LuaString>
     pub memerrmsg: GcRef<LuaString>,
@@ -1835,17 +1842,43 @@ impl LuaState {
         let slot = uv.slot().clone();
         match slot {
             lua_types::UpValState::Closed(v) => v,
-            lua_types::UpValState::Open { thread_id: _, idx } => self.stack[idx.0 as usize].val.clone(),
+            lua_types::UpValState::Open { thread_id: 0, idx } => {
+                // Upvalue belongs to the main thread (id 0). If we are currently on a
+                // coroutine thread, read from the parent stack snapshot that aux_resume
+                // populated before the resume; otherwise read from our own stack.
+                let current = self.global().current_thread_id;
+                if current != 0 {
+                    self.global()
+                        .parent_stack_snapshot
+                        .get(&idx.0)
+                        .cloned()
+                        .unwrap_or(LuaValue::Nil)
+                } else {
+                    self.stack[idx.0 as usize].val.clone()
+                }
+            }
+            lua_types::UpValState::Open { thread_id: _, idx } => {
+                self.stack[idx.0 as usize].val.clone()
+            }
         }
     }
     pub fn upvalue_set(&mut self, cl: &GcRef<LuaClosureLua>, n: usize, val: LuaValue) -> Result<(), LuaError> {
         let uv = cl.upval(n);
-        let slot_idx = match &*uv.slot() {
-            lua_types::UpValState::Open { idx, .. } => Some(*idx),
-            lua_types::UpValState::Closed(_) => None,
+        let (slot_idx, is_main_thread_upval) = match &*uv.slot() {
+            lua_types::UpValState::Open { thread_id: 0, idx } => (Some(*idx), true),
+            lua_types::UpValState::Open { idx, .. } => (Some(*idx), false),
+            lua_types::UpValState::Closed(_) => (None, false),
         };
         match slot_idx {
-            Some(idx) => self.set_at(idx, val),
+            Some(idx) => {
+                let current = self.global().current_thread_id;
+                if is_main_thread_upval && current != 0 {
+                    // Write to the parent stack snapshot so aux_resume can sync it back.
+                    self.global_mut().parent_stack_snapshot.insert(idx.0, val);
+                } else {
+                    self.set_at(idx, val);
+                }
+            }
             None => {
                 let mut g = uv.state.borrow_mut();
                 *g = lua_types::UpValState::Closed(val);
@@ -3583,6 +3616,7 @@ pub fn new_state() -> Option<LuaState> {
         current_thread_id: 0,
         main_thread_id: 0,
         next_thread_id: 1,
+        parent_stack_snapshot: std::collections::HashMap::new(),
         memerrmsg: placeholder_str.clone(),
         tmname: Vec::new(),
         // C: for (i=0; i < LUA_NUMTAGS; i++) g->mt[i] = NULL;
