@@ -183,6 +183,25 @@ fn find_func_name_in_globals(state: &LuaState, func_val: &LuaValue) -> Option<Ve
     }
 }
 
+/// Mirrors C `pushglobalfuncname` (lauxlib.c): search `package.loaded` (the
+/// `_LOADED` registry entry) for `func_val` by identity.  Only descends one
+/// level into each loaded module, so `table.sort` is found as `"table.sort"`.
+///
+/// Uses only raw table lookups (`get_str_bytes`, `next_pair`) — no VM calls,
+/// no metamethods, no GC.  Safe to call from error-formatting paths.
+fn find_func_name_in_loaded(state: &LuaState, func_val: &LuaValue) -> Option<Vec<u8>> {
+    let registry = state.global().l_registry.clone();
+    let loaded = match registry {
+        LuaValue::Table(ref reg_table) => reg_table.get_str_bytes(b"_LOADED"),
+        _ => return None,
+    };
+    let loaded_table = match loaded {
+        LuaValue::Table(t) => t,
+        _ => return None,
+    };
+    find_func_in_table(&*loaded_table, func_val, b"", 1)
+}
+
 /// Equivalent of C `luaL_argerror`: build an arg-type error with function name
 /// (from debug info) and caller source location. Handles method calls by
 /// producing "calling 'f' on bad self ..." when arg==1 and namewhat=="method".
@@ -205,7 +224,17 @@ pub fn arg_error_impl(state: &mut LuaState, mut arg: i32, extramsg: &[u8]) -> Lu
             return c_api_runtime(state, msg.into_bytes());
         }
     }
-    let fname = ar.name.clone().unwrap_or_else(|| b"?".to_vec());
+    let fname = ar.name.clone().or_else(|| {
+        let ci_idx = ar.i_ci?;
+        let func_slot = state.get_ci(ci_idx).func;
+        let func_val = state.get_at(func_slot).clone();
+        let found = find_func_name_in_loaded(state, &func_val)?;
+        if found.starts_with(b"_G.") {
+            Some(found[3..].to_vec())
+        } else {
+            Some(found)
+        }
+    }).unwrap_or_else(|| b"?".to_vec());
     let msg = format!(
         "bad argument #{} to '{}' ({})",
         arg,

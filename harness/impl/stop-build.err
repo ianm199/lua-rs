@@ -129,9 +129,9 @@ warning: unused import: `LuaProtoExt`
    |                                       ^^^^^^^^^^^
 
 warning: unused variable: `state`
-    --> crates/lua-vm/src/debug.rs:1348:47
+    --> crates/lua-vm/src/debug.rs:1377:47
      |
-1348 | fn in_stack(ci: &CallInfo, val_idx: StackIdx, state: &LuaState) -> i32 {
+1377 | fn in_stack(ci: &CallInfo, val_idx: StackIdx, state: &LuaState) -> i32 {
      |                                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
      |
      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
@@ -348,27 +348,27 @@ warning: constant `LUA_YIELD_STATUS` is never used
    |       ^^^^^^^^^^^^^^^^
 
 warning: function `runtime_from_top` is never used
-   --> crates/lua-vm/src/debug.rs:222:4
+   --> crates/lua-vm/src/debug.rs:251:4
     |
-222 | fn runtime_from_top(state: &mut crate::state::LuaState) -> LuaError {
+251 | fn runtime_from_top(state: &mut crate::state::LuaState) -> LuaError {
     |    ^^^^^^^^^^^^^^^^
 
 warning: function `concat_error` is never used
-    --> crates/lua-vm/src/debug.rs:1571:15
+    --> crates/lua-vm/src/debug.rs:1600:15
      |
-1571 | pub(crate) fn concat_error(
+1600 | pub(crate) fn concat_error(
      |               ^^^^^^^^^^^^
 
 warning: function `error_msg` is never used
-    --> crates/lua-vm/src/debug.rs:1711:15
+    --> crates/lua-vm/src/debug.rs:1740:15
      |
-1711 | pub(crate) fn error_msg(state: &mut LuaState) -> Result<(), LuaError> {
+1740 | pub(crate) fn error_msg(state: &mut LuaState) -> Result<(), LuaError> {
      |               ^^^^^^^^^
 
 warning: function `run_error` is never used
-    --> crates/lua-vm/src/debug.rs:1743:15
+    --> crates/lua-vm/src/debug.rs:1772:15
      |
-1743 | pub(crate) fn run_error(state: &mut LuaState, msg: Vec<u8>) -> Result<(), LuaError> {
+1772 | pub(crate) fn run_error(state: &mut LuaState, msg: Vec<u8>) -> Result<(), LuaError> {
      |               ^^^^^^^^^
 
 warning: function `throw` is never used
