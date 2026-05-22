@@ -2564,14 +2564,24 @@ fn cg_emit_nil(fs: &mut FuncState, line: i32, from: i32, n: i32) {
 
 /// C: static l_noret jumpscopeerror(LexState *ls, Labeldesc *gt)
 fn jumpscopeerror(ls: &LexState, gt_idx: usize) -> LuaError {
-    // C: varname = getstr(getlocalvardesc(ls->fs, gt->nactvar)->vd.name)
-    //    msg = "<goto %s> at line %d jumps into the scope of local '%s'"
-    //    luaK_semerror(ls, msg)
     let gt = &ls.dyd.gt[gt_idx];
     let line = gt.line;
-    // TODO(port): format with actual names from GcRef<LuaString>
+    let gt_name_bytes: &[u8] = gt.name.as_ref().map(|n| n.as_bytes()).unwrap_or(b"");
+    let gt_name = String::from_utf8_lossy(gt_name_bytes);
+    let varname_bytes: &[u8] = ls.fs.as_ref()
+        .and_then(|fs| {
+            let vidx = gt.nactvar as i32;
+            if (fs.firstlocal + vidx) >= 0 && ((fs.firstlocal + vidx) as usize) < ls.dyd.actvar.len() {
+                let vd = get_local_var_desc(ls, fs, vidx);
+                vd.name.as_ref().map(|n| n.as_bytes())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(b"");
+    let varname = String::from_utf8_lossy(varname_bytes);
     LuaError::syntax(format_args!(
-        "goto at line {} jumps into the scope of a local variable", line
+        "<goto {}> at line {} jumps into the scope of local '{}'", gt_name, line, varname
     ))
 }
 
@@ -2742,17 +2752,12 @@ fn enter_block(ls: &mut LexState, isloop: bool) {
 fn undef_goto(ls: &LexState, gt_idx: usize) -> LuaError {
     let gt = &ls.dyd.gt[gt_idx];
     let line = gt.line;
-    // C: if (eqstr(gt->name, luaS_newliteral(ls->L, "break"))) ...
-    let is_break = gt.name.as_ref()
-        .and_then(|n| {
-            // TODO(port): proper string comparison via getstr
-            None::<bool>
-        })
-        .unwrap_or(false);
-    if is_break {
+    let name_bytes: &[u8] = gt.name.as_ref().map(|n| n.as_bytes()).unwrap_or(b"");
+    if name_bytes == b"break" {
         LuaError::syntax(format_args!("break outside loop at line {}", line))
     } else {
-        LuaError::syntax(format_args!("no visible label for <goto> at line {}", line))
+        let name_str = String::from_utf8_lossy(name_bytes);
+        LuaError::syntax(format_args!("no visible label '{}' for <goto> at line {}", name_str, line))
     }
 }
 
@@ -3696,9 +3701,12 @@ fn breakstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
 
 /// C: static void checkrepeated(LexState *ls, TString *name)
 fn checkrepeated(ls: &LexState, name: &GcRef<LuaString>) -> Result<(), LuaError> {
-    if let Some(_lb_idx) = findlabel(ls, name) {
-        // C: msg = "label '%s' already defined on line %d"; luaK_semerror(ls, msg)
-        return Err(LuaError::syntax(format_args!("label already defined")));
+    if let Some(lb_idx) = findlabel(ls, name) {
+        let name_str = String::from_utf8_lossy(name.as_bytes());
+        let line = ls.dyd.label[lb_idx].line;
+        return Err(LuaError::syntax(format_args!(
+            "label '{}' already defined on line {}", name_str, line
+        )));
     }
     Ok(())
 }

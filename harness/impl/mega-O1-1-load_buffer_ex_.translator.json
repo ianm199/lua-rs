@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 164177,
+  "duration_api_ms": 163774,
+  "ttft_ms": 5368,
+  "num_turns": 17,
+  "result": "Build is green (warnings only, no errors).\n\n## Report\n\n**load_buffer_ex** — `crates/lua-stdlib/src/state_stub.rs:176` (trait default); inherent-style override now lives in the `impl LuaStateStubExt for LuaState` block at ~line 945.\n\n**What it does**: loads a Lua chunk from a byte buffer (parses or skips the binary header) with a mode hint (\"b\"/\"t\"/\"bt\") restricting binary vs text. Returns `Ok(true)` when parsing succeeded. C analogue: `luaL_loadbufferx`.\n\n**Family members implemented**:\n- `load_buffer_ex(&[u8], &[u8], &M)` — builds a `Box<dyn FnMut> -> Option<Vec<u8>>` one-shot reader, calls `lua_vm::api::load`. The generic `mode: &M` has no `?Sized` bounds available on it so we cannot extract bytes; we pass `None` (default `\"bt\"`), which matches `luaB_load`'s default chunk mode and the only current call site (`base.rs:777`) where the user mode arg also defaults to `b\"bt\"`.\n- `dump_function(bool)` — calls `lua_vm::api::dump` with a closure that appends each emitted chunk into a `Vec<u8>`; returns the accumulated bytes.\n\n**Sibling todos noticed but NOT implemented (faithfully skipped)**:\n- `load_file` / `load_file_ex` — require `std::fs::File`, which is banned outside `lua-cli` per PORTING.md; the auxlib already carries a Phase-A stub that returns a clean error.\n- `load_with_reader<F, M: ?Sized>` — `F` has no bounds (not callable as a function) and a self-borrow conflict (`generic_reader` in base.rs takes `&mut LuaState`); needs a Phase-B redesign of the reader API.\n- `warning`, `set_warn_fn`, `set_funcs_with_upvalues`, plus dozens of GC/debug accessors — separate families.\n\n**Build**: `cargo build -p lua-cli` is GREEN (warnings only, no errors).",
+  "stop_reason": "end_turn",
+  "session_id": "0705a677-0241-4527-b8a2-89cf0cca7e1a",
+  "total_cost_usd": 1.2764965,
+  "usage": {
+    "input_tokens": 22,
+    "cache_creation_input_tokens": 71128,
+    "cache_read_input_tokens": 1131539,
+    "output_tokens": 10585,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22814,
+      "ephemeral_5m_input_tokens": 48314
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 731,
+        "cache_read_input_tokens": 89296,
+        "cache_creation_input_tokens": 731,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 731,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1322,
+      "outputTokens": 24,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0014420000000000001,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 22,
+      "outputTokens": 10585,
+      "cacheReadInputTokens": 1131539,
+      "cacheCreationInputTokens": 71128,
+      "webSearchRequests": 0,
+      "costUSD": 1.2750545,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "415cf475-8d20-4f22-b4e4-64342f2ca03c"
+}

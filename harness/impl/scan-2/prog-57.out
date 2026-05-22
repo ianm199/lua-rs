@@ -2,13 +2,9 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing vararg
-+
-+
-+
-OK
+testing closures
 
-thread 'main' (7362616) panicked at crates/lua-vm/src/func.rs:485:9:
+thread 'main' (7362641) panicked at crates/lua-vm/src/func.rs:485:9:
 open upvalue index must be below stack top
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [panic] open upvalue index must be below stack top
