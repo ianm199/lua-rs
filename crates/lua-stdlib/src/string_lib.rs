@@ -1596,6 +1596,53 @@ fn addliteral(state: &mut LuaState, buf: &mut Vec<u8>, arg: i32) -> Result<(), L
     Ok(())
 }
 
+/// C: `MAX_FORMAT - 10 = 22` threshold from lstrlib.c — format body `spec_body_len + 1` must be < 22.
+
+/// Flags allowed per conversion type (matches lstrlib.c constants).
+const FMT_FLAGS_F: &[u8] = b"-+#0 ";
+const FMT_FLAGS_X: &[u8] = b"-#0";
+const FMT_FLAGS_I: &[u8] = b"-+0 ";
+const FMT_FLAGS_U: &[u8] = b"-0";
+const FMT_FLAGS_C: &[u8] = b"-";
+
+/// Validate a format specifier against allowed flags and width/precision digit counts.
+///
+/// `form` is the full specifier slice including the leading `%` and the trailing
+/// conversion character (e.g. `b"%100.3d"`). `flags` is the allowed-flags byte set for
+/// this conversion type. `allow_precision` is false for conversions that forbid `.`.
+///
+/// Mirrors C `checkformat` in lstrlib.c: consumes flags, then up to 2 width digits,
+/// then (if allowed) `.` + up to 2 precision digits, then asserts we are at the
+/// conversion character. Returns `Err("invalid conversion specification")` on failure.
+fn check_conv_spec(form: &[u8], flags: &[u8], allow_precision: bool) -> Result<(), LuaError> {
+    let mut i = 1usize; // skip '%'
+    while i < form.len() && flags.contains(&form[i]) {
+        i += 1;
+    }
+    if i < form.len() && form[i] == b'0' {
+        return Err(LuaError::runtime(format_args!("invalid conversion specification")));
+    }
+    if i < form.len() && form[i].is_ascii_digit() {
+        i += 1;
+        if i < form.len() && form[i].is_ascii_digit() {
+            i += 1;
+        }
+    }
+    if allow_precision && i < form.len() && form[i] == b'.' {
+        i += 1;
+        if i < form.len() && form[i].is_ascii_digit() {
+            i += 1;
+            if i < form.len() && form[i].is_ascii_digit() {
+                i += 1;
+            }
+        }
+    }
+    if i != form.len() - 1 {
+        return Err(LuaError::runtime(format_args!("invalid conversion specification")));
+    }
+    Ok(())
+}
+
 /// Parsed printf-style format specifier (flags, width, precision).
 #[derive(Default)]
 struct FmtSpec {
@@ -1924,40 +1971,53 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
         i += 1;
 
         let spec_slice = &fmt_bytes[spec_start + 1..i - 1];
+        let form = &fmt_bytes[spec_start..i];
         let spec = parse_fmt_spec(spec_slice);
+
+        // C: getformat rejects spec bodies >= MAX_FORMAT - 10 = 22 bytes.
+        if spec_slice.len() + 1 >= 22 {
+            return Err(LuaError::runtime(format_args!("invalid format (too long)")));
+        }
 
         match conv {
             b'c' => {
+                check_conv_spec(form, FMT_FLAGS_C, false)?;
                 let n = state.check_arg_integer(arg)?;
                 let body = vec![n as u8];
                 pad_str(&mut buf, &body, &spec);
             }
             b'd' | b'i' => {
+                check_conv_spec(form, FMT_FLAGS_I, true)?;
                 let n = state.check_arg_integer(arg)?;
                 let (sign, digits) = signed_int_parts(n, &spec);
                 pad_int(&mut buf, &sign, &digits, &spec);
             }
             b'u' => {
+                check_conv_spec(form, FMT_FLAGS_U, true)?;
                 let n = state.check_arg_integer(arg)? as u64;
                 let (prefix, digits) = unsigned_int_parts(n, 10, false, &spec);
                 pad_int(&mut buf, &prefix, &digits, &spec);
             }
             b'o' => {
+                check_conv_spec(form, FMT_FLAGS_X, true)?;
                 let n = state.check_arg_integer(arg)? as u64;
                 let (prefix, digits) = unsigned_int_parts(n, 8, false, &spec);
                 pad_int(&mut buf, &prefix, &digits, &spec);
             }
             b'x' => {
+                check_conv_spec(form, FMT_FLAGS_X, true)?;
                 let n = state.check_arg_integer(arg)? as u64;
                 let (prefix, digits) = unsigned_int_parts(n, 16, false, &spec);
                 pad_int(&mut buf, &prefix, &digits, &spec);
             }
             b'X' => {
+                check_conv_spec(form, FMT_FLAGS_X, true)?;
                 let n = state.check_arg_integer(arg)? as u64;
                 let (prefix, digits) = unsigned_int_parts(n, 16, true, &spec);
                 pad_int(&mut buf, &prefix, &digits, &spec);
             }
             b'a' | b'A' => {
+                check_conv_spec(form, FMT_FLAGS_F, true)?;
                 let n = state.check_arg_number(arg)?;
                 let body = format_hex_float(n, spec.precision);
                 let body: Vec<u8> = if conv == b'A' {
@@ -1986,7 +2046,8 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
                 };
                 pad_int(&mut buf, &sign, &digits, &no_prec_spec);
             }
-            b'f' | b'F' | b'e' | b'E' | b'g' | b'G' => {
+            b'f' | b'e' | b'E' | b'g' | b'G' => {
+                check_conv_spec(form, FMT_FLAGS_F, true)?;
                 let n = state.check_arg_number(arg)?;
                 let body = format_float(n, conv, &spec);
                 let (sign, digits): (Vec<u8>, Vec<u8>) = if !body.is_empty() && (body[0] == b'-' || body[0] == b'+') {
@@ -2010,6 +2071,7 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
                 pad_int(&mut buf, &sign, &digits, &no_prec_spec);
             }
             b'p' => {
+                check_conv_spec(form, FMT_FLAGS_C, false)?;
                 let s: Vec<u8> = match lua_vm::api::to_pointer(state, arg) {
                     Some(p) => format!("0x{:x}", p).into_bytes(),
                     None => b"(null)".to_vec(),
@@ -2017,9 +2079,15 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
                 pad_str(&mut buf, &s, &FmtSpec { precision: None, ..spec });
             }
             b'q' => {
+                if form.len() > 2 {
+                    return Err(LuaError::runtime(format_args!(
+                        "specifier '%q' cannot have modifiers"
+                    )));
+                }
                 addliteral(state, &mut buf, arg)?;
             }
             b's' => {
+                check_conv_spec(form, FMT_FLAGS_C, true)?;
                 let s = state.to_display_string(arg)?;
                 let has_modifiers = spec.width != 0 || spec.precision.is_some();
                 if has_modifiers && s.contains(&0u8) {

@@ -1,0 +1,21 @@
+[1/4] Creating LuaState...
+[2/4] Opening standard library...
+[3/4] Loading source (parse + compile)...
+[4/4] Executing chunk...
+hello
+short_src=	[string "-- harness preamble: emulate the globals lua-..."]
+source=	-- harness preamble: emulate the globals lua-c testes/all.lua sets
+_soft = true
+_port = true
+_nomsg = true
+_U = false
+arg = arg or {}
+_G = _G or _ENV
+if _VERSION == nil then _VERSION = "Lua 5.4" end
+
+print("hello")
+local x = debug.getinfo(1, "S")
+print("short_src=", x.short_src)
+print("source=", x.source)
+error("boom")
+lua: pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:14: boom

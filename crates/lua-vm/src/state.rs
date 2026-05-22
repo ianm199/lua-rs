@@ -2177,6 +2177,10 @@ impl<'a> GcHandle<'a> {
             let global = state_ref.global.borrow();
             global.heap.unpause();
             let roots = CollectRoots { global: &*global, thread: state_ref };
+            eprintln!("[DBG] collect_via_heap: force={} snapshot.len={}", force, weak_tables_snapshot.len());
+            for (idx, t) in weak_tables_snapshot.iter().enumerate() {
+                eprintln!("[DBG]   pre snap[{}] id={} mode={} len={}", idx, t.identity(), t.weak_mode(), t.len());
+            }
             let hook = |marker: &mut lua_gc::Marker| {
                 collect_ran.set(true);
                 loop {
@@ -2201,8 +2205,12 @@ impl<'a> GcHandle<'a> {
                 for t in &weak_tables_snapshot {
                     let id = t.identity();
                     if marker.is_visited(id) {
+                        let before = t.len();
                         t.prune_weak_dead(&|id| marker.is_visited(id));
+                        eprintln!("[DBG]   post id={} mode={} len_before={} len_after={}", id, t.weak_mode(), before, t.len());
                         alive_ids.borrow_mut().insert(id);
+                    } else {
+                        eprintln!("[DBG]   post id={} NOT VISITED (will drop from registry)", id);
                     }
                 }
             };
