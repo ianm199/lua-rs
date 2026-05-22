@@ -43,6 +43,22 @@ PREV_PASS_COUNT=-1
 # Stuck = same sig as previous round. Reset when sig changes (= progress).
 LAST_SIG_KEY=()
 LAST_SIG_VAL=()
+# Per-test stuck count + model assignment (parallel arrays). When a test's
+# signature matches the previous round, increment its count. count == 1 →
+# escalate that test's agent to MODEL_ESCALATE (Opus). count >= 2 → give up
+# and skip in subsequent rounds. Reset to 0 if signature changes (progress).
+STUCK_COUNT_KEY=()
+STUCK_COUNT_VAL=()
+MODEL_DEFAULT=${MODEL_DEFAULT:-sonnet}
+MODEL_ESCALATE=${MODEL_ESCALATE:-opus}
+# Comma-separated list of test labels to skip entirely (Phase E / heavy
+# D-2 work — no point burning agent budget on these without prerequisite
+# infrastructure landing first). Override at invocation time:
+#   SKIP_TESTS="calls.lua,nextvar.lua" ./harness/mega_loop.sh
+SKIP_TESTS=${SKIP_TESTS:-"calls.lua,nextvar.lua,gengc.lua"}
+# Tell the lua-rs binary to emit the [n/4] + [ok] status lines that
+# count_passing depends on. The CLI defaults to quiet output for human use.
+export LUA_RS_VERBOSE=1
 
 # A frontier of Lua test programs. Each entry is a TSV: program\texpected_stdout.
 # expected_stdout uses literal \n for newlines and \t for tabs (interpreted via printf %b).
@@ -209,7 +225,10 @@ ensure_binary() {
     cargo build -q -p lua-cli >/dev/null 2>&1
 }
 
-# Run one test program with timeout, return its output.
+# Run one test program with timeout, return its output. The bash-only
+# fallback at the bottom spawns the binary in a subshell with a watchdog
+# that SIGKILLs it after TEST_TIMEOUT_S — required on macOS where neither
+# `gtimeout` (coreutils) nor `timeout` is present by default.
 run_one() {
     local prog="$1"
     local out_file="$2"
@@ -219,12 +238,18 @@ run_one() {
     elif command -v timeout >/dev/null 2>&1; then
         timeout --signal=KILL "$TEST_TIMEOUT_S" "$bin" "$prog" > "$out_file" 2>&1
     else
-        ( "$bin" "$prog" > "$out_file" 2>&1 ) &
-        local pid=$!
-        ( sleep "$TEST_TIMEOUT_S" && kill -9 $pid 2>/dev/null ) &
-        local watcher=$!
-        wait $pid 2>/dev/null
-        kill $watcher 2>/dev/null
+        (
+            "$bin" "$prog" > "$out_file" 2>&1 &
+            local pid=$!
+            (
+                sleep "$TEST_TIMEOUT_S"
+                kill -9 "$pid" 2>/dev/null
+            ) &
+            local watcher=$!
+            wait "$pid" 2>/dev/null
+            kill "$watcher" 2>/dev/null
+            wait "$watcher" 2>/dev/null
+        )
     fi
 }
 
@@ -414,6 +439,7 @@ dispatch_debug() {
     local prog="$1"
     local out_tail="$2"
     local mode="${3:-inline}"
+    local model="${4:-$MODEL_DEFAULT}"
     local safe_name; safe_name=$(echo "$prog" | tr -c 'A-Za-z0-9_' '_' | cut -c1-30)
     local out_json="$OUT_DIR/mega-O$OUTER-D$ITER-$safe_name.translator.json"
     local transcript="$OUT_DIR/mega-O$OUTER-D$ITER-$safe_name.transcript.jsonl"
@@ -429,11 +455,12 @@ dispatch_debug() {
 
     local timeout_cmd=""
     if command -v gtimeout >/dev/null 2>&1; then
-        timeout_cmd="gtimeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-720}"
+        timeout_cmd="gtimeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-1800}"
     elif command -v timeout >/dev/null 2>&1; then
-        timeout_cmd="timeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-720}"
+        timeout_cmd="timeout --signal=KILL ${AGENT_WALL_TIMEOUT_S:-1800}"
     fi
     $timeout_cmd claude -p \
+        --model "$model" \
         --append-system-prompt "$(cat PORTING.md)" \
         --allowedTools "Read,Write,Edit,Glob,Grep,Bash(cargo build*),Bash(cargo check*),Bash(grep *),Bash(rg *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *),Bash(target/debug/lua-rs *),Bash(./harness/run_official_test.sh *)" \
         --permission-mode dontAsk \
@@ -480,6 +507,7 @@ error_signature() {
 emit "═════════════════════════════════════════════════════════════════"
 emit "mega-loop start. ${#PROGS[@]} test programs."
 emit "  MAX_OUTER=$MAX_OUTER  MAX_PER_OUTER=$MAX_PER_OUTER  PER_AGENT_BUDGET=\$$PER_AGENT_BUDGET  SESSION_BUDGET=\$$SESSION_BUDGET"
+emit "  MODEL_DEFAULT=$MODEL_DEFAULT  MODEL_ESCALATE=$MODEL_ESCALATE  SKIP_TESTS=$SKIP_TESTS"
 emit "═════════════════════════════════════════════════════════════════"
 
 OUTER=0
@@ -553,9 +581,23 @@ while [ "$OUTER" -lt "$MAX_OUTER" ]; do
                 fi
             fi
             if [ "$failing" = "0" ]; then continue; fi
-            # Stuck-detect: skip if this prog has SAME signature as last round.
-            current_sig=$(error_signature "$out_file")
             prog_key="${LABELS[$((idx-1))]:-inline-$idx}"
+
+            # SKIP_TESTS hard-skip: known Phase-E / heavy-D-2 work that an
+            # agent has no realistic path to fix in one round.
+            skip_this=0
+            for skip_pat in $(echo "$SKIP_TESTS" | tr ',' ' '); do
+                if [[ "$prog_key" == *"$skip_pat"* ]]; then
+                    skip_this=1
+                    break
+                fi
+            done
+            if [ "$skip_this" = "1" ]; then
+                emit "  skip prog (in SKIP_TESTS): $prog_key"
+                continue
+            fi
+
+            current_sig=$(error_signature "$out_file")
             prev_sig=""
             sig_idx=-1
             for i in "${!LAST_SIG_KEY[@]}"; do
@@ -565,10 +607,40 @@ while [ "$OUTER" -lt "$MAX_OUTER" ]; do
                     break
                 fi
             done
+
+            stuck_count=0
+            stuck_idx=-1
+            for i in "${!STUCK_COUNT_KEY[@]}"; do
+                if [ "${STUCK_COUNT_KEY[$i]}" = "$prog_key" ]; then
+                    stuck_count="${STUCK_COUNT_VAL[$i]}"
+                    stuck_idx=$i
+                    break
+                fi
+            done
+
             if [ -n "$prev_sig" ] && [ "$prev_sig" = "$current_sig" ]; then
-                emit "  skip stuck prog (same sig 2 rounds: $current_sig): $prog_key"
+                stuck_count=$((stuck_count + 1))
+            else
+                stuck_count=0
+            fi
+            if [ "$stuck_idx" -ge 0 ]; then
+                STUCK_COUNT_VAL[$stuck_idx]="$stuck_count"
+            else
+                STUCK_COUNT_KEY+=("$prog_key")
+                STUCK_COUNT_VAL+=("$stuck_count")
+            fi
+
+            if [ "$stuck_count" -ge 2 ]; then
+                emit "  skip stuck prog (no progress 2 rounds, sig=$current_sig): $prog_key"
                 continue
             fi
+
+            agent_model="$MODEL_DEFAULT"
+            if [ "$stuck_count" = "1" ]; then
+                agent_model="$MODEL_ESCALATE"
+                emit "  [stuck-escalate] $prog_key → $agent_model"
+            fi
+
             if [ "$sig_idx" -ge 0 ]; then
                 LAST_SIG_VAL[$sig_idx]="$current_sig"
             else
@@ -597,16 +669,16 @@ $out_tail"
                 [ "${#debug_pids[@]}" -ge "$PARALLEL_AGENTS" ] && sleep 2
             done
             if [ -n "$label" ]; then
-                emit "  [O$OUTER.D$debug_iter] DEBUG dispatch on file: $label [parallel]"
+                emit "  [O$OUTER.D$debug_iter] DEBUG dispatch on file: $label [model=$agent_model] [parallel]"
                 (
-                    cost=$(dispatch_debug "$label" "$out_tail" "file")
-                    echo "$debug_iter $cost $label" >> "$debug_costs_file"
+                    cost=$(dispatch_debug "$label" "$out_tail" "file" "$agent_model")
+                    echo "$debug_iter $cost $label [$agent_model]" >> "$debug_costs_file"
                 ) &
             else
-                emit "  [O$OUTER.D$debug_iter] DEBUG dispatch on prog: $prog [parallel]"
+                emit "  [O$OUTER.D$debug_iter] DEBUG dispatch on prog: $prog [model=$agent_model] [parallel]"
                 (
-                    cost=$(dispatch_debug "$prog" "$out_tail" "inline")
-                    echo "$debug_iter $cost inline" >> "$debug_costs_file"
+                    cost=$(dispatch_debug "$prog" "$out_tail" "inline" "$agent_model")
+                    echo "$debug_iter $cost inline [$agent_model]" >> "$debug_costs_file"
                 ) &
             fi
             debug_pids+=($!)
