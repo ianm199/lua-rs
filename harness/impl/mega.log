@@ -523,3 +523,4 @@
 [2026-05-17T20:24:01Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/errors.lua
 [2026-05-17T20:29:13Z mega]   [O11.D5] DEBUG dispatch on file: reference/lua-c/testes/attrib.lua [parallel]
 [2026-05-17T20:29:13Z mega]   [O11.D6] DEBUG dispatch on file: reference/lua-c/testes/main.lua [parallel]
+[2026-05-17T20:31:23Z mega]   [O11.D7] DEBUG dispatch on file: reference/lua-c/testes/events.lua [parallel]
