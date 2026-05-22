@@ -192,9 +192,8 @@ impl<T: ?Sized> AsRef<T> for Gc<T> {
 /// Every GC-rooted type implements `Trace` to expose its `Gc<_>` fields.
 ///
 /// The `trace` method visits every reachable `Gc<_>` and calls
-/// `Marker::mark` on it. For fields that themselves contain `Gc<_>` (e.g.
-/// `LuaValue::Table(Gc<LuaTable>)`, or a `Vec<LuaValue>` stack), call
-/// `trace` on the contained value to delegate.
+/// `Marker::mark` on it. For container fields (`Vec<LuaValue>`, etc.) call
+/// `field.trace(m)` to delegate.
 ///
 /// # Mechanical pattern
 ///
@@ -202,8 +201,7 @@ impl<T: ?Sized> AsRef<T> for Gc<T> {
 /// impl Trace for LuaTable {
 ///     fn trace(&self, m: &mut Marker) {
 ///         for v in self.array.iter() { v.trace(m); }
-///         for (k, v) in self.hash.iter() { k.trace(m); v.trace(m); }
-///         if let Some(mt) = self.metatable.get() { m.mark(mt); }
+///         if let Some(mt) = self.metatable { m.mark(mt); }
 ///     }
 /// }
 /// ```
@@ -237,15 +235,6 @@ impl<T: Trace + ?Sized> Trace for Box<T> {
 impl<T: Trace + ?Sized> Trace for std::rc::Rc<T> {
     fn trace(&self, m: &mut Marker) {
         (**self).trace(m);
-    }
-}
-
-impl<T: Trace> Trace for Cell<T>
-where
-    T: Copy,
-{
-    fn trace(&self, m: &mut Marker) {
-        self.get().trace(m);
     }
 }
 

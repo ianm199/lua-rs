@@ -12,4 +12,5 @@ license.workspace = true
 unsafe_code = "allow"
 
 [dependencies]
-lua-types.workspace = true
+# No dependency on lua-types: lua-gc is the lowest crate. lua-types
+# depends on lua-gc so that LuaValue/LuaString/UpVal can impl Trace.

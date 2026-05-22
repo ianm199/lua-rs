@@ -16,6 +16,7 @@ pub mod proto;
 pub mod status;
 pub mod string;
 pub mod tagmethod;
+pub mod trace_impls;
 pub mod upval;
 pub mod userdata;
 pub mod value;

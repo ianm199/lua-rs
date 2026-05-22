@@ -1,6 +1,5 @@
 //! `GcRef<T>` — a reference-counted GC handle. Phase A-C aliases to `Rc<T>`
-//! plus a few convenience methods. Phase D replaces this with the real
-//! incremental tri-color collector.
+//! plus a few convenience methods. Phase D's `Gc<T>` lives in `lua-gc`.
 
 use std::rc::Rc;
 
