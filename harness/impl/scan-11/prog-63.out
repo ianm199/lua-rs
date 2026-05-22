@@ -3,4 +3,8 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing scanner
-[err] pcall_k failed: Runtime: -- harness preamble: emulate the globals lua-c testes/all.l:81: assertion failed!
+[err] pcall_k failed: Runtime: _soft = true
+_port = true
+_nomsg = true
+_U = false
+arg = ar:80: assertion failed!

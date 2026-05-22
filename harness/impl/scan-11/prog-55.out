@@ -2,8 +2,8 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing functions and calls
-+
-+
-testing tail calls
-[err] pcall_k failed: Runtime: bad argument #1 (string expected, got nil)
+[err] pcall_k failed: Runtime: _soft = true
+_port = true
+_nomsg = true
+_U = false
+arg = ar:202: assertion failed!

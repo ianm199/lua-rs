@@ -492,3 +492,32 @@
 [2026-05-17T20:12:19Z mega]   [O10.D7] DEBUG dispatch on file: reference/lua-c/testes/utf8.lua [parallel]
 [2026-05-17T20:17:05Z mega]   [O10.D8] DEBUG dispatch on file: reference/lua-c/testes/files.lua [parallel]
 [2026-05-17T20:19:43Z mega]   → committed 4c1255d (debug/reference/lua-c/testes/utf8.lua )
+[2026-05-17T20:23:28Z mega]   [O10.D3] DEBUG done. iter cost=$1.8579337499999997  total=$71.9386
+[2026-05-17T20:23:28Z mega]   [O10.D2] DEBUG done. iter cost=$1.5744059999999998  total=$73.5130
+[2026-05-17T20:23:28Z mega]   [O10.D4] DEBUG done. iter cost=$2.32799525  total=$75.8410
+[2026-05-17T20:23:28Z mega]   [O10.D1] DEBUG done. iter cost=$3.57863175  total=$79.4196
+[2026-05-17T20:23:28Z mega]   [O10.D5] DEBUG done. iter cost=$2.5811925  total=$82.0008
+[2026-05-17T20:23:28Z mega]   [O10.D7] DEBUG done. iter cost=$[2026-05-17T20:19:43Z  total=$82.0008
+[2026-05-17T20:23:28Z mega]   [O10.D4.1847365000000005] DEBUG done. iter cost=$reference/lua-c/testes/utf8.lua  total=$82.0008
+[2026-05-17T20:23:28Z mega]   [O10.D8] DEBUG done. iter cost=$2.325589000000001  total=$84.3264
+[2026-05-17T20:23:28Z mega]   [O10.D6] DEBUG done. iter cost=$4.650337249999999  total=$88.9767
+[2026-05-17T20:23:28Z mega] ─── outer round 11 (spent: $88.9767) ───
+[2026-05-17T20:23:59Z mega]   scan: 56/75 programs pass cleanly
+[2026-05-17T20:24:00Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-17T20:24:00Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/goto.lua
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: unknown): reference/lua-c/testes/sort.lua
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: panicked at crates/lua-vm/src/func.rs:485): reference/lua-c/testes/closure.lua
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/pm.lua
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/strings.lua
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: module 'bwcoercion' not found:): reference/lua-c/testes/bitwise.lua
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/math.lua
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/tpack.lua
+[2026-05-17T20:24:00Z mega]   [O11.D1] DEBUG dispatch on file: reference/lua-c/testes/literals.lua [parallel]
+[2026-05-17T20:24:00Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: module 'tracegc' not found:): reference/lua-c/testes/locals.lua
+[2026-05-17T20:24:01Z mega]   [O11.D2] DEBUG dispatch on file: reference/lua-c/testes/calls.lua [parallel]
+[2026-05-17T20:24:01Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/constructs.lua
+[2026-05-17T20:24:01Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/nextvar.lua
+[2026-05-17T20:24:01Z mega]   [O11.D3] DEBUG dispatch on file: reference/lua-c/testes/utf8.lua [parallel]
+[2026-05-17T20:24:01Z mega]   [O11.D4] DEBUG dispatch on file: reference/lua-c/testes/files.lua [parallel]
+[2026-05-17T20:24:01Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/errors.lua

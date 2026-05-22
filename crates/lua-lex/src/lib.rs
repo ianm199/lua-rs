@@ -1952,24 +1952,29 @@ fn hex_value_stub(c: i32) -> u32 {
 }
 
 // TODO(port): replace with lua_vm::object::utf8_esc_encode(codepoint) in Phase B.
-// Returns a small Vec<u8> of 1-4 bytes.
+/// Encode a Unicode codepoint as a Lua-extended UTF-8 byte sequence (1 to 6 bytes).
+///
+/// Faithful port of `luaO_utf8esc` from lobject.c.  Lua permits codepoints up
+/// to `0x7FFFFFFF` (5- and 6-byte sequences are non-strict UTF-8 but accepted
+/// by `\u{...}` escapes per literals.lua test cases).
 fn utf8_encode_stub(codepoint: u32) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(4);
+    debug_assert!(codepoint <= 0x7FFF_FFFF);
     if codepoint < 0x80 {
-        buf.push(codepoint as u8);
-    } else if codepoint < 0x800 {
-        buf.push(0xC0 | (codepoint >> 6) as u8);
-        buf.push(0x80 | (codepoint & 0x3F) as u8);
-    } else if codepoint < 0x10000 {
-        buf.push(0xE0 | (codepoint >> 12) as u8);
-        buf.push(0x80 | ((codepoint >> 6) & 0x3F) as u8);
-        buf.push(0x80 | (codepoint & 0x3F) as u8);
-    } else {
-        buf.push(0xF0 | (codepoint >> 18) as u8);
-        buf.push(0x80 | ((codepoint >> 12) & 0x3F) as u8);
-        buf.push(0x80 | ((codepoint >> 6) & 0x3F) as u8);
-        buf.push(0x80 | (codepoint & 0x3F) as u8);
+        return vec![codepoint as u8];
     }
+    let mut x = codepoint;
+    let mut mfb: u32 = 0x3f;
+    let mut buf: Vec<u8> = Vec::with_capacity(8);
+    loop {
+        buf.push(0x80 | ((x & 0x3f) as u8));
+        x >>= 6;
+        mfb >>= 1;
+        if x <= mfb {
+            break;
+        }
+    }
+    buf.push(((!mfb << 1) | x) as u8);
+    buf.reverse();
     buf
 }
 
