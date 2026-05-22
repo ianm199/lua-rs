@@ -17,7 +17,7 @@ use lua_stdlib::auxlib::load_string;
 use lua_stdlib::init::open_libs;
 use lua_types::error::LuaError;
 use lua_types::value::LuaValue;
-use lua_vm::api::pcall_k;
+use lua_vm::api::{pcall_k, to_lua_string};
 use lua_vm::state::new_state;
 
 const MULTRET: i32 = -1;
@@ -65,7 +65,11 @@ fn main() -> ExitCode {
         let status = load_string(&mut state, &source)
             .map_err(|e| format!("load_string failed: {}", render_lua_error(&e)))?;
         if status != 0 {
-            return Err(format!("load_string returned non-zero status: {}", status));
+            let msg = match to_lua_string(&mut state, -1) {
+                Ok(Some(s)) => String::from_utf8_lossy(s.as_bytes()).into_owned(),
+                _ => "(no error message on stack)".to_string(),
+            };
+            return Err(format!("load_string status={}: {}", status, msg));
         }
 
         eprintln!("[4/4] Executing chunk...");

@@ -110,27 +110,27 @@ warning: unused variable: `state`
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `state`
-   --> crates/lua-vm/src/do_.rs:153:21
+   --> crates/lua-vm/src/do_.rs:168:21
     |
-153 | pub(crate) fn throw(state: &mut LuaState, errcode: LuaStatus) -> ! {
+168 | pub(crate) fn throw(state: &mut LuaState, errcode: LuaStatus) -> ! {
     |                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `event`
-   --> crates/lua-vm/src/do_.rs:371:5
+   --> crates/lua-vm/src/do_.rs:386:5
     |
-371 |     event: i32,
+386 |     event: i32,
     |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_event`
 
 warning: unused variable: `line`
-   --> crates/lua-vm/src/do_.rs:372:5
+   --> crates/lua-vm/src/do_.rs:387:5
     |
-372 |     line: i32,
+387 |     line: i32,
     |     ^^^^ help: if this is intentional, prefix it with an underscore: `_line`
 
 warning: unused variable: `state`
-    --> crates/lua-vm/src/do_.rs:1532:5
+    --> crates/lua-vm/src/do_.rs:1547:5
      |
-1532 |     state: &mut LuaState,
+1547 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `state`
@@ -156,9 +156,9 @@ warning: variable does not need to be mutable
     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
 
 warning: variable does not need to be mutable
-    --> crates/lua-vm/src/state.rs:2093:9
+    --> crates/lua-vm/src/state.rs:2095:9
      |
-2093 |     let mut status = if status == LuaStatus::Yield as i32 {
+2095 |     let mut status = if status == LuaStatus::Yield as i32 {
      |         ----^^^^^^
      |         |
      |         help: remove this `mut`
@@ -476,127 +476,59 @@ warning: function `trace_exec` is never used
 1662 | pub(crate) fn trace_exec(state: &mut LuaState, pc: u32) -> Result<i32, LuaError> {
      |               ^^^^^^^^^^
 
-warning: struct `DynDataStub` is never constructed
-  --> crates/lua-vm/src/do_.rs:25:8
-   |
-25 | struct DynDataStub;
-   |        ^^^^^^^^^^^
-
-warning: associated function `new` is never used
-  --> crates/lua-vm/src/do_.rs:27:8
-   |
-26 | impl DynDataStub {
-   | ---------------- associated function in this implementation
-27 |     fn new() -> Self { DynDataStub }
-   |        ^^^
-
-warning: function `parse_stub` is never used
-  --> crates/lua-vm/src/do_.rs:31:4
-   |
-31 | fn parse_stub(
-   |    ^^^^^^^^^^
-
 warning: constant `CIST_TAIL` is never used
-  --> crates/lua-vm/src/do_.rs:70:7
+  --> crates/lua-vm/src/do_.rs:85:7
    |
-70 | const CIST_TAIL: u16 = 1 << 5;
+85 | const CIST_TAIL: u16 = 1 << 5;
    |       ^^^^^^^^^
 
 warning: constant `LUA_HOOKTAILCALL` is never used
-  --> crates/lua-vm/src/do_.rs:84:7
+  --> crates/lua-vm/src/do_.rs:99:7
    |
-84 | const LUA_HOOKTAILCALL: i32 = 4;
+99 | const LUA_HOOKTAILCALL: i32 = 4;
    |       ^^^^^^^^^^^^^^^^
 
 warning: function `throw` is never used
-   --> crates/lua-vm/src/do_.rs:153:15
+   --> crates/lua-vm/src/do_.rs:168:15
     |
-153 | pub(crate) fn throw(state: &mut LuaState, errcode: LuaStatus) -> ! {
+168 | pub(crate) fn throw(state: &mut LuaState, errcode: LuaStatus) -> ! {
     |               ^^^^^
 
 warning: function `grow_stack` is never used
-   --> crates/lua-vm/src/do_.rs:258:15
+   --> crates/lua-vm/src/do_.rs:273:15
     |
-258 | pub(crate) fn grow_stack(
+273 | pub(crate) fn grow_stack(
     |               ^^^^^^^^^^
 
 warning: function `inc_top` is never used
-   --> crates/lua-vm/src/do_.rs:352:15
+   --> crates/lua-vm/src/do_.rs:367:15
     |
-352 | pub(crate) fn inc_top(state: &mut LuaState) -> Result<(), LuaError> {
+367 | pub(crate) fn inc_top(state: &mut LuaState) -> Result<(), LuaError> {
     |               ^^^^^^^
 
 warning: function `hookcall` is never used
-   --> crates/lua-vm/src/do_.rs:449:15
+   --> crates/lua-vm/src/do_.rs:464:15
     |
-449 | pub(crate) fn hookcall(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<(), LuaError> {
+464 | pub(crate) fn hookcall(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<(), LuaError> {
     |               ^^^^^^^^
 
 warning: function `precall_c` is never used
-   --> crates/lua-vm/src/do_.rs:742:4
+   --> crates/lua-vm/src/do_.rs:757:4
     |
-742 | fn precall_c(
+757 | fn precall_c(
     |    ^^^^^^^^^
 
 warning: function `pretailcall` is never used
-   --> crates/lua-vm/src/do_.rs:787:15
+   --> crates/lua-vm/src/do_.rs:802:15
     |
-787 | pub(crate) fn pretailcall(
+802 | pub(crate) fn pretailcall(
     |               ^^^^^^^^^^^
 
 warning: function `call` is never used
-   --> crates/lua-vm/src/do_.rs:992:15
-    |
-992 | pub(crate) fn call(
-    |               ^^^^
-
-warning: struct `CloseP` is never constructed
-    --> crates/lua-vm/src/do_.rs:1415:8
+    --> crates/lua-vm/src/do_.rs:1007:15
      |
-1415 | struct CloseP {
-     |        ^^^^^^
-
-warning: function `close_aux` is never used
-    --> crates/lua-vm/src/do_.rs:1423:4
-     |
-1423 | fn close_aux(state: &mut LuaState, pcl: &mut CloseP) -> Result<(), LuaError> {
-     |    ^^^^^^^^^
-
-warning: function `close_protected` is never used
-    --> crates/lua-vm/src/do_.rs:1434:15
-     |
-1434 | pub(crate) fn close_protected(
-     |               ^^^^^^^^^^^^^^^
-
-warning: function `pcall` is never used
-    --> crates/lua-vm/src/do_.rs:1466:15
-     |
-1466 | pub(crate) fn pcall<F>(
-     |               ^^^^^
-
-warning: struct `SParser` is never constructed
-    --> crates/lua-vm/src/do_.rs:1515:8
-     |
-1515 | struct SParser {
-     |        ^^^^^^^
-
-warning: function `check_mode` is never used
-    --> crates/lua-vm/src/do_.rs:1531:4
-     |
-1531 | fn check_mode(
-     |    ^^^^^^^^^^
-
-warning: function `f_parser` is never used
-    --> crates/lua-vm/src/do_.rs:1557:4
-     |
-1557 | fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
-     |    ^^^^^^^^
-
-warning: function `protected_parser` is never used
-    --> crates/lua-vm/src/do_.rs:1590:15
-     |
-1590 | pub(crate) fn protected_parser(
-     |               ^^^^^^^^^^^^^^^^
+1007 | pub(crate) fn call(
+     |               ^^^^
 
 warning: constant `LUA_SIGNATURE` is never used
   --> crates/lua-vm/src/dump.rs:29:7
@@ -742,12 +674,6 @@ warning: function `new_lua_closure` is never used
 110 | pub(crate) fn new_lua_closure(
     |               ^^^^^^^^^^^^^^^
 
-warning: function `init_upvals` is never used
-   --> crates/lua-vm/src/func.rs:141:15
-    |
-141 | pub(crate) fn init_upvals(state: &mut LuaState, cl: &GcRef<lua_types::LuaLClosure>) -> Result<(), LuaError> {
-    |               ^^^^^^^^^^^
-
 warning: function `new_open_upval` is never used
    --> crates/lua-vm/src/func.rs:177:4
     |
@@ -881,27 +807,27 @@ warning: constant `LUA_EXTRASPACE` is never used
     |       ^^^^^^^^^^^^^^
 
 warning: function `set_debt` is never used
-    --> crates/lua-vm/src/state.rs:1467:15
+    --> crates/lua-vm/src/state.rs:1469:15
      |
-1467 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
+1469 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
      |               ^^^^^^^^
 
 warning: function `inc_c_stack` is never used
-    --> crates/lua-vm/src/state.rs:1685:15
+    --> crates/lua-vm/src/state.rs:1687:15
      |
-1685 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
+1687 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
      |               ^^^^^^^^^^^
 
 warning: function `free_thread` is never used
-    --> crates/lua-vm/src/state.rs:2033:15
+    --> crates/lua-vm/src/state.rs:2035:15
      |
-2033 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
+2035 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
      |               ^^^^^^^^^^^
 
 warning: function `warn_error` is never used
-    --> crates/lua-vm/src/state.rs:2433:15
+    --> crates/lua-vm/src/state.rs:2435:15
      |
-2433 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
+2435 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
      |               ^^^^^^^^^^
 
 warning: type alias `LocalGcRef` is never used
@@ -1093,215 +1019,14 @@ warning: function `get_varargs` is never used
 812 | pub(crate) fn get_varargs(
     |               ^^^^^^^^^^^
 
-warning: constant `LUAC_DATA` is never used
-  --> crates/lua-vm/src/undump.rs:31:7
-   |
-31 | const LUAC_DATA: &[u8] = b"\x19\x93\r\n\x1a\n";
-   |       ^^^^^^^^^
-
-warning: constant `LUAC_INT` is never used
-  --> crates/lua-vm/src/undump.rs:36:7
-   |
-36 | const LUAC_INT: i64 = 0x5678;
-   |       ^^^^^^^^
-
-warning: constant `LUAC_NUM` is never used
-  --> crates/lua-vm/src/undump.rs:41:7
-   |
-41 | const LUAC_NUM: f64 = 370.5;
-   |       ^^^^^^^^
-
-warning: constant `LUAC_VERSION` is never used
-  --> crates/lua-vm/src/undump.rs:46:7
-   |
-46 | const LUAC_VERSION: u8 = 0x54;
-   |       ^^^^^^^^^^^^
-
-warning: constant `LUAC_FORMAT` is never used
-  --> crates/lua-vm/src/undump.rs:49:7
-   |
-49 | const LUAC_FORMAT: u8 = 0;
-   |       ^^^^^^^^^^^
-
-warning: constant `LUA_SIGNATURE` is never used
-  --> crates/lua-vm/src/undump.rs:52:7
-   |
-52 | const LUA_SIGNATURE: &[u8] = b"\x1bLua";
-   |       ^^^^^^^^^^^^^
-
-warning: constant `MAX_SHORT_LEN` is never used
-  --> crates/lua-vm/src/undump.rs:56:7
-   |
-56 | const MAX_SHORT_LEN: usize = 40;
-   |       ^^^^^^^^^^^^^
-
-warning: constant `TAG_NIL` is never used
-  --> crates/lua-vm/src/undump.rs:69:7
-   |
-69 | const TAG_NIL: u8 = 0x00;
-   |       ^^^^^^^
-
-warning: constant `TAG_FALSE` is never used
-  --> crates/lua-vm/src/undump.rs:71:7
-   |
-71 | const TAG_FALSE: u8 = 0x01;
-   |       ^^^^^^^^^
-
-warning: constant `TAG_TRUE` is never used
-  --> crates/lua-vm/src/undump.rs:73:7
-   |
-73 | const TAG_TRUE: u8 = 0x11;
-   |       ^^^^^^^^
-
-warning: constant `TAG_INT` is never used
-  --> crates/lua-vm/src/undump.rs:75:7
-   |
-75 | const TAG_INT: u8 = 0x03;
-   |       ^^^^^^^
-
-warning: constant `TAG_FLOAT` is never used
-  --> crates/lua-vm/src/undump.rs:77:7
-   |
-77 | const TAG_FLOAT: u8 = 0x13;
-   |       ^^^^^^^^^
-
-warning: constant `TAG_SHORT_STR` is never used
-  --> crates/lua-vm/src/undump.rs:79:7
-   |
-79 | const TAG_SHORT_STR: u8 = 0x04;
-   |       ^^^^^^^^^^^^^
-
-warning: constant `TAG_LONG_STR` is never used
-  --> crates/lua-vm/src/undump.rs:81:7
-   |
-81 | const TAG_LONG_STR: u8 = 0x14;
-   |       ^^^^^^^^^^^^
-
-warning: struct `LoadState` is never constructed
-  --> crates/lua-vm/src/undump.rs:96:8
-   |
-96 | struct LoadState<'a> {
-   |        ^^^^^^^^^
-
-warning: function `load_error` is never used
-   --> crates/lua-vm/src/undump.rs:129:4
+warning: field `name` is never read
+   --> crates/lua-vm/src/undump.rs:104:5
     |
-129 | fn load_error(s: &LoadState<'_>, why: &'static str) -> LuaError {
-    |    ^^^^^^^^^^
-
-warning: function `load_block` is never used
-   --> crates/lua-vm/src/undump.rs:151:4
-    |
-151 | fn load_block(s: &mut LoadState<'_>, buf: &mut [u8]) -> Result<(), LuaError> {
-    |    ^^^^^^^^^^
-
-warning: function `load_byte` is never used
-   --> crates/lua-vm/src/undump.rs:174:4
-    |
-174 | fn load_byte(s: &mut LoadState<'_>) -> Result<u8, LuaError> {
-    |    ^^^^^^^^^
-
-warning: function `load_unsigned` is never used
-   --> crates/lua-vm/src/undump.rs:209:4
-    |
-209 | fn load_unsigned(s: &mut LoadState<'_>, limit: usize) -> Result<usize, LuaError> {
-    |    ^^^^^^^^^^^^^
-
-warning: function `load_size` is never used
-   --> crates/lua-vm/src/undump.rs:241:4
-    |
-241 | fn load_size(s: &mut LoadState<'_>) -> Result<usize, LuaError> {
-    |    ^^^^^^^^^
-
-warning: function `load_int` is never used
-   --> crates/lua-vm/src/undump.rs:258:4
-    |
-258 | fn load_int(s: &mut LoadState<'_>) -> Result<i32, LuaError> {
-    |    ^^^^^^^^
-
-warning: function `load_number` is never used
-   --> crates/lua-vm/src/undump.rs:281:4
-    |
-281 | fn load_number(s: &mut LoadState<'_>) -> Result<f64, LuaError> {
-    |    ^^^^^^^^^^^
-
-warning: function `load_integer` is never used
-   --> crates/lua-vm/src/undump.rs:301:4
-    |
-301 | fn load_integer(s: &mut LoadState<'_>) -> Result<i64, LuaError> {
-    |    ^^^^^^^^^^^^
-
-warning: function `load_string_n` is never used
-   --> crates/lua-vm/src/undump.rs:352:4
-    |
-352 | fn load_string_n(
-    |    ^^^^^^^^^^^^^
-
-warning: function `load_string` is never used
-   --> crates/lua-vm/src/undump.rs:403:4
-    |
-403 | fn load_string(
-    |    ^^^^^^^^^^^
-
-warning: function `load_code` is never used
-   --> crates/lua-vm/src/undump.rs:436:4
-    |
-436 | fn load_code(s: &mut LoadState<'_>, f: &mut LuaProto) -> Result<(), LuaError> {
-    |    ^^^^^^^^^
-
-warning: function `load_constants` is never used
-   --> crates/lua-vm/src/undump.rs:483:4
-    |
-483 | fn load_constants(s: &mut LoadState<'_>, f: &mut LuaProto) -> Result<(), LuaError> {
-    |    ^^^^^^^^^^^^^^
-
-warning: function `load_protos` is never used
-   --> crates/lua-vm/src/undump.rs:559:4
-    |
-559 | fn load_protos(s: &mut LoadState<'_>, f: &mut LuaProto) -> Result<(), LuaError> {
-    |    ^^^^^^^^^^^
-
-warning: function `load_upvalues` is never used
-   --> crates/lua-vm/src/undump.rs:616:4
-    |
-616 | fn load_upvalues(s: &mut LoadState<'_>, f: &mut LuaProto) -> Result<(), LuaError> {
-    |    ^^^^^^^^^^^^^
-
-warning: function `load_debug` is never used
-   --> crates/lua-vm/src/undump.rs:691:4
-    |
-691 | fn load_debug(s: &mut LoadState<'_>, f: &mut LuaProto) -> Result<(), LuaError> {
-    |    ^^^^^^^^^^
-
-warning: function `load_function` is never used
-   --> crates/lua-vm/src/undump.rs:783:4
-    |
-783 | fn load_function(
-    |    ^^^^^^^^^^^^^
-
-warning: function `check_literal` is never used
-   --> crates/lua-vm/src/undump.rs:835:4
-    |
-835 | fn check_literal(
-    |    ^^^^^^^^^^^^^
-
-warning: function `fcheck_size` is never used
-   --> crates/lua-vm/src/undump.rs:865:4
-    |
-865 | fn fcheck_size(
-    |    ^^^^^^^^^^^
-
-warning: function `check_header` is never used
-   --> crates/lua-vm/src/undump.rs:911:4
-    |
-911 | fn check_header(s: &mut LoadState<'_>) -> Result<(), LuaError> {
-    |    ^^^^^^^^^^^^
-
-warning: function `undump` is never used
-    --> crates/lua-vm/src/undump.rs:1009:15
-     |
-1009 | pub(crate) fn undump(
-     |               ^^^^^^
+ 96 | struct LoadState<'a> {
+    |        --------- field in this struct
+...
+104 |     name: Vec<u8>,
+    |     ^^^^
 
 warning: function `less_than` is never used
    --> crates/lua-vm/src/vm.rs:672:15
@@ -1314,45 +1039,6 @@ warning: function `less_equal` is never used
     |
 693 | pub(crate) fn less_equal(state: &mut LuaState, l: &LuaValue, r: &LuaValue) -> Result<bool, LuaError> {
     |               ^^^^^^^^^^
-
-warning: constant `EOZ` is never used
-  --> crates/lua-vm/src/zio.rs:27:18
-   |
-27 | pub(crate) const EOZ: i32 = -1;
-   |                  ^^^
-
-warning: fields `n`, `p`, `reader`, and `current_chunk` are never read
-   --> crates/lua-vm/src/zio.rs:156:5
-    |
-154 | pub struct ZIO {
-    |            --- fields in this struct
-155 |     // C: size_t n;  /* bytes still unread */
-156 |     n: usize,
-    |     ^
-...
-159 |     p: usize,
-    |     ^
-...
-168 |     reader: Box<dyn FnMut() -> Option<Vec<u8>>>,
-    |     ^^^^^^
-...
-171 |     current_chunk: Vec<u8>,
-    |     ^^^^^^^^^^^^^
-
-warning: methods `fill`, `getc`, and `read` are never used
-   --> crates/lua-vm/src/zio.rs:226:19
-    |
-174 | impl ZIO {
-    | -------- methods in this implementation
-...
-226 |     pub(crate) fn fill(&mut self) -> i32 {
-    |                   ^^^^
-...
-269 |     pub(crate) fn getc(&mut self) -> i32 {
-    |                   ^^^^
-...
-319 |     pub(crate) fn read(&mut self, buf: &mut [u8]) -> usize {
-    |                   ^^^^
 
 warning: structure field `nCcalls` should have a snake case name
    --> crates/lua-vm/src/state.rs:917:9
@@ -2934,8 +2620,4 @@ help: use `let _ = ...` to ignore the resulting value
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
-
-thread 'main' (4614193) panicked at crates/lua-stdlib/src/state_stub.rs:175:100:
-not yet implemented: phase-b-reconcile: load
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b-reconcile: load
+[err] load_string returned non-zero status: 1

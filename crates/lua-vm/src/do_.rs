@@ -1494,9 +1494,16 @@ where
     state.errfunc = ef;
 
     // C: status = luaD_rawrunprotected(L, func, u)
+    // PORT NOTE: In C, luaD_throw pushes the error value onto the stack before
+    // longjmp-ing. In Rust the error rides inside LuaError; we must push its
+    // payload here so set_error_obj (which reads from top-1) finds it.
     let mut status = match raw_run_protected(state, func) {
         Ok(()) => LuaStatus::Ok,
-        Err(e) => e.to_status(),
+        Err(e) => {
+            let s = e.to_status();
+            state.push(e.into_value());
+            s
+        }
     };
 
     if status != LuaStatus::Ok {

@@ -1134,9 +1134,7 @@ pub fn load(
 ) -> Result<LuaStatus, LuaError> {
     let name = chunkname.unwrap_or(b"?");
     // C: luaZ_init(L, &z, reader, data); status = luaD_protectedparser(L, &z, chunkname, mode);
-    // TODO(phase-b): wrap the byte-reader callback into a ZIO before this call.
-    let _ = reader;
-    let z = crate::zio::ZIO::new(Box::new(|| None));
+    let z = crate::zio::ZIO::new(reader);
     let status = state.protected_parser(z, name, mode);
     if status == LuaStatus::Ok {
         // C: LClosure *f = clLvalue(s2v(L->top.p - 1));

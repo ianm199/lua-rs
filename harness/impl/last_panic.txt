@@ -1,1 +1,1 @@
-hook lua-parse::parse
+load_string returned non-zero status: 1
