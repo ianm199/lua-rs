@@ -2,14 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing vararg
-+
-+
-+
-OK
-[close_upval] uv_idx=20 level=3 top=20 openupval.len=4
+testing closures
+[close_upval] uv_idx=13 level=12 top=12 openupval.len=5
 
-thread 'main' (7414129) panicked at crates/lua-vm/src/func.rs:491:9:
+thread 'main' (7414153) panicked at crates/lua-vm/src/func.rs:491:9:
 open upvalue index must be below stack top
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [panic] open upvalue index must be below stack top

@@ -383,3 +383,17 @@
 [2026-05-17T19:03:47Z mega]   [O2.D6] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
 [2026-05-17T19:03:47Z mega]   [O2.D7] DEBUG dispatch on file: reference/lua-c/testes/bitwise.lua [parallel]
 [2026-05-17T19:03:47Z mega]   [O2.D8] DEBUG dispatch on file: reference/lua-c/testes/math.lua [parallel]
+[2026-05-17T19:08:33Z mega]   [O2.D4] DEBUG done. iter cost=$[2026-05-17T18:57:32Z  total=$1.2765
+[2026-05-17T19:08:33Z mega]   [O2.D1.3853347500000004] DEBUG done. iter cost=$reference/lua-c/testes/closure.lua  total=$1.2765
+[2026-05-17T19:08:33Z mega]   [O2.D2] DEBUG done. iter cost=$1.75186575  total=$3.0284
+[2026-05-17T19:08:33Z mega]   [O2.D1] DEBUG done. iter cost=$1.20335825  total=$4.2318
+[2026-05-17T19:08:33Z mega]   [O2.D3] DEBUG done. iter cost=$0.61128825  total=$4.8431
+[2026-05-17T19:08:33Z mega]   [O2.D5] DEBUG done. iter cost=$0.41545699999999997  total=$5.2586
+[2026-05-17T19:08:33Z mega]   [O2.D6] DEBUG done. iter cost=$1.12833325  total=$6.3869
+[2026-05-17T19:08:33Z mega]   [O2.D7] DEBUG done. iter cost=$1.35670675  total=$7.7436
+[2026-05-17T19:08:33Z mega]   [O2.D8] DEBUG done. iter cost=$1.87018225  total=$9.6138
+[2026-05-17T19:08:33Z mega] ─── outer round 3 (spent: $9.6138) ───
+[2026-05-17T19:09:05Z mega]   scan: 55/75 programs pass cleanly
+[2026-05-17T19:09:05Z mega]   surface scan returned 1 unique stub blockers
+[2026-05-17T19:09:05Z mega]   grouped into 1 disjoint-file agents (parallel cap 4)
+[2026-05-17T19:09:05Z mega]   [O3.1] dispatch on 'str_to_num' @ crates/lua-vm/src/state.rs:1576:76 (budget $15) [parallel]

@@ -1,1 +1,1 @@
-load_buffer_ex	crates/lua-stdlib/src/state_stub.rs:176:108
+str_to_num	crates/lua-vm/src/state.rs:1576:76

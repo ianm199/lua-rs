@@ -362,7 +362,17 @@ impl LuaValueExt for LuaValue {
     }
     fn to_number_with_strconv(&self) -> Option<f64> {
         if let Some(n) = self.to_number_no_strconv() { return Some(n); }
-        todo!("phase-b: LuaValue::to_number_with_strconv (string coercion)")
+        if let LuaValue::Str(s) = self {
+            let mut tmp = LuaValue::Nil;
+            let sz = crate::object::str2num(s.as_bytes(), &mut tmp);
+            if sz == 0 { return None; }
+            return match tmp {
+                LuaValue::Int(i) => Some(i as f64),
+                LuaValue::Float(f) => Some(f),
+                _ => None,
+            };
+        }
+        None
     }
     fn to_integer_no_strconv(&self) -> Option<i64> {
         match self {
@@ -373,7 +383,13 @@ impl LuaValueExt for LuaValue {
     }
     fn to_integer_with_strconv(&self) -> Option<i64> {
         if let Some(i) = self.to_integer_no_strconv() { return Some(i); }
-        todo!("phase-b: LuaValue::to_integer_with_strconv (string coercion)")
+        if let LuaValue::Str(s) = self {
+            let mut tmp = LuaValue::Nil;
+            let sz = crate::object::str2num(s.as_bytes(), &mut tmp);
+            if sz == 0 { return None; }
+            return tmp.to_integer_no_strconv();
+        }
+        None
     }
     fn full_type_tag(&self) -> u8 { self.type_tag() as u8 }
 }
@@ -1560,7 +1576,25 @@ impl LuaState {
             }
         }
     }
-    pub fn obj_to_string(&mut self, _idx_or_val: i32) -> Result<GcRef<LuaString>, LuaError> { todo!("phase-b: obj_to_string") }
+    pub fn obj_to_string(&mut self, idx: i32) -> Result<GcRef<LuaString>, LuaError> {
+        let slot: StackIdx = if idx > 0 {
+            let ci_func = self.current_call_info().func;
+            ci_func + idx
+        } else {
+            debug_assert!(idx != 0, "invalid index");
+            StackIdx((self.top_idx().0 as i32 + idx) as u32)
+        };
+        let val = self.get_at(slot);
+        match val {
+            LuaValue::Str(s) => Ok(s),
+            LuaValue::Int(_) | LuaValue::Float(_) => {
+                let s = crate::object::num_to_string(self, &val)?;
+                self.set_at(slot, LuaValue::Str(s.clone()));
+                Ok(s)
+            }
+            _ => Err(LuaError::type_error(&val, "convert to string")),
+        }
+    }
     pub fn coerce_to_string(&mut self, idx: StackIdx) -> Result<GcRef<LuaString>, LuaError> {
         let val = self.get_at(idx);
         match val {
@@ -1573,7 +1607,11 @@ impl LuaState {
             _ => Err(LuaError::type_error(&val, "convert to string")),
         }
     }
-    pub fn str_to_num(&mut self, _s: &[u8]) -> Option<(LuaValue, usize)> { todo!("phase-b: str_to_num") }
+    pub fn str_to_num(&mut self, s: &[u8]) -> Option<(LuaValue, usize)> {
+        let mut out = LuaValue::Nil;
+        let sz = crate::object::str2num(s, &mut out);
+        if sz == 0 { None } else { Some((out, sz)) }
+    }
 
     pub fn fast_get(&mut self, t: &LuaValue, k: &LuaValue) -> Result<Option<LuaValue>, LuaError> {
         let LuaValue::Table(tbl) = t else { return Ok(None); };
