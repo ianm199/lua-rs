@@ -1200,7 +1200,7 @@ pub fn gmatch(state: &mut LuaState) -> Result<usize, LuaError> {
     }
 
     // C: lua_settop(L, 2);
-    state.set_top(2);
+    lua_vm::api::set_top(state, 2)?;
 
     // Build the iterator-state table: t = {src, pat, pos, lastmatch}.
     state.create_table(4, 0)?;
@@ -2224,8 +2224,10 @@ pub fn luaopen_string(state: &mut LuaState) -> Result<usize, LuaError> {
 //   notes:         Pattern engine uses index-based MatchState (not raw ptrs).
 //                  string.format delegates numeric widths/precision/flags to
 //                  Phase B (a sprintf-compatible crate or manual impl).
-//                  gmatch iterator state (GMatchState userdata + upvalue closure)
-//                  is stubbed — requires userdata + CClosure support in LuaState.
+//                  gmatch iterator state holds a 4-element Lua table in the
+//                  closure's single upvalue (src, pat, pos, lastmatch) instead
+//                  of the C-Lua GMatchState userdata, because Phase-A
+//                  LuaCClosure upvalues are immutable. See gmatch_aux.
 //                  copywithendian uses safe byte-level swapping (no transmute).
 //                  unpackint sign-extension uses two's-complement bit tricks;
 //                  logic review needed in Phase B.
