@@ -3,8 +3,4 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing strings and string library
-[DBG-ASSERT] failing, top=1
-[DBG-ASSERT] arg1: type=Boolean repr=""
-[DBG-ASSERT] stack[1]: src="-- harness preamble: emulate the globals lua-c testes/all.l" line=24
-[DBG-ASSERT] stack[2]: src="-- harness preamble: emulate the globals lua-c testes/all.l" line=123
-[err] pcall_k failed: Runtime: -- harness preamble: emulate the globals lua-c testes/all.l:24: assertion failed!
+[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:161: assertion failed!

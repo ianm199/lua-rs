@@ -606,10 +606,6 @@ pub fn ll_searchpath(state: &mut LuaState) -> Result<usize, LuaError> {
 ///
 /// C: `static const char *findfile(lua_State *L, const char *name,
 ///                                  const char *pname, const char *dirsep)`
-///
-/// TODO(port): Should return `Result<Option<Vec<u8>>, LuaError>` to properly
-/// propagate the `"'package.<pname>' must be a string"` error. Currently returns
-/// `None` and loses the error, which will cause a confusing failure downstream.
 fn findfile(state: &mut LuaState, name: &[u8], pname: &[u8], dirsep: u8) -> Result<Option<Vec<u8>>, LuaError> {
     // C: lua_getfield(L, lua_upvalueindex(1), pname);
     // The package table is upvalue #1 for the searcher closures.
@@ -619,10 +615,11 @@ fn findfile(state: &mut LuaState, name: &[u8], pname: &[u8], dirsep: u8) -> Resu
     let path_opt: Option<Vec<u8>> = state.to_bytes(-1);
     let Some(path) = path_opt else {
         // C: if (l_unlikely(path == NULL)) luaL_error(L, "'package.%s' must be a string", pname);
-        // TODO(port): Cannot return Err here without changing the signature.
-        //             For now pop the nil and return None (error is silently dropped).
         state.pop_n(1);
-        return Ok(None);
+        return Err(LuaError::runtime(format_args!(
+            "'package.{}' must be a string",
+            String::from_utf8_lossy(pname)
+        )));
     };
     state.pop_n(1);
     searchpath(state, name, &path, b".", &[dirsep])

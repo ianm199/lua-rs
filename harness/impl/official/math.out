@@ -3,50 +3,6 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing numbers and math lib
-DUMP pc=0 raw=0x00000039 op=Eq A=0 B=0 C=0 sBx=-65535 sJ=-16777215 k=0
-DUMP pc=1 raw=0x80000038 op=Jmp A=0 B=0 C=128 sBx=1 sJ=1 k=0
-DUMP pc=2 raw=0x00000086 op=LFalseSkip A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=3 raw=0x00000087 op=LoadTrue A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=4 raw=0x000200c8 op=Return1 A=1 B=2 C=0 sBx=-65531 sJ=-16776190 k=0
-DUMP pc=5 raw=0x000100c7 op=Return0 A=1 B=1 C=0 sBx=-65533 sJ=-16776702 k=0
-DUMP pc=0 raw=0x00000039 op=Eq A=0 B=0 C=0 sBx=-65535 sJ=-16777215 k=0
-DUMP pc=1 raw=0x80000038 op=Jmp A=0 B=0 C=128 sBx=1 sJ=1 k=0
-DUMP pc=2 raw=0x00000086 op=LFalseSkip A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=3 raw=0x00000087 op=LoadTrue A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=4 raw=0x000200c8 op=Return1 A=1 B=2 C=0 sBx=-65531 sJ=-16776190 k=0
-DUMP pc=5 raw=0x000100c7 op=Return0 A=1 B=1 C=0 sBx=-65533 sJ=-16776702 k=0
 64-bit integers, 53-bit (mantissa) floats
-DUMP pc=0 raw=0x00000039 op=Eq A=0 B=0 C=0 sBx=-65535 sJ=-16777215 k=0
-DUMP pc=1 raw=0x80000038 op=Jmp A=0 B=0 C=128 sBx=1 sJ=1 k=0
-DUMP pc=2 raw=0x00000086 op=LFalseSkip A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=3 raw=0x00000087 op=LoadTrue A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=4 raw=0x000200c8 op=Return1 A=1 B=2 C=0 sBx=-65531 sJ=-16776190 k=0
-DUMP pc=5 raw=0x000100c7 op=Return0 A=1 B=1 C=0 sBx=-65533 sJ=-16776702 k=0
-DUMP pc=0 raw=0x00000039 op=Eq A=0 B=0 C=0 sBx=-65535 sJ=-16777215 k=0
-DUMP pc=1 raw=0x80000038 op=Jmp A=0 B=0 C=128 sBx=1 sJ=1 k=0
-DUMP pc=2 raw=0x00000086 op=LFalseSkip A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=3 raw=0x00000087 op=LoadTrue A=1 B=0 C=0 sBx=-65535 sJ=-16777214 k=0
-DUMP pc=4 raw=0x000200c8 op=Return1 A=1 B=2 C=0 sBx=-65531 sJ=-16776190 k=0
-DUMP pc=5 raw=0x000100c7 op=Return0 A=1 B=1 C=0 sBx=-65533 sJ=-16776702 k=0
-DUMP pc=0 raw=0x00010039 op=Eq A=0 B=1 C=0 sBx=-65533 sJ=-16776703 k=0
-DUMP pc=1 raw=0x800004b8 op=Jmp A=9 B=0 C=128 sBx=1 sJ=10 k=0
-DUMP pc=2 raw=0x0000010b op=GetTabUp A=2 B=0 C=0 sBx=-65535 sJ=-16777213 k=0
-DUMP pc=3 raw=0x0102010e op=GetField A=2 B=2 C=1 sBx=-65019 sJ=-16645117 k=0
-DUMP pc=4 raw=0x00000180 op=Move A=3 B=0 C=0 sBx=-65535 sJ=-16777212 k=0
-DUMP pc=5 raw=0x02020144 op=Call A=2 B=2 C=2 sBx=-64507 sJ=-16514045 k=0
-DUMP pc=6 raw=0x0000018b op=GetTabUp A=3 B=0 C=0 sBx=-65535 sJ=-16777212 k=0
-DUMP pc=7 raw=0x0103018e op=GetField A=3 B=3 C=1 sBx=-65017 sJ=-16644604 k=0
-DUMP pc=8 raw=0x00010200 op=Move A=4 B=1 C=0 sBx=-65533 sJ=-16776699 k=0
-DUMP pc=9 raw=0x020201c4 op=Call A=3 B=2 C=2 sBx=-64507 sJ=-16514044 k=0
-DUMP pc=10 raw=0x00038139 op=Eq A=2 B=3 C=0 sBx=-65528 sJ=-16775421 k=1
-DUMP pc=11 raw=0x80000038 op=Jmp A=0 B=0 C=128 sBx=1 sJ=1 k=0
-DUMP pc=12 raw=0x00000106 op=LFalseSkip A=2 B=0 C=0 sBx=-65535 sJ=-16777213 k=0
-DUMP pc=13 raw=0x00000107 op=LoadTrue A=2 B=0 C=0 sBx=-65535 sJ=-16777213 k=0
-DUMP pc=14 raw=0x00020148 op=Return1 A=2 B=2 C=0 sBx=-65531 sJ=-16776189 k=0
-DUMP pc=15 raw=0x00010147 op=Return0 A=2 B=1 C=0 sBx=-65533 sJ=-16776701 k=0
-DBG set_at OOB: idx=258 stack.len=85 stack_last=80 top=16 ci=CallInfoIdx(1)
-
-thread 'main' (7600801) panicked at crates/lua-vm/src/state.rs:1149:19:
-index out of bounds: the len is 85 but the index is 258
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] index out of bounds: the len is 85 but the index is 258
+testing order (floats cannot represent all integers)
+[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:56: assertion failed!

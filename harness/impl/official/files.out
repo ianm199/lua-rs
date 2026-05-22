@@ -3,7 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 
-thread 'main' (7720577) panicked at crates/lua-stdlib/src/io_lib.rs:342:5:
-not yet implemented: TODO(port): cast raw userdata bytes to &mut LStream
+thread 'main' (7745997) panicked at crates/lua-vm/src/debug.rs:1809:14:
+ci_lua_proto: call frame does not hold a Lua closure
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: TODO(port): cast raw userdata bytes to &mut LStream
+[panic] ci_lua_proto: call frame does not hold a Lua closure

@@ -168,6 +168,39 @@ impl LStream {
     }
 }
 
+/// Minimal `LuaFileOps` placeholder for stdin/stdout/stderr while real
+/// std::io wiring is deferred. All read/write/seek operations return
+/// `Unsupported`, which is sufficient for the validation paths exercised
+/// by `io.input(io.stdin)`, `io.output(io.stdout)`, and `io.type`.
+struct StdStreamHandle {
+    kind: StdFileKind,
+}
+
+impl LuaFileOps for StdStreamHandle {
+    fn read_byte(&mut self) -> i32 { EOF_SENTINEL }
+    fn unread_byte(&mut self, _byte: i32) {}
+    fn write_bytes(&mut self, _data: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "std stream write not yet implemented",
+        ))
+    }
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "stdio seek"))
+    }
+    fn tell(&mut self) -> io::Result<u64> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "stdio tell"))
+    }
+    fn clear_error(&mut self) {}
+    fn has_error(&self) -> bool { false }
+    fn set_buf_mode(&mut self, _mode: BufMode, _size: usize) -> io::Result<()> { Ok(()) }
+}
+
+impl StdStreamHandle {
+    fn new(kind: StdFileKind) -> Self { StdStreamHandle { kind } }
+}
+
 /// State machine for reading a numeric literal byte-by-byte from a file.
 /// C: `typedef struct { FILE *f; int c; int n; char buff[L_MAXLENNUM+1]; } RN`.
 struct ReadNumState {
@@ -360,58 +393,58 @@ fn exec_result(state: &mut LuaState, stat: i32) -> Result<usize, LuaError> {
 /// Retrieve `LStream` from argument 1 via a userdata type-check.
 /// C: `tolstream(L)` = `(LStream *)luaL_checkudata(L, 1, LUA_FILEHANDLE)`.
 ///
-/// TODO(port): requires `state.check_arg_typed_userdata::<LStream>(1, LUA_FILE_HANDLE)?`
-/// once Phase B lands typed userdata access.
-fn get_lstream(state: &mut LuaState) -> Result<&mut LStream, LuaError> {
-    // TODO(port): typed userdata access — cast raw userdata payload to &mut LStream
-    let _raw = state.check_arg_userdata(1, LUA_FILE_HANDLE)?;
-    todo!("TODO(port): cast raw userdata bytes to &mut LStream")
+/// Returns an `Rc<RefCell<LStream>>` from the side-table registry. The C port
+/// returns a raw `LStream *` pointing into the userdata payload; Rust uses a
+/// side table because `LStream` contains heap pointers that cannot be safely
+/// reinterpreted from a raw byte buffer in safe Rust.
+fn get_lstream(state: &mut LuaState) -> Result<Rc<RefCell<LStream>>, LuaError> {
+    let ud = state.check_arg_userdata(1, LUA_FILE_HANDLE)?;
+    lookup_lstream(ud.identity()).ok_or_else(|| {
+        LuaError::runtime(format_args!("invalid file handle"))
+    })
 }
 
-/// Return the open file handle for argument 1; error if closed. C: `tofile`.
-///
-/// TODO(port): borrow split — cannot return `&mut dyn LuaFileOps` while the caller
-/// also holds `&mut LuaState`. Phase B fix: `RefCell<Box<dyn LuaFileOps>>` inside
-/// `LStream`, or restructure all callers to use a `StackIdx` file reference.
-fn tofile(state: &mut LuaState) -> Result<&mut dyn LuaFileOps, LuaError> {
-    let p = get_lstream(state)?;
-    // C: if (isclosed(p)) luaL_error(L, "attempt to use a closed file");
-    if p.is_closed() {
-        return Err(LuaError::runtime(format_args!(
-            "attempt to use a closed file"
-        )));
+/// Validate that argument 1 is an open file handle; error if closed.
+/// C: `tofile` (returns `FILE *` in C; here we return the wrapping `Rc<RefCell<LStream>>`).
+fn tofile(state: &mut LuaState) -> Result<Rc<RefCell<LStream>>, LuaError> {
+    let p_rc = get_lstream(state)?;
+    {
+        let p = p_rc.borrow();
+        // C: if (isclosed(p)) luaL_error(L, "attempt to use a closed file");
+        if p.is_closed() {
+            return Err(LuaError::runtime(format_args!(
+                "attempt to use a closed file"
+            )));
+        }
+        // C: lua_assert(p->f);
+        debug_assert!(p.file.is_some());
     }
-    // C: lua_assert(p->f);
-    debug_assert!(p.file.is_some());
-    Ok(p.file.as_mut().expect("open stream has no file handle").as_mut())
+    Ok(p_rc)
 }
 
 // ── File creation helpers ────────────────────────────────────────────────────
 
 /// Allocate a "closed" file-handle userdata and push it; set its metatable.
-/// C: `newprefile(L)`.
-///
-/// TODO(port): `lua_newuserdatauv(L, sizeof(LStream), 0)` needs a Rust
-/// equivalent such as `state.new_userdata_typed::<LStream>(0)?`.
-fn new_pre_file(state: &mut LuaState) -> Result<(), LuaError> {
+/// Also registers an empty `LStream` in the side table keyed by the userdata
+/// identity, and returns the `Rc<RefCell<LStream>>` so the caller may finish
+/// initialising it (set `file`, set `close_fn`). C: `newprefile(L)`.
+fn new_pre_file(state: &mut LuaState) -> Result<Rc<RefCell<LStream>>, LuaError> {
     // C: LStream *p = lua_newuserdatauv(L, sizeof(LStream), 0);
-    // C: p->closef = NULL;
+    let ud = state.new_userdata_typed(LUA_FILE_HANDLE, std::mem::size_of::<LStream>(), 0)?;
     // C: luaL_setmetatable(L, LUA_FILEHANDLE);
-    // TODO(port): allocate typed LuaUserData containing LStream, set metatable
-    state.new_userdata_typed(LUA_FILE_HANDLE, std::mem::size_of::<LStream>(), 0)?;
     state.set_metatable_by_name(LUA_FILE_HANDLE)?;
-    Ok(())
+    // C: p->closef = NULL;  (LStream::close_fn = None marks the stream as closed)
+    let cell = register_lstream(ud.identity(), LStream { file: None, close_fn: None });
+    Ok(cell)
 }
 
 /// Allocate a new regular-file handle with `io_fclose` as the close function.
 /// C: `newfile(L)`.
-///
-/// TODO(port): after `new_pre_file`, must set `lstream.close_fn = Some(io_fclose)`.
-fn new_file(state: &mut LuaState) -> Result<(), LuaError> {
+fn new_file(state: &mut LuaState) -> Result<Rc<RefCell<LStream>>, LuaError> {
     // C: LStream *p = newprefile(L); p->f = NULL; p->closef = &io_fclose;
-    new_pre_file(state)?;
-    // TODO(port): write close_fn field on the newly pushed LStream
-    Ok(())
+    let cell = new_pre_file(state)?;
+    cell.borrow_mut().close_fn = Some(io_fclose);
+    Ok(cell)
 }
 
 /// Open `fname` and push its handle; raise a runtime error on failure.
@@ -447,9 +480,9 @@ fn opencheck(state: &mut LuaState, fname: &[u8], mode: &[u8]) -> Result<(), LuaE
 /// TODO(port): flush + drop `Box<dyn LuaFileOps>`, map io::Error to file_result.
 fn io_fclose(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: return luaL_fileresult(L, (fclose(p->f) == 0), NULL);
-    let p = get_lstream(state)?;
+    let p_rc = get_lstream(state)?;
     // TODO(port): actually flush then drop p.file, capture any error
-    let _closed = p.file.take();
+    let _closed = p_rc.borrow_mut().file.take();
     state.push(LuaValue::Bool(true));
     Ok(1)
 }
@@ -459,8 +492,8 @@ fn io_fclose(state: &mut LuaState) -> Result<usize, LuaError> {
 /// TODO(port): std::process::Child — popen not yet implemented.
 fn io_pclose(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: return luaL_execresult(L, l_pclose(L, p->f));
-    let p = get_lstream(state)?;
-    let _closed = p.file.take();
+    let p_rc = get_lstream(state)?;
+    let _closed = p_rc.borrow_mut().file.take();
     // TODO(port): wait on the child process and forward its exit code
     exec_result(state, 0)
 }
@@ -469,8 +502,8 @@ fn io_pclose(state: &mut LuaState) -> Result<usize, LuaError> {
 fn io_noclose(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: p->closef = &io_noclose;  /* keep file opened */
     // C: luaL_pushfail(L); lua_pushliteral(L, "cannot close standard file"); return 2;
-    let p = get_lstream(state)?;
-    p.close_fn = Some(io_noclose); // reinstall to keep the handle alive
+    let p_rc = get_lstream(state)?;
+    p_rc.borrow_mut().close_fn = Some(io_noclose); // reinstall to keep the handle alive
     state.push(LuaValue::Bool(false));
     state.push_string(b"cannot close standard file");
     Ok(2)
@@ -479,8 +512,8 @@ fn io_noclose(state: &mut LuaState) -> Result<usize, LuaError> {
 /// Invoke the stream's close function and mark it closed. C: `aux_close`.
 fn aux_close(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: volatile lua_CFunction cf = p->closef; p->closef = NULL; return (*cf)(L);
-    let p = get_lstream(state)?;
-    let cf = p.close_fn.take().ok_or_else(|| {
+    let p_rc = get_lstream(state)?;
+    let cf = p_rc.borrow_mut().close_fn.take().ok_or_else(|| {
         LuaError::runtime(format_args!("attempt to close an already-closed file"))
     })?;
     cf(state)
@@ -497,15 +530,20 @@ pub fn io_type(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: else if (isclosed(p)) lua_pushliteral(L, "closed file");
     // C: else lua_pushliteral(L, "file");
     let maybe_userdata = state.test_arg_userdata(1, LUA_FILE_HANDLE);
-    if maybe_userdata.is_none() {
-        state.push(LuaValue::Bool(false));
-    } else {
-        // TODO(port): typed cast to check LStream::is_closed()
-        let is_closed: bool = todo!("TODO(port): typed userdata access for io_type");
-        if is_closed {
-            state.push_string(b"closed file");
-        } else {
-            state.push_string(b"file");
+    match maybe_userdata {
+        None => {
+            state.push(LuaValue::Bool(false));
+        }
+        Some(ud) => {
+            let is_closed = match lookup_lstream(ud.identity()) {
+                Some(rc) => rc.borrow().is_closed(),
+                None => true, // unknown userdata with FILE* metatable: treat as closed
+            };
+            if is_closed {
+                state.push_string(b"closed file");
+            } else {
+                state.push_string(b"file");
+            }
         }
     }
     Ok(1)
@@ -517,8 +555,9 @@ pub fn io_type(state: &mut LuaState) -> Result<usize, LuaError> {
 fn f_tostring(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: if (isclosed(p)) lua_pushliteral(L, "file (closed)");
     // C: else lua_pushfstring(L, "file (%p)", p->f);
-    let p = get_lstream(state)?;
-    if p.is_closed() {
+    let p_rc = get_lstream(state)?;
+    let closed = p_rc.borrow().is_closed();
+    if closed {
         state.push_string(b"file (closed)");
     } else {
         // TODO(port): pointer-address representation for the file handle
@@ -551,8 +590,12 @@ pub fn io_close(state: &mut LuaState) -> Result<usize, LuaError> {
 /// `__gc` / `__close` metamethod — silently close if still open. C: `f_gc`.
 fn f_gc(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: if (!isclosed(p) && p->f != NULL) aux_close(L);  /* ignore errors */
-    let p = get_lstream(state)?;
-    if !p.is_closed() && p.file.is_some() {
+    let p_rc = get_lstream(state)?;
+    let needs_close = {
+        let p = p_rc.borrow();
+        !p.is_closed() && p.file.is_some()
+    };
+    if needs_close {
         // ignore any error from aux_close during GC finalisation
         let _ = aux_close(state);
     }
@@ -1311,9 +1354,6 @@ fn create_meta(state: &mut LuaState) -> Result<(), LuaError> {
 }
 
 /// Register stdin, stdout, or stderr as a Lua file handle. C: `createstdfile`.
-///
-/// TODO(port): std::fs / std::io — concrete `LuaFileOps` impls for standard
-/// streams are required here.
 fn create_std_file(
     state: &mut LuaState,
     std_kind: StdFileKind,
@@ -1321,10 +1361,12 @@ fn create_std_file(
     field_name: &[u8],
 ) -> Result<(), LuaError> {
     // C: LStream *p = newprefile(L); p->f = f; p->closef = &io_noclose;
-    new_pre_file(state)?;
-    // TODO(port): set p.file = Some(Box::new(<StdFileHandle for std_kind>))
-    //             set p.close_fn = Some(io_noclose)
-    let _ = std_kind;
+    let cell = new_pre_file(state)?;
+    {
+        let mut p = cell.borrow_mut();
+        p.file = Some(Box::new(StdStreamHandle::new(std_kind)));
+        p.close_fn = Some(io_noclose);
+    }
     if let Some(key) = registry_key {
         // C: lua_pushvalue(L, -1); lua_setfield(L, LUA_REGISTRYINDEX, k);
         state.push_value_at(-1);

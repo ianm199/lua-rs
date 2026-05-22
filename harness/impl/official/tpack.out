@@ -1,65 +1,5 @@
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
-DBG requiref BEGIN modname="_G" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."_G" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["_G"]=mod top=2
-DBG requiref END modname="_G" top_post=1
-DBG requiref BEGIN modname="package" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."package" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["package"]=mod top=2
-DBG requiref END modname="package" top_post=1
-DBG requiref BEGIN modname="coroutine" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."coroutine" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["coroutine"]=mod top=2
-DBG requiref END modname="coroutine" top_post=1
-DBG requiref BEGIN modname="table" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."table" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["table"]=mod top=2
-DBG requiref END modname="table" top_post=1
-DBG requiref BEGIN modname="io" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."io" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["io"]=mod top=2
-DBG requiref END modname="io" top_post=1
-DBG requiref BEGIN modname="os" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."os" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["os"]=mod top=2
-DBG requiref END modname="os" top_post=1
-DBG requiref BEGIN modname="string" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."string" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["string"]=mod top=2
-DBG requiref END modname="string" top_post=1
-DBG requiref BEGIN modname="math" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."math" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["math"]=mod top=2
-DBG requiref END modname="math" top_post=1
-DBG requiref BEGIN modname="utf8" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."utf8" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["utf8"]=mod top=2
-DBG requiref END modname="utf8" top_post=1
-DBG requiref BEGIN modname="debug" top_pre=0
-DBG requiref after get_subtable LOADED top=1 type@-1=Table
-DBG requiref after get_field LOADED."debug" type@-1=Nil bool@-1=false
-DBG requiref after openf call top=2 type@-1=Table
-DBG requiref after set_field LOADED["debug"]=mod top=2
-DBG requiref END modname="debug" top_post=1
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing pack/unpack
@@ -68,4 +8,5 @@ platform:
 	lua Integer 8, lua Number 8
 	little endian
 	alignment: 8
-[err] pcall_k failed: Runtime: -- harness preamble: emulate the globals lua-c testes/all.l:56: assertion failed!
+testing invalid formats
+[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:50: assertion failed!
