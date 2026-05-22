@@ -1089,9 +1089,28 @@ impl LuaState {
         let i: StackIdx = idx.into().0;
         self.stack[i.0 as usize].val = v;
     }
+    /// Set `top` to an absolute stack index, nil-filling any new slots.
+    ///
+    /// C: portion of `lua_settop` (lapi.c) — `L->top.p = newtop` plus the
+    /// `for (; diff > 0; diff--) setnilvalue(s2v(L->top.p++))` clear loop.
+    /// PORT NOTE: callers pass an absolute `StackIdx` (e.g. `top + 1`,
+    /// `ci_top`, `ra + nres`), not the relative `idx` of the public
+    /// `lua_settop` API. The to-be-closed (`tbclist`) close path is Phase E
+    /// and not handled here.
     pub fn set_top(&mut self, idx: impl Into<StackIdxConv>) {
-        let _i: StackIdx = idx.into().0;
-        todo!("phase-b: set_top")
+        let new_top: StackIdx = idx.into().0;
+        let new_top_u = new_top.0 as usize;
+        let cur = self.top.0 as usize;
+        if new_top_u > cur {
+            let existing_end = self.stack.len().min(new_top_u);
+            for i in cur..existing_end {
+                self.stack[i] = StackValue::default();
+            }
+            if new_top_u > self.stack.len() {
+                self.stack.resize_with(new_top_u, StackValue::default);
+            }
+        }
+        self.top = new_top;
     }
     pub fn set_top_idx(&mut self, idx: impl Into<StackIdxConv>) {
         let _i: StackIdx = idx.into().0;

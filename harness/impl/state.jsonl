@@ -82,3 +82,6 @@
 {"ts":"2026-05-16T14:35:41Z","action":"dispatch_done","detail":"func=check_stack cost=0.7215935","total_cost":0.00}
 {"ts":"2026-05-16T14:35:41Z","action":"panic_detected","detail":"func=next_ci iter=3","total_cost":0.00}
 {"ts":"2026-05-16T14:35:41Z","action":"dispatch_start","detail":"func=next_ci loc=crates/lua-vm/src/state.rs:1129:66 iter=3","total_cost":0.00}
+{"ts":"2026-05-16T14:36:36Z","action":"dispatch_done","detail":"func=next_ci cost=0.537039","total_cost":0.00}
+{"ts":"2026-05-16T14:36:36Z","action":"panic_detected","detail":"func=set_top iter=4","total_cost":0.00}
+{"ts":"2026-05-16T14:36:36Z","action":"dispatch_start","detail":"func=set_top loc=crates/lua-vm/src/state.rs:1094:9 iter=4","total_cost":0.00}
