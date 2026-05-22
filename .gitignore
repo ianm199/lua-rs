@@ -21,3 +21,10 @@ harness/oracle/results/
 # Python
 __pycache__/
 *.pyc
+
+# Bench artifacts (regenerated each run; not signal-grade evidence)
+harness/bench/results/
+harness/bench/profiles/
+
+# Harness loop state (process state, not artifacts)
+harness/loop/state/
