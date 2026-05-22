@@ -347,6 +347,11 @@ impl LuaState {
         create_table(self, narr, nrec)
     }
 
+    pub fn set_metatable(&mut self, objindex: i32) -> Result<(), LuaError> {
+        set_metatable(self, objindex)?;
+        Ok(())
+    }
+
     /// Ensure `registry[name]` is a table; push it onto the stack.
     /// Returns `true` if the table already existed, `false` if newly created.
     ///
