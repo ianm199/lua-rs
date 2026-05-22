@@ -376,7 +376,9 @@ pub fn str_dump(state: &mut LuaState) -> Result<usize, LuaError> {
     state.check_arg_type(1, LuaType::Function)?;
     let strip = state.arg_to_bool(2);
     // C: lua_settop(L, 1);
-    state.set_top(1);
+    // PORT NOTE: `state.set_top` (inherent) takes an absolute StackIdx and
+    // would wipe the call frame. `lua_settop` is frame-relative.
+    lua_vm::api::set_top(state, 1)?;
     // TODO(port): state.dump_function(strip) needs to produce &[u8].
     // In the C code, lua_dump writes to a writer callback that fills a luaL_Buffer.
     // In Rust, state.dump() should return Vec<u8> or write to a &mut Vec<u8>.

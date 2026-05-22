@@ -928,9 +928,13 @@ pub(crate) fn equal_obj(
                 return Ok(true);
             }
             let Some(state) = state else { return Ok(false); };
-            let tm1 = state.fast_tm_table(Some(h1), TagMethod::Eq);
+            // C: tm = fasttm(L, hvalue(t1)->metatable, TM_EQ);
+            //    if (tm == NULL) tm = fasttm(L, hvalue(t2)->metatable, TM_EQ);
+            let mt1 = h1.metatable();
+            let mt2 = h2.metatable();
+            let tm1 = state.fast_tm_table(mt1.as_ref(), TagMethod::Eq);
             let tm = if matches!(tm1, LuaValue::Nil) {
-                state.fast_tm_table(Some(h2), TagMethod::Eq)
+                state.fast_tm_table(mt2.as_ref(), TagMethod::Eq)
             } else {
                 tm1
             };

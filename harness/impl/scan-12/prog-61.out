@@ -2,7 +2,5 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing numbers and math lib
-64-bit integers, 53-bit (mantissa) floats
-testing order (floats cannot represent all integers)
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:55: assertion failed!
+ok
+[ok] execution completed, status=Ok

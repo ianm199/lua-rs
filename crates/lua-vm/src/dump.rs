@@ -67,15 +67,15 @@ const LUA_NUMBER_SIZE: u8 = size_of::<f64>() as u8;
 /// PORT NOTE: `lua_State *L` removed — it was used only for `lua_lock`/`lua_unlock`, which are
 /// no-ops in the default Lua build and dropped here (macros.tsv). `void *data` is folded into
 /// the writer closure. `int status` is replaced by `Result<(), LuaError>` propagated with `?`.
-struct DumpState {
+struct DumpState<'a> {
     /// Byte-sink callback. C original: `lua_Writer writer` + `void *data` (combined).
     /// lua_Writer type is TBD in types.tsv; for dump we use a bare byte-slice callback.
-    writer: Box<dyn FnMut(&[u8]) -> Result<(), LuaError>>,
+    writer: &'a mut dyn FnMut(&[u8]) -> Result<(), LuaError>,
     /// When true, strip all debug information from the output.
     strip: bool,
 }
 
-impl DumpState {
+impl<'a> DumpState<'a> {
     // ── Low-level write primitives ────────────────────────────────────────────
 
     /// Write raw bytes to the output stream.
@@ -501,14 +501,14 @@ impl DumpState {
 /// macros.tsv. Return type changes from `int` (0 = ok, non-zero = writer error) to
 /// `Result<(), LuaError>`.
 pub(crate) fn dump(
-    _state: &mut LuaState,
+    _state: &LuaState,
     proto: &GcRef<LuaProto>,
-    writer: impl FnMut(&[u8]) -> Result<(), LuaError> + 'static,
+    writer: &mut dyn FnMut(&[u8]) -> Result<(), LuaError>,
     strip: bool,
 ) -> Result<(), LuaError> {
     // C: DumpState D; D.L = L; D.writer = w; D.data = data; D.strip = strip; D.status = 0;
     let mut d = DumpState {
-        writer: Box::new(writer),
+        writer,
         strip,
     };
 

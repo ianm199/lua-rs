@@ -1768,7 +1768,7 @@ pub fn dump(
     let o = state.get_at(top - 1);
     // C: if (isLfunction(o)) status = luaU_dump(L, getproto(o), writer, data, strip);
     if let LuaValue::Function(LuaClosure::Lua(ref lcl)) = o {
-        state.dump_proto(&lcl.proto, writer, strip)?;
+        crate::dump::dump(state, &lcl.proto, writer, strip)?;
         Ok(true)
     } else {
         Ok(false)

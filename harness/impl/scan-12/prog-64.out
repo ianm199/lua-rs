@@ -2,13 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing local variables and environments
-[err] pcall_k failed: Runtime: module 'tracegc' not found:
-	no field package.preload['tracegc']
-	no file './tracegc.lua'
-	no file './tracegc/init.lua'
-	no file '/usr/local/share/lua/5.4/tracegc.lua'
-	no file '/usr/local/share/lua/5.4/tracegc/init.lua'
-	no file './tracegc.so'
-	no file '/usr/local/lib/lua/5.4/tracegc.so'
-	no file '/usr/local/lib/lua/5.4/loadall.so'
+testing bitwise operations
++
+testing bitwise library
++
++
+OK
+[ok] execution completed, status=Ok

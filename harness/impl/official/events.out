@@ -3,8 +3,4 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing metatables
-
-thread 'main' (10797656) panicked at crates/lua-vm/src/state.rs:1862:61:
-not yet implemented: phase-b: table_getn
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b: table_getn
+[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:251: assertion failed!

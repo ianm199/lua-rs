@@ -3,6 +3,6 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 
- >>> testC not active: skipping opcode tests <<<
+ >>> testC not active: skipping API tests <<<
 
 [ok] execution completed, status=Ok
