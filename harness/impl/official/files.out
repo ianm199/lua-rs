@@ -2,9 +2,7 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-ci_lua_proto MISMATCH: ci.func=StackIdx(20), ci.is_lua=true, callstatus=0x2, value_type=Function
-
-thread 'main' (8172626) panicked at crates/lua-vm/src/debug.rs:1821:13:
-ci_lua_proto: call frame does not hold a Lua closure
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] ci_lua_proto: call frame does not hold a Lua closure
+'os.tmpname' file cannot be open; skipping file tests
++
+testing date/time
+[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:802: assertion failed!

@@ -1,0 +1,3 @@
+3 2.4134542500000005 reference/lua-c/testes/locals.lua
+4 [2026-05-18T02:41:29Z mega]   → committed af4028f (debug/reference/lua-c/testes/nextvar.lua )
+4.324071 reference/lua-c/testes/nextvar.lua

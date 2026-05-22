@@ -3,5 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 start
-iter	1	table: 0x6000003508d0	1
-[err] pcall_k failed: Runtime: invalid key to 'next'
+iter	1	table: 0x600003cbc8d0	1
+iter	2	table: 0x600003cbc920	2
+done	2
+[ok] execution completed, status=Ok

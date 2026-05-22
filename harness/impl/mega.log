@@ -695,3 +695,5 @@
 [2026-05-18T02:32:43Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)): reference/lua-c/testes/calls.lua
 [2026-05-18T02:32:43Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: 234: assertion failed!): reference/lua-c/testes/constructs.lua
 [2026-05-18T02:32:43Z mega]   [O6.D4] DEBUG dispatch on file: reference/lua-c/testes/nextvar.lua [parallel]
+[2026-05-18T02:39:03Z mega]   [O6.D5] DEBUG dispatch on file: reference/lua-c/testes/files.lua [parallel]
+[2026-05-18T02:41:29Z mega]   → committed af4028f (debug/reference/lua-c/testes/nextvar.lua )

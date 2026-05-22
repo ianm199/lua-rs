@@ -517,9 +517,17 @@ pub(crate) fn os_date(state: &mut LuaState) -> Result<usize, LuaError> {
                 pos += oplen;
                 // C: reslen = strftime(buff, SIZETIMEFMT, cc, stm);
                 // C: luaL_addsize(&b, reslen);
-                // TODO(port): call platform `strftime` with `cc` as format string
-                // and `stm` fields.  Phase A stub emits nothing for each specifier.
-                let _ = SIZE_TIME_FMT;
+                // The `%%` specifier is data-independent: strftime emits a literal
+                // `%` byte regardless of the broken-down time, so it is correct to
+                // handle here even while the rest of strftime is stubbed.
+                if oplen == 1 && cc[1] == b'%' {
+                    result.push(b'%');
+                } else {
+                    // TODO(port): call platform `strftime` with `cc` as format string
+                    // and `stm` fields.  Phase A stub emits nothing for each
+                    // non-`%%` specifier.
+                    let _ = SIZE_TIME_FMT;
+                }
             }
         }
         // C: luaL_pushresult(&b);

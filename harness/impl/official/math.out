@@ -1,9 +1,109 @@
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
+[reserve_reg] r=13 new_freereg=14 nactvar=13 line=660 pc=4113
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=660 pc=4114
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=660 pc=4115
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=660 pc=4116
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=660 pc=4116
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=660 pc=4119
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=660 pc=4120
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=660 pc=4121
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=660 pc=4122
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=660 pc=4124
+[reserve_reg] r=13 new_freereg=14 nactvar=13 line=661 pc=4128
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=661 pc=4128
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=661 pc=4130
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=661 pc=4131
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=661 pc=4132
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=661 pc=4134
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=661 pc=4135
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=661 pc=4136
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=661 pc=4138
+[reserve_reg] r=13 new_freereg=14 nactvar=13 line=662 pc=4142
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=662 pc=4142
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=662 pc=4144
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=662 pc=4145
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=662 pc=4146
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=662 pc=4147
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=662 pc=4149
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=662 pc=4149
+[reserve_reg] r=15 new_freereg=16 nactvar=13 line=662 pc=4151
+[reserve_reg] r=14 new_freereg=15 nactvar=13 line=662 pc=4153
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=667 pc=4157
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=667 pc=4158
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=667 pc=4158
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=667 pc=4160
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=667 pc=4160
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=667 pc=4161
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=668 pc=4165
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=668 pc=4166
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=668 pc=4166
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=668 pc=4168
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=668 pc=4168
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=668 pc=4169
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=668 pc=4172
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=669 pc=4174
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=669 pc=4175
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=669 pc=4175
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=669 pc=4177
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=669 pc=4177
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=669 pc=4179
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=669 pc=4179
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=669 pc=4181
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=670 pc=4184
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=670 pc=4185
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=670 pc=4185
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=670 pc=4187
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=670 pc=4187
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=670 pc=4188
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=670 pc=4190
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=671 pc=4193
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=671 pc=4194
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=671 pc=4194
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=671 pc=4196
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=671 pc=4196
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=671 pc=4198
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=671 pc=4198
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=671 pc=4200
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=671 pc=4202
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=672 pc=4204
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=672 pc=4205
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=672 pc=4205
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=672 pc=4207
+[cg_free_reg-skipped] reg=1 freereg=15 nactvar=12 line=672
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=672 pc=4207
+[cg_free_reg-skipped] reg=0 freereg=16 nactvar=12 line=672
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=672 pc=4208
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=673 pc=4212
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=673 pc=4213
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=673 pc=4213
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=673 pc=4215
+[cg_free_reg-skipped] reg=0 freereg=15 nactvar=12 line=673
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=673 pc=4215
+[cg_free_reg-skipped] reg=1 freereg=16 nactvar=12 line=673
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=673 pc=4216
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=673 pc=4219
+[reserve_reg] r=12 new_freereg=13 nactvar=12 line=676 pc=4221
+[cg_free_reg-skipped] reg=7 freereg=13 nactvar=12 line=676
+[reserve_reg] r=13 new_freereg=14 nactvar=12 line=676 pc=4221
+[reserve_reg] r=14 new_freereg=15 nactvar=12 line=676 pc=4223
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=676 pc=4223
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=676 pc=4225
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=676 pc=4225
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=676 pc=4227
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=676 pc=4228
+[reserve_reg] r=15 new_freereg=16 nactvar=12 line=676 pc=4231
+[reserve_reg] r=16 new_freereg=17 nactvar=12 line=676 pc=4232
+[reserve_reg] r=17 new_freereg=18 nactvar=12 line=676 pc=4232
+[reserve_reg] r=17 new_freereg=18 nactvar=12 line=676 pc=4234
+[reserve_reg] r=18 new_freereg=19 nactvar=12 line=676 pc=4234
+[reserve_reg] r=18 new_freereg=19 nactvar=12 line=676 pc=4236
+[reserve_reg] r=18 new_freereg=19 nactvar=12 line=676 pc=4237
+[reserve_reg] r=17 new_freereg=18 nactvar=12 line=676 pc=4240
 [cg_free_reg-bug] reg=15 freereg=17 nactvar=12 pc=4241 previousline=676
 
-thread 'main' (9833412) panicked at crates/lua-parse/src/lib.rs:635:9:
+thread 'main' (9872819) panicked at crates/lua-parse/src/lib.rs:639:9:
 assertion `left == right` failed
   left: 15
  right: 16

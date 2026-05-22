@@ -9,4 +9,5 @@ testing tables, next, and for
 +
 +
 +
-[err] pcall_k failed: Runtime: invalid key to 'next'
+testing next x GC of deleted keys
+[err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)
