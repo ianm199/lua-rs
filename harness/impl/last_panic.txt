@@ -1,1 +1,1 @@
-register_lib
+open_libs failed: Runtime: attempt to index a string value

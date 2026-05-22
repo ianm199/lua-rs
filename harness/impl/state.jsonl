@@ -203,3 +203,6 @@
 {"ts":"2026-05-16T18:56:23Z","action":"dispatch_done","detail":"type=implement func=registry_set cost=0.8443775000000001","total_cost":0.00}
 {"ts":"2026-05-16T18:56:23Z","action":"panic_detected","detail":"func=register_lib iter=15","total_cost":0.00}
 {"ts":"2026-05-16T18:56:23Z","action":"dispatch_start","detail":"type=implement func=register_lib iter=15","total_cost":0.00}
+{"ts":"2026-05-16T18:57:58Z","action":"dispatch_done","detail":"type=implement func=register_lib cost=0.71183975","total_cost":0.00}
+{"ts":"2026-05-16T18:57:58Z","action":"real_error","detail":"err=open_libs failed: Runtime: attempt to index a string value step=2/4 Opening standard library iter=16","total_cost":0.00}
+{"ts":"2026-05-16T18:57:58Z","action":"dispatch_start","detail":"type=debug err=open_libs failed: Runtime: attempt to index a string value iter=16","total_cost":0.00}
