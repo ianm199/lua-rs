@@ -315,15 +315,32 @@ pub enum LuaError {
 ```
 
 - Every internal fallible fn returns `Result<T, LuaError>`.
-- The error value is a `LuaValue` because Lua errors can be any value, not
-  just strings. Most are strings.
-- `LuaError::runtime(format_args!("..."))` is a constructor that builds the
-  string lazily (no allocation until the error is realized).
-- `LuaError::type_error(value, "op")` builds the standard "attempt to <op> a
-  <type> value" message.
-- Never use `anyhow`, `thiserror::Error` derive with `String` payloads for
-  Lua errors, or `Box<dyn Error>`. Lua errors must be a `LuaValue` payload to
-  round-trip through `pcall` correctly.
+- The error value is a `LuaValue` because Lua errors can be any value, not just strings. Most are strings.
+- Never use `anyhow`, `thiserror::Error` derive with `String` payloads, or `Box<dyn Error>` for Lua errors. Lua errors must be a `LuaValue` payload to round-trip through `pcall`.
+
+### 6.1 Canonical `LuaError` constructors
+
+These are the only constructors the Translator should emit. Each builds the standard C-Lua error message verbatim so test snapshots match. See `ANALYSES/error_sites.tsv` for the full call-site mapping. All take `format_args!`-style lazy arguments where applicable — no allocation until the error is realized.
+
+| Constructor | Message shape | Used at |
+|---|---|---|
+| `LuaError::runtime(args)` | `Runtime(LuaValue::String(...))` | generic `luaG_runerror` |
+| `LuaError::syntax(args)` | `Syntax(LuaValue::String(...))` | parser errors |
+| `LuaError::syntax_at(args, source, line)` | parser error with explicit location | `luaX_syntaxerror` / `luaX_lexerror` |
+| `LuaError::type_error(v, op)` | `"attempt to <op> a <type> value"` | `luaG_typeerror` |
+| `LuaError::call_error(v)` | `"attempt to call a <type> value"` | `luaG_callerror` |
+| `LuaError::concat_error(p1, p2)` | `"attempt to concatenate a <type> value"` | `luaG_concaterror` |
+| `LuaError::arith_error(p1, p2, msg)` | `"attempt to perform arithmetic on a <type> value"` | `luaG_opinterror` |
+| `LuaError::int_overflow(p1, p2)` | `"number has no integer representation"` | `luaG_tointerror` |
+| `LuaError::order_error(p1, p2)` | `"attempt to compare two <t> values"` / `"compare <t1> with <t2>"` | `luaG_ordererror` |
+| `LuaError::for_error(v, what)` | `"bad 'for' <what> (number expected, got <type>)"` | `luaG_forerror` |
+| `LuaError::arg_error(narg, msg)` | `"bad argument #N to '<fname>' (<msg>)"` | `luaL_argerror`, `luaL_argcheck` |
+| `LuaError::type_arg_error(narg, expected, got)` | `"<expected> expected, got <type>"` | `luaL_typeerror`, `luaL_check*` |
+| `LuaError::from_value(v)` | `Runtime(v)` — caller-supplied value | `lua_error`; special-case "not enough memory" → `Memory` |
+| `LuaError::from_top(state)` | `Runtime(state.pop())` | `luaG_errormsg` |
+| `LuaError::with_status(status)` | variant chosen by status code | direct `luaD_throw` ports |
+
+These constructors live in `crates/lua-types/src/error.rs` (currently a stub — they land as Phase A's first deliberate write to that crate). All accept `format_args!` so they're zero-alloc on the happy path.
 
 ## 7. Naming and module layout
 

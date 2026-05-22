@@ -1,34 +1,571 @@
-# macros.tsv — every public macro in lobject.h/lstate.h/llimits.h → Rust equivalent
+# macros.tsv — every public macro in Lua headers → Rust equivalent
 # Columns: macro	source_header	rust_form	notes
-# STATUS: STUB. Real content built before Phase A.
-ttisnil	lobject.h	matches!(o, LuaValue::Nil)	predicate
-ttisnumber	lobject.h	matches!(o, LuaValue::Int(_) | LuaValue::Float(_))	predicate
-ttisinteger	lobject.h	matches!(o, LuaValue::Int(_))	predicate
-ttisfloat	lobject.h	matches!(o, LuaValue::Float(_))	predicate
-ttisstring	lobject.h	matches!(o, LuaValue::Str(_))	predicate
-ttistable	lobject.h	matches!(o, LuaValue::Table(_))	predicate
-ttisfunction	lobject.h	matches!(o, LuaValue::Function(_))	predicate
-ivalue	lobject.h	o.as_int().expect("not int")	accessor; prefer if-let
-fltvalue	lobject.h	o.as_float().expect("not float")	accessor
+# Conventions: o = TValue, t = Table, ts = TString, ci = CallInfo, L = lua_State, g = global_State, n = Node.
+# Translate call-site form, not the macro body. Types follow PORTING.md §3 (LuaValue/LuaState/etc.).
+#
+# --- Visibility markers ---
+LUA_API	luaconf.h	pub	C-side `extern` for the public API; emit `pub` at the Rust declaration site
+LUALIB_API	luaconf.h	pub	auxiliary-library visibility; identical to `pub` in Rust
+LUAMOD_API	luaconf.h	pub	stdlib module entry-point visibility; emit `pub` at decl site
+LUAI_FUNC	luaconf.h	pub(crate)	internal-but-cross-file in C; in Rust crate-private suffices
+LUAI_DDEC	luaconf.h	pub(crate) static	used for declarations of global tables (e.g. `luaP_opmodes`); emit `pub(crate) static`
+LUAI_DDEF	luaconf.h		empty in C build; drop entirely — Rust uses the definition site directly
+LUAI_MAXSTACK	luaconf.h	const LUAI_MAXSTACK: i32 = 1_000_000	stack hard limit; emit as `const` in `lua_vm`
+LUAI_MAXALIGN	luaconf.h		alignment hack for `Udata`/`UValue`; drop — Rust handles alignment via `#[repr(C)]`+fields
+l_noret	llimits.h	-> !	noreturn fns; Rust returns `Result<...>`-with-`Err` everywhere, so usually becomes a plain return type. Only `l_noret` fns that genuinely diverge use `!`
+l_inline	llimits.h	#[inline]	attribute, not visibility; place above the fn
+l_sinline	llimits.h	#[inline] fn	`static inline` collapses to a module-private `#[inline] fn`
+#
+# --- Tags & variants ---
+LUA_TNONE	lua.h	LuaType::None	sentinel for "no value at this stack index"; only meaningful in stack-query helpers
+LUA_TNIL	lua.h	LuaType::Nil	use `LuaType` enum, not raw ints
+LUA_TBOOLEAN	lua.h	LuaType::Boolean	"
+LUA_TLIGHTUSERDATA	lua.h	LuaType::LightUserData	"
+LUA_TNUMBER	lua.h	LuaType::Number	covers both Int and Float variants
+LUA_TSTRING	lua.h	LuaType::String	covers shrstr + lngstr
+LUA_TTABLE	lua.h	LuaType::Table	"
+LUA_TFUNCTION	lua.h	LuaType::Function	covers Lclosure / Cclosure / lcf
+LUA_TUSERDATA	lua.h	LuaType::UserData	"
+LUA_TTHREAD	lua.h	LuaType::Thread	"
+LUA_NUMTYPES	lua.h	const LUA_NUMTYPES: usize = 9	number of base types; used to size metatable arrays
+LUA_TUPVAL	lobject.h	LuaType::UpVal	internal-only collectable type
+LUA_TPROTO	lobject.h	LuaType::Proto	internal-only collectable type
+LUA_TDEADKEY	lobject.h	LuaType::DeadKey	tombstone for removed table keys; surfaces via `keyisdead`
+LUA_TOTALTYPES	lobject.h	const LUA_TOTALTYPES: usize = LUA_TPROTO as usize + 2	used to size `luaT_typenames_`
+LUA_VNIL	lobject.h	LuaValue::Nil	"standard" nil; the only nil variant we materialize in Rust
+LUA_VEMPTY	lobject.h	TableSlot::Empty	C-only sentinel for empty hash slots; in Rust the table API returns `Option<LuaValue>`
+LUA_VABSTKEY	lobject.h	TableSlot::AbsentKey	C-only sentinel; in Rust table-get returns `Option` and we never expose this externally
+LUA_VFALSE	lobject.h	LuaValue::Bool(false)	-
+LUA_VTRUE	lobject.h	LuaValue::Bool(true)	-
+LUA_VNUMINT	lobject.h	LuaValue::Int(_)	integer variant of LUA_TNUMBER
+LUA_VNUMFLT	lobject.h	LuaValue::Float(_)	float variant of LUA_TNUMBER
+LUA_VSHRSTR	lobject.h	LuaString::Short	short interned string (≤MAXSHORTLEN)
+LUA_VLNGSTR	lobject.h	LuaString::Long	long string (heap-allocated, never interned)
+LUA_VLIGHTUSERDATA	lobject.h	LuaValue::LightUserData(_)	"
+LUA_VUSERDATA	lobject.h	LuaValue::UserData(_)	"
+LUA_VTHREAD	lobject.h	LuaValue::Thread(_)	"
+LUA_VTABLE	lobject.h	LuaValue::Table(_)	"
+LUA_VPROTO	lobject.h	LuaProto	prototypes aren't a LuaValue variant; just the GcRef<LuaProto> type
+LUA_VUPVAL	lobject.h	UpVal	upvalues aren't a LuaValue variant either
+LUA_VLCL	lobject.h	LuaClosure::Lua(_)	Lua closure variant
+LUA_VLCF	lobject.h	LuaClosure::LightC(_)	light C function (no upvalues)
+LUA_VCCL	lobject.h	LuaClosure::C(_)	C closure (with upvalues)
+makevariant	lobject.h		bit-packing for the C tag byte; gone — variants are enum cases in Rust
+novariant	lobject.h	o.base_type()	returns `LuaType` (the base 0..8 type)
+withvariant	lobject.h	o.full_type_tag()	returns full tag+variant; rarely needed in Rust
+rawtt	lobject.h	o.tag_byte()	internal byte representation; almost never needed in Rust port
+ttype	lobject.h	o.base_type()	same as novariant on a TValue
+ttypetag	lobject.h	o.full_type_tag()	same as withvariant on a TValue
+settt_	lobject.h		C tag-byte setter; in Rust the variant assignment carries the tag
+val_	lobject.h		C union accessor; in Rust the enum payload replaces this — drop
+valraw	lobject.h		alias for val_; drop
+BIT_ISCOLLECTABLE	lobject.h	const COLLECTABLE_BIT: u8 = 1 << 6	used in `iscollectable` etc.; only needed by the tag-decoding helper
+ctb	lobject.h		"collectable tag bit"; for combining variant + collectable flag — drop; enum carries this
+ABSTKEYCONSTANT	lobject.h		C-only initializer pattern for absent-key sentinel; drop
+TValuefields	lobject.h		C field-injection macro for embedding TValue into structs; not applicable in Rust
+ClosureHeader	lobject.h		C struct-prefix macro for closures; in Rust closures are separate structs with shared `CommonHeader` via enum
+CommonHeader	lobject.h		C struct-prefix macro for GC objects; in Rust each GC struct names its own fields
+#
+# --- Value predicates ---
+ttisnil	lobject.h	matches!(o, LuaValue::Nil)	covers both VNIL and VEMPTY in C; in Rust only Nil exists
+ttisstrictnil	lobject.h	matches!(o, LuaValue::Nil)	C distinguishes VNIL from VEMPTY; Rust never materializes VEMPTY so these collapse
+isabstkey	lobject.h	false	we never expose abstkey to user code; assertion-only in C
+isnonstrictnil	lobject.h	false	assertion-only in C; always false in Rust
+isempty	lobject.h	v.is_nil()	for table-slot checks; in Rust table API returns `Option`
+ttisboolean	lobject.h	matches!(o, LuaValue::Bool(_))	-
+ttisfalse	lobject.h	matches!(o, LuaValue::Bool(false))	-
+ttistrue	lobject.h	matches!(o, LuaValue::Bool(true))	-
+l_isfalse	lobject.h	matches!(o, LuaValue::Nil | LuaValue::Bool(false))	Lua truthiness: only `nil` and `false` are falsy
+ttisnumber	lobject.h	matches!(o, LuaValue::Int(_) | LuaValue::Float(_))	either int or float
+ttisinteger	lobject.h	matches!(o, LuaValue::Int(_))	-
+ttisfloat	lobject.h	matches!(o, LuaValue::Float(_))	-
+ttisstring	lobject.h	matches!(o, LuaValue::Str(_))	any string (short or long)
+ttisshrstring	lobject.h	o.as_string().map_or(false, LuaString::is_short)	short-string predicate
+ttislngstring	lobject.h	o.as_string().map_or(false, LuaString::is_long)	long-string predicate
+ttistable	lobject.h	matches!(o, LuaValue::Table(_))	-
+ttisfunction	lobject.h	matches!(o, LuaValue::Function(_))	any callable (Lclosure / lcf / Cclosure)
+ttisclosure	lobject.h	matches!(o, LuaValue::Function(LuaClosure::Lua(_) | LuaClosure::C(_)))	heavy closure (has upvalues)
+ttisLclosure	lobject.h	matches!(o, LuaValue::Function(LuaClosure::Lua(_)))	-
+ttisCclosure	lobject.h	matches!(o, LuaValue::Function(LuaClosure::C(_)))	-
+ttislcf	lobject.h	matches!(o, LuaValue::Function(LuaClosure::LightC(_)))	light C function (bare fn pointer, no upvalues)
+isLfunction	lobject.h	matches!(o, LuaValue::Function(LuaClosure::Lua(_)))	alias of ttisLclosure
+ttislightuserdata	lobject.h	matches!(o, LuaValue::LightUserData(_))	-
+ttisfulluserdata	lobject.h	matches!(o, LuaValue::UserData(_))	-
+ttisthread	lobject.h	matches!(o, LuaValue::Thread(_))	-
+iscollectable	lobject.h	o.is_collectable()	true for Str/Table/Function(closure variants)/UserData/Thread; method on LuaValue
+keyiscollectable	lobject.h	n.key_is_collectable()	predicate on a hash Node's key
+righttt	lobject.h	debug_assert!(...)	internal GC consistency check; collapse into existing assertions
+checkliveness	lobject.h	debug_assert!(o.is_live(state))	GC liveness assert; no-op in Phase A-C
+#
+# --- Value accessors ---
+ivalue	lobject.h	o.as_int().expect("not int")	prefer `if let LuaValue::Int(i) = o`
+fltvalue	lobject.h	o.as_float().expect("not float")	prefer `if let LuaValue::Float(f) = o`
+nvalue	lobject.h	o.to_number()	returns f64; converts Int variant to float
+ivalueraw	lobject.h	v.i	C-union accessor; in Rust use enum match
+fltvalueraw	lobject.h	v.n	"
+fvalueraw	lobject.h	v.f	"
+pvalueraw	lobject.h	v.p	"
+tsvalueraw	lobject.h	v.gc.cast::<TString>()	C-union accessor; drop in Rust
+gcvalueraw	lobject.h	v.gc	C-union accessor; drop in Rust
 tsvalue	lobject.h	o.as_string().expect("not string")	returns &GcRef<LuaString>
 hvalue	lobject.h	o.as_table().expect("not table")	returns &GcRef<LuaTable>
-setnilvalue	lobject.h	*o = LuaValue::Nil	setter
-setivalue	lobject.h	*o = LuaValue::Int(x)	setter
-setbtvalue	lobject.h	*o = LuaValue::Bool(true)	setter
-setbfvalue	lobject.h	*o = LuaValue::Bool(false)	setter
-lmod	lobject.h	((s) & ((size) - 1)) as usize	power-of-two assumed; invariant comment required
-twoto	lobject.h	(1u32 << (x))	power-of-two
-sizenode	lobject.h	(1u32 << t.lsizenode())	hash table size
-G	lstate.h	state.global()	&GlobalState accessor
-gettotalbytes	lstate.h	g.total_bytes()	gc accounting
-cast	llimits.h	(x) as T	cast macro
-cast_byte	llimits.h	(x) as u8	cast macro
-cast_int	llimits.h	(x) as i32	cast macro
-cast_uint	llimits.h	(x) as u32	cast macro
-cast_num	llimits.h	(x) as f64	cast macro
-check_exp	llimits.h	(x)	debug-assert side; drop in release
-api_check	llimits.h	debug_assert!	api precondition
-lua_assert	llimits.h	debug_assert!	internal assertion
-lua_longassert	llimits.h	debug_assert!	expensive assertion
-LUAI_FUNC	llimits.h	pub(crate)	visibility marker (translate at decl site)
-LUA_API	lua.h	pub	visibility marker
+uvalue	lobject.h	o.as_userdata().expect("not userdata")	returns &GcRef<LuaUserData>
+pvalue	lobject.h	o.as_light_userdata().expect("not lightuserdata")	returns *mut c_void
+thvalue	lobject.h	o.as_thread().expect("not thread")	returns &GcRef<LuaState>
+clvalue	lobject.h	o.as_closure().expect("not closure")	returns &GcRef<LuaClosure>
+clLvalue	lobject.h	o.as_lua_closure().expect("not L-closure")	returns &GcRef<LuaClosure::Lua>
+clCvalue	lobject.h	o.as_c_closure().expect("not C-closure")	returns &GcRef<LuaClosure::C>
+fvalue	lobject.h	o.as_lcf().expect("not lcf")	returns lua_CFunction (fn pointer)
+gcvalue	lobject.h	o.as_gc().expect("not collectable")	returns &GcRef<dyn Collectable>
+getproto	lobject.h	clLvalue(o).proto()	returns &GcRef<LuaProto> from an L-closure
+#
+# --- Value setters ---
+setnilvalue	lobject.h	*o = LuaValue::Nil	-
+setempty	lobject.h	*o = LuaValue::Nil	C marks slot as VEMPTY; Rust uses Nil and table API distinguishes via `Option`
+setbfvalue	lobject.h	*o = LuaValue::Bool(false)	-
+setbtvalue	lobject.h	*o = LuaValue::Bool(true)	-
+setivalue	lobject.h	*o = LuaValue::Int(x)	-
+setfltvalue	lobject.h	*o = LuaValue::Float(x)	-
+chgivalue	lobject.h	*o = LuaValue::Int(x)	"change-only" variant; C asserts existing variant. In Rust just reassign.
+chgfltvalue	lobject.h	*o = LuaValue::Float(x)	"
+setsvalue	lobject.h	*o = LuaValue::Str(x.clone())	x: GcRef<LuaString>
+sethvalue	lobject.h	*o = LuaValue::Table(x.clone())	x: GcRef<LuaTable>
+setuvalue	lobject.h	*o = LuaValue::UserData(x.clone())	x: GcRef<LuaUserData>
+setpvalue	lobject.h	*o = LuaValue::LightUserData(x)	x: *mut c_void
+setthvalue	lobject.h	*o = LuaValue::Thread(x.clone())	x: GcRef<LuaState>
+setclLvalue	lobject.h	*o = LuaValue::Function(LuaClosure::Lua(x.clone()))	x: GcRef of L-closure
+setclCvalue	lobject.h	*o = LuaValue::Function(LuaClosure::C(x.clone()))	x: GcRef of C-closure
+setfvalue	lobject.h	*o = LuaValue::Function(LuaClosure::LightC(x))	x: lua_CFunction (fn pointer)
+setgcovalue	lstate.h	*o = (&x).to_lua_value()	C dispatches on GCObject->tt; in Rust the conversion is by variant
+setobj	lobject.h	*obj1 = obj2.clone()	plain TValue copy; LuaValue: Clone is cheap (refcount bump for GC variants)
+setnodekey	lobject.h	n.set_key(state, obj)	copies a TValue into a Node's key fields
+getnodekey	lobject.h	*obj = n.key_value()	copies a Node's key out as a TValue
+#
+# --- Stack value setters ---
+s2v	lobject.h	state.stack_at(idx)	convert StackValue -> &TValue; in Rust the stack holds LuaValue directly
+setobjs2s	lobject.h	state.set_at(o1, state.get_at(o2).clone())	stack-to-stack copy; clone first to avoid borrow conflict
+setobj2s	lobject.h	state.set_at(o1, v.clone())	external-value-to-stack copy
+setobj2n	lobject.h	*dst = src.clone()	alias of setobj; "to new object"
+setobj2t	lobject.h	t.set(state, k, v.clone())?	value-to-table; goes through Table::set
+setobjt2t	lobject.h	*dst = src.clone()	alias of setobj; same-table copy
+setsvalue2s	lobject.h	state.set_at(o, LuaValue::Str(s.clone()))	-
+sethvalue2s	lobject.h	state.set_at(o, LuaValue::Table(t.clone()))	-
+setclLvalue2s	lobject.h	state.set_at(o, LuaValue::Function(LuaClosure::Lua(cl.clone())))	-
+setthvalue2s	lobject.h	state.set_at(o, LuaValue::Thread(th.clone()))	-
+setsvalue2n	lobject.h	*dst = LuaValue::Str(s.clone())	alias of setsvalue; "to new object"
+#
+# --- GC macros ---
+G	lstate.h	state.global()	&GlobalState accessor; on &mut LuaState use `state.global_mut()`
+gettotalbytes	lstate.h	g.total_bytes()	method on GlobalState; returns u64/usize
+completestate	lstate.h	g.is_complete()	flagged via `g.nilvalue` in C; in Rust use a bool field
+gco2ts	lstate.h	gc.cast_string()	C union downcast; in Rust the GcRef knows its type — drop
+gco2u	lstate.h	gc.cast_userdata()	"
+gco2lcl	lstate.h	gc.cast_lua_closure()	"
+gco2ccl	lstate.h	gc.cast_c_closure()	"
+gco2cl	lstate.h	gc.cast_closure()	"
+gco2t	lstate.h	gc.cast_table()	"
+gco2p	lstate.h	gc.cast_proto()	"
+gco2th	lstate.h	gc.cast_thread()	"
+gco2upv	lstate.h	gc.cast_upval()	"
+obj2gco	lstate.h	(&x).as_gc_ref()	upcast specific GC type to GcRef<dyn Collectable>
+cast_u	lstate.h		C-only union downcast (`GCUnion *`); drop entirely
+luaC_objbarrier	lgc.h	state.gc().obj_barrier(p, o)	GC write barrier; no-op in Phases A-C
+luaC_barrier	lgc.h	state.gc().barrier(p, v)	GC barrier for a TValue; no-op in Phases A-C
+luaC_objbarrierback	lgc.h	state.gc().obj_barrier_back(p, o)	backward barrier; no-op in Phases A-C
+luaC_barrierback	lgc.h	state.gc().barrier_back(p, v)	backward barrier; no-op in Phases A-C
+luaC_condGC	lgc.h	state.gc().cond_step()	conditional GC step; no-op in Phases A-C
+luaC_checkGC	lgc.h	state.gc().check_step()	conditional GC step; no-op in Phases A-C
+luaC_white	lgc.h	g.current_white()	returns the "white" color bits; only meaningful in Phase D
+isdead	lgc.h	g.is_dead(obj)	GC liveness predicate; only meaningful in Phase D
+isdeadm	lgc.h	((m) & (ow)) != 0	masked liveness predicate
+isblack	lgc.h	obj.is_black()	GC color predicate; only meaningful in Phase D
+iswhite	lgc.h	obj.is_white()	"
+isgray	lgc.h	obj.is_gray()	"
+tofinalize	lgc.h	obj.is_finalized()	GC finalizer flag; only meaningful in Phase D
+otherwhite	lgc.h	g.other_white()	other-color bits for GC sweep
+changewhite	lgc.h	obj.flip_white()	GC color flip; only meaningful in Phase D
+nw2black	lgc.h	obj.set_black()	GC color set; only meaningful in Phase D
+gcrunning	lgc.h	g.gc_running()	-
+keepinvariant	lgc.h	g.keep_invariant()	GC propagate-phase predicate
+issweepphase	lgc.h	g.is_sweep_phase()	-
+isold	lgc.h	obj.is_old()	generational-mode age predicate
+isdecGCmodegen	lgc.h	g.is_gen_mode()	-
+resetbits	lgc.h	x &= !(m)	bit op
+setbits	lgc.h	x |= m	bit op
+testbits	lgc.h	(x & m) != 0	bit op
+bitmask	lgc.h	(1u32 << b)	bit op
+bit2mask	lgc.h	(1u32 << b1) | (1u32 << b2)	bit op
+l_setbit	lgc.h	x |= 1 << b	bit op
+resetbit	lgc.h	x &= !(1 << b)	bit op
+testbit	lgc.h	(x & (1 << b)) != 0	bit op
+getage	lgc.h	obj.age()	GC generational-age accessor
+setage	lgc.h	obj.set_age(a)	GC generational-age setter
+changeage	lgc.h	obj.change_age(from, to)	GC generational-age transition (debug-asserts source age)
+getgcparam	lgc.h	(p as u32) * 4	GC param stored /4 for byte fit
+setgcparam	lgc.h	p = v / 4	"
+#
+# --- String macros ---
+getstr	lobject.h	ts.as_bytes()	returns &[u8]
+getlngstr	lobject.h	ts.as_bytes()	long-string accessor; in Rust short/long unified at &[u8] level
+getshrstr	lobject.h	ts.as_bytes()	short-string accessor; same interface
+tsslen	lobject.h	ts.len()	returns usize
+sizelstring	lstring.h		C allocation-size helper; drop — Rust allocates via `Box<[u8]>` / `Rc<[u8]>`
+luaS_newliteral	lstring.h	state.intern_str(b"...")	wraps `luaS_newlstr` for string literals
+isreserved	lstring.h	ts.is_reserved_word()	short-string-only predicate
+eqshrstr	lstring.h	Rc::ptr_eq(a, b)	short strings are interned; pointer equality
+MEMERRMSG	lstring.h	const MEMERR_MSG: &[u8] = b"not enough memory"	preallocated OOM message
+LL	llimits.h	literal.len()	`LL(x)` in C is `sizeof(x)-1` for string literals; in Rust use `.len()` on a `&[u8]`
+LUAI_MAXSHORTLEN	llimits.h	const MAX_SHORT_LEN: usize = 40	short-string cutoff
+MINSTRTABSIZE	llimits.h	const MIN_STR_TAB_SIZE: usize = 128	-
+STRCACHE_N	llimits.h	const STRCACHE_N: usize = 53	api-string cache buckets
+STRCACHE_M	llimits.h	const STRCACHE_M: usize = 2	api-string cache slots per bucket
+LUA_MINBUFFER	llimits.h	const LUA_MIN_BUFFER: usize = 32	auxlib buffer min size
+#
+# --- Table macros ---
+lmod	lobject.h	(s & (size - 1)) as usize	power-of-two modulo; document the invariant `size.is_power_of_two()`
+twoto	lobject.h	1u32 << x	-
+sizenode	lobject.h	1u32 << t.lsizenode()	hash-table size from log2
+allocsizenode	ltable.h	if t.is_dummy() { 0 } else { 1u32 << t.lsizenode() }	-
+isdummy	ltable.h	t.is_dummy()	true when t has no allocated hash part
+gnode	ltable.h	&t.node[i]	hash-bucket accessor
+gval	ltable.h	&n.value	value side of a Node
+gnext	ltable.h	n.next	collision-chain index (i32 in C; isize in Rust)
+nodefromval	ltable.h		C pointer arithmetic to recover Node from its value field; not applicable in Rust
+invalidateTMcache	ltable.h	t.invalidate_tm_cache()	clears the fast-access tagmethod bits
+keytt	lobject.h	n.key_type_tag()	-
+keyval	lobject.h	n.key_raw()	C-union accessor; in Rust returns the key payload
+keyisnil	lobject.h	n.key_is_nil()	-
+keyisinteger	lobject.h	n.key_is_int()	-
+keyival	lobject.h	n.key_int()	-> i64
+keyisshrstr	lobject.h	n.key_is_short_string()	-
+keystrval	lobject.h	n.key_string()	-> &GcRef<LuaString>
+setnilkey	lobject.h	n.set_key_nil()	mark key slot empty
+setdeadkey	lobject.h	n.set_key_dead()	tombstone for removed keys (preserves gcvalue for traversal)
+keyisdead	lobject.h	n.key_is_dead()	-
+gckey	lobject.h	n.key_gc()	GC pointer of a Node's key
+gckeyN	lobject.h	n.key_gc_opt()	None if key is non-collectable
+BITRAS	lobject.h	const BIT_RAS: u8 = 1 << 7	"realasize" flag bit in Table.flags
+isrealasize	lobject.h	t.is_real_asize()	-
+setrealasize	lobject.h	t.set_real_asize()	clears BITRAS
+setnorealasize	lobject.h	t.set_no_real_asize()	sets BITRAS
+maskflags	ltm.h	const MASK_FLAGS: u8 = (1 << (TM_EQ as u32 + 1)) - 1	mask covering fast-access TM bits in Table.flags
+#
+# --- Tag-method (metatable) macros ---
+notm	ltm.h	tm.is_nil()	"no tagmethod" predicate
+gfasttm	ltm.h	g.fast_tm(et, e)	fast-path TM lookup using flags bitmap
+fasttm	ltm.h	state.fast_tm(et, e)	wraps gfasttm with G(L)
+ttypename	ltm.h	type_name(t)	returns &'static [u8] for a LuaType
+#
+# --- CallInfo / state macros ---
+isLua	lstate.h	ci.is_lua()	true if active function is a Lua function (not C)
+isLuacode	lstate.h	ci.is_lua_code()	true if running Lua bytecode (not a hook)
+setoah	lstate.h	ci.set_oah(v)	stores original-allowhook flag in callstatus bit 0
+getoah	lstate.h	ci.get_oah()	reads original-allowhook flag from callstatus
+yieldable	lstate.h	state.is_yieldable()	-
+getCcalls	lstate.h	state.c_calls()	lower 16 bits of nCcalls
+incnny	lstate.h	state.inc_nny()	increment non-yieldable count
+decnny	lstate.h	state.dec_nny()	decrement non-yieldable count
+nyci	lstate.h	const NYCI: u32 = 0x10001	non-yieldable call increment composite constant
+getcistrecst	lstate.h	ci.recover_status()	reads RECST field from callstatus (3 bits)
+setcistrecst	lstate.h	ci.set_recover_status(st)	writes RECST field (debug-asserts fits in 3 bits)
+ci_func	ldebug.h	ci.lua_closure()	&GcRef<LuaClosure::Lua> for the active Lua frame
+resethookcount	ldebug.h	state.reset_hook_count()	`L->hookcount = L->basehookcount`
+pcRel	ldebug.h	(pc - proto.code_base()) as i32 - 1	pc-relative offset into the bytecode array
+ABSLINEINFO	ldebug.h	const ABS_LINE_INFO: i8 = -0x80	sentinel byte in lineinfo array
+MAXIWTHABS	ldebug.h	const MAX_IWTH_ABS: i32 = 128	maximum instructions without absolute line info
+EXTRA_STACK	lstate.h	const EXTRA_STACK: u32 = 5	stack-overflow slack
+BASIC_STACK_SIZE	lstate.h	const BASIC_STACK_SIZE: u32 = 2 * LUA_MINSTACK	default per-thread stack
+stacksize	lstate.h	state.stack_size()	current stack capacity
+KGC_INC	lstate.h	GcKind::Incremental	-
+KGC_GEN	lstate.h	GcKind::Generational	-
+CIST_OAH	lstate.h	const CIST_OAH: u16 = 1 << 0	bit in callstatus: original allowhook
+CIST_C	lstate.h	const CIST_C: u16 = 1 << 1	bit: call is a C function
+CIST_FRESH	lstate.h	const CIST_FRESH: u16 = 1 << 2	bit: fresh luaV_execute frame
+CIST_HOOKED	lstate.h	const CIST_HOOKED: u16 = 1 << 3	bit: running a debug hook
+CIST_YPCALL	lstate.h	const CIST_YPCALL: u16 = 1 << 4	bit: yieldable protected call
+CIST_TAIL	lstate.h	const CIST_TAIL: u16 = 1 << 5	bit: tail-called
+CIST_HOOKYIELD	lstate.h	const CIST_HOOKYIELD: u16 = 1 << 6	bit: last hook yielded
+CIST_FIN	lstate.h	const CIST_FIN: u16 = 1 << 7	bit: called a finalizer
+CIST_TRAN	lstate.h	const CIST_TRAN: u16 = 1 << 8	bit: has transfer info
+CIST_CLSRET	lstate.h	const CIST_CLSRET: u16 = 1 << 9	bit: closing tbc vars
+CIST_RECST	lstate.h	const CIST_RECST: u32 = 10	bit offset for RECST field
+#
+# --- ldo / call-stack macros ---
+luaD_checkstack	ldo.h	state.check_stack(n)?	may grow the stack; returns Result
+luaD_checkstackaux	ldo.h	state.check_stack(n)?	C variant takes pre/pos to save pointers; in Rust StackIdx is stable across grows
+checkstackp	ldo.h	state.check_stack(n)?	C variant preserving a pointer; in Rust use StackIdx which survives reallocation
+checkstackGCp	ldo.h	{ state.check_stack(n)?; state.gc().check_step(); }	preserve-and-GC; same point as above
+checkstackGC	ldo.h	{ state.check_stack(fsize)?; state.gc().check_step(); }	-
+savestack	ldo.h	idx	C saves a pointer as a byte-offset across realloc; in Rust StackIdx is already that
+restorestack	ldo.h	idx	C restores a pointer from a byte-offset; in Rust StackIdx is already that
+hastocloseCfunc	lapi.h	n < LUA_MULTRET	predicate for the nresults encoding
+codeNresults	lapi.h	-(n) - 3	encode nresults for to-be-closed presence
+decodeNresults	lapi.h	-(n) - 3	decode nresults
+adjustresults	lapi.h	state.adjust_results(nres)	expand ci.top if needed
+#
+# --- API check macros ---
+api_check	llimits.h	debug_assert!(x, "msg")	api precondition
+api_checknelems	lapi.h	debug_assert!(n < (state.top_idx() - state.ci_func_idx()), "not enough elements")	stack-depth check
+api_incr_top	lapi.h		C bumps `L->top.p++`; in Rust `state.push(v)` already increments — drop
+luai_apicheck	luaconf.h	debug_assert!(e)	low-level api check
+#
+# --- Assertion macros ---
+lua_assert	llimits.h	debug_assert!(x)	internal assertion
+lua_longassert	llimits.h	debug_assert!(x)	expensive assertion; same as lua_assert in Rust
+check_exp	llimits.h	{ debug_assert!(c); e }	"asserted expression" — assert side-effect-free, then eval e
+LUAI_ASSERT	luaconf.h		C-side feature toggle; in Rust use `#[cfg(debug_assertions)]` directly
+luai_apicheck	luaconf.h	debug_assert!(e)	-
+#
+# --- Cast macros ---
+cast	llimits.h	(x) as T	general cast — use the actual target type, not literal `T`
+cast_void	llimits.h	let _ = x;	discards value; matches C `(void)x` idiom
+cast_voidp	llimits.h	x as *mut c_void	raw-ptr cast; only inside `lua-gc`/`lua-coro`
+cast_num	llimits.h	x as f64	-
+cast_int	llimits.h	x as i32	use `i32::try_from(x).expect(...)` for narrowing if x is unsigned and width-uncertain
+cast_uint	llimits.h	x as u32	-
+cast_byte	llimits.h	x as u8	-
+cast_uchar	llimits.h	x as u8	-
+cast_char	llimits.h	x as i8	C `char` is signed by default on common platforms; lua treats data as bytes
+cast_charp	llimits.h	x.as_ptr() as *mut c_char	raw-ptr cast; only inside `lua-gc`/`lua-coro`
+cast_sizet	llimits.h	x as usize	-
+l_castS2U	llimits.h	x as u64	signed lua_Integer -> unsigned
+l_castU2S	llimits.h	x as i64	unsigned -> signed lua_Integer
+point2uint	llimits.h	(p as usize as u32)	pointer-to-u32 for hashing; only inside `lua-gc`/`lua-coro`
+#
+# --- Concurrency / thread markers ---
+lua_lock	llimits.h		no-op in default build; drop the call entirely
+lua_unlock	llimits.h		no-op in default build; drop the call entirely
+luai_threadyield	llimits.h		no-op in default build; drop entirely
+luai_userstateopen	llimits.h		extension hook (no-op default); drop
+luai_userstateclose	llimits.h		extension hook (no-op default); drop
+luai_userstatethread	llimits.h		extension hook (no-op default); drop
+luai_userstatefree	llimits.h		extension hook (no-op default); drop
+luai_userstateresume	llimits.h		extension hook (no-op default); drop
+luai_userstateyield	llimits.h		extension hook (no-op default); drop
+#
+# --- Numeric primitive macros ---
+luai_numadd	llimits.h	a + b	float add
+luai_numsub	llimits.h	a - b	float sub
+luai_nummul	llimits.h	a * b	float mul
+luai_numdiv	llimits.h	a / b	float div
+luai_numidiv	llimits.h	(a / b).floor()	floor-division on floats
+luai_nummod	llimits.h	state.float_mod(a, b)	`fmod`-based mod with sign correction; non-trivial — make a helper
+luai_numpow	llimits.h	if b == 2.0 { a * a } else { a.powf(b) }	-
+luai_numunm	llimits.h	-a	-
+luai_numeq	llimits.h	a == b	float eq (NaN-aware: false for NaN)
+luai_numlt	llimits.h	a < b	-
+luai_numle	llimits.h	a <= b	-
+luai_numgt	llimits.h	a > b	-
+luai_numge	llimits.h	a >= b	-
+luai_numisnan	llimits.h	a.is_nan()	-
+intop	lvm.h	(v1 as u64).wrapping_op(v2 as u64) as i64	wrapping integer op; `op` is the operator token in C
+#
+# --- Conversion macros (lvm.h) ---
+cvt2str	lvm.h	matches!(o, LuaValue::Int(_) | LuaValue::Float(_))	"convert to string" predicate; only numbers
+cvt2num	lvm.h	matches!(o, LuaValue::Str(_))	"convert to number" predicate; only strings
+tonumber	lvm.h	o.to_number_with_strconv().ok()	with string coercion; returns Option<f64>
+tonumberns	lvm.h	o.to_number_no_strconv().ok()	no string coercion
+tointeger	lvm.h	o.to_integer_with_strconv(F2Imod::Eq).ok()	with string coercion; returns Option<i64>
+tointegerns	lvm.h	o.to_integer_no_strconv(F2Imod::Eq).ok()	-
+luaV_fastget	lvm.h	state.fast_get(t, k, raw_get)	fast-path table get; returns `Option<LuaValue>` (None means metamethod check needed)
+luaV_fastgeti	lvm.h	state.fast_get_int(t, k)	integer-key fast-path get
+luaV_finishfastset	lvm.h	state.finish_fast_set(t, slot, v)?	wraps setobj2t + backward barrier
+luaV_shiftr	lvm.h	state.shiftl(x, -y)	shift-right is shift-left by negated count
+luaV_rawequalobj	lvm.h	state.equal_obj(None, t1, t2)	raw equality (no L means no metamethod)
+LUA_FLOORN2I	lvm.h	F2Imod::Eq	default float→int mode (no rounding; reject non-integral)
+#
+# --- Memory macros ---
+luaM_error	lmem.h	return Err(LuaError::Memory)	OOM raise
+luaM_freemem	lmem.h		Rust's Drop handles deallocation; drop the call
+luaM_free	lmem.h		"
+luaM_freearray	lmem.h		"
+luaM_new	lmem.h	Box::new(T::default())	or appropriate constructor
+luaM_newvector	lmem.h	vec![T::default(); n]	-
+luaM_newvectorchecked	lmem.h	vec_checked::<T>(n)?	wraps the overflow check
+luaM_newobject	lmem.h	state.gc().new_obj(tag, sz)	GC-tracked allocation; trivial in Phase A-C via Rc
+luaM_growvector	lmem.h	v.reserve_or_grow(state, nelems, limit, what)?	checked grow
+luaM_reallocvector	lmem.h	v.resize_with(n, T::default)	-
+luaM_shrinkvector	lmem.h	v.truncate(final_n)	-
+luaM_reallocvchar	lmem.h	buf.resize(n, 0)	char-buffer realloc — used by Mbuffer
+luaM_testsize	lmem.h	n.checked_mul(e).is_none()	overflow predicate
+luaM_checksize	lmem.h	(n.checked_mul(e).is_some()).then_some(()).ok_or(LuaError::Memory)?	-
+luaM_limitN	lmem.h	std::cmp::min(n, usize::MAX / std::mem::size_of::<T>())	-
+MAX_SIZET	llimits.h	usize::MAX	-
+MAX_SIZE	llimits.h	const MAX_SIZE: usize = if size_of::<usize>() < size_of::<i64>() { usize::MAX } else { i64::MAX as usize }	max Lua-visible size
+MAX_LUMEM	llimits.h	usize::MAX	max lu_mem
+MAX_LMEM	llimits.h	isize::MAX	max l_mem
+MAX_INT	llimits.h	i32::MAX	-
+log2maxs	llimits.h	(size_of::<T>() * 8 - 2) as u32	log2 of max signed value for type T
+ispow2	llimits.h	x.is_power_of_two() || x == 0	C definition includes 0 as "power of 2"; preserve that
+UNUSED	llimits.h	let _ = x;	C: avoid unused-variable warning
+#
+# --- Closure / upval macros ---
+sizeCclosure	lfunc.h		C allocation-size helper; drop — Rust uses Box / Vec
+sizeLclosure	lfunc.h		"
+MAXUPVAL	lfunc.h	const MAX_UPVAL: u8 = 255	max upvalues per closure
+upisopen	lfunc.h	matches!(uv, UpVal::Open { .. })	-
+uplevel	lfunc.h	if let UpVal::Open { idx, .. } = uv { idx } else { panic!("closed") }	asserts open, then returns its StackIdx
+isintwups	lfunc.h	state.in_twups()	thread-with-open-upvalues list predicate
+MAXMISS	lfunc.h	const MAX_MISS: u32 = 10	closure-cache miss threshold
+CLOSEKTOP	lfunc.h	const CLOSE_K_TOP: i32 = -1	"close all upvals down to top" sentinel
+#
+# --- Bytecode / opcode macros ---
+SIZE_C	lopcodes.h	const SIZE_C: u32 = 8	field width
+SIZE_B	lopcodes.h	const SIZE_B: u32 = 8	field width
+SIZE_Bx	lopcodes.h	const SIZE_BX: u32 = SIZE_C + SIZE_B + 1	-
+SIZE_A	lopcodes.h	const SIZE_A: u32 = 8	-
+SIZE_Ax	lopcodes.h	const SIZE_AX: u32 = SIZE_BX + SIZE_A	-
+SIZE_sJ	lopcodes.h	const SIZE_S_J: u32 = SIZE_BX + SIZE_A	-
+SIZE_OP	lopcodes.h	const SIZE_OP: u32 = 7	-
+POS_OP	lopcodes.h	const POS_OP: u32 = 0	field bit position
+POS_A	lopcodes.h	const POS_A: u32 = POS_OP + SIZE_OP	-
+POS_k	lopcodes.h	const POS_K: u32 = POS_A + SIZE_A	-
+POS_B	lopcodes.h	const POS_B: u32 = POS_K + 1	-
+POS_C	lopcodes.h	const POS_C: u32 = POS_B + SIZE_B	-
+POS_Bx	lopcodes.h	const POS_BX: u32 = POS_K	-
+POS_Ax	lopcodes.h	const POS_AX: u32 = POS_A	-
+POS_sJ	lopcodes.h	const POS_S_J: u32 = POS_A	-
+MAXARG_Bx	lopcodes.h	const MAXARG_BX: u32 = (1 << SIZE_BX) - 1	-
+OFFSET_sBx	lopcodes.h	const OFFSET_S_BX: i32 = (MAXARG_BX >> 1) as i32	excess-K offset for signed Bx
+MAXARG_Ax	lopcodes.h	const MAXARG_AX: u32 = (1 << SIZE_AX) - 1	-
+MAXARG_sJ	lopcodes.h	const MAXARG_S_J: u32 = (1 << SIZE_S_J) - 1	-
+OFFSET_sJ	lopcodes.h	const OFFSET_S_J: i32 = (MAXARG_S_J >> 1) as i32	-
+MAXARG_A	lopcodes.h	const MAXARG_A: u32 = (1 << SIZE_A) - 1	-
+MAXARG_B	lopcodes.h	const MAXARG_B: u32 = (1 << SIZE_B) - 1	-
+MAXARG_C	lopcodes.h	const MAXARG_C: u32 = (1 << SIZE_C) - 1	-
+OFFSET_sC	lopcodes.h	const OFFSET_S_C: i32 = (MAXARG_C >> 1) as i32	-
+int2sC	lopcodes.h	(i + OFFSET_S_C as i32) as u32	encode signed C argument
+sC2int	lopcodes.h	i as i32 - OFFSET_S_C	decode signed C argument
+MASK1	lopcodes.h	(!(!0u32 << n)) << p	build a 1-mask of n bits at position p
+MASK0	lopcodes.h	!(MASK1(n, p))	build a 0-mask
+NO_REG	lopcodes.h	const NO_REG: u32 = MAXARG_A	sentinel "no register"
+NO_JUMP	lcode.h	const NO_JUMP: i32 = -1	end-of-patch-list sentinel
+NUM_OPCODES	lopcodes.h	const NUM_OPCODES: usize = OpCode::ExtraArg as usize + 1	-
+LFIELDS_PER_FLUSH	lopcodes.h	const LFIELDS_PER_FLUSH: u32 = 50	SETLIST batching threshold
+GET_OPCODE	lopcodes.h	OpCode::from_raw(i & MASK1(SIZE_OP, 0))	extract opcode field
+SET_OPCODE	lopcodes.h	i.set_opcode(o)	method on `Instruction` newtype
+GETARG_A	lopcodes.h	i.arg_a()	-> u32
+SETARG_A	lopcodes.h	i.set_arg_a(v)	-
+GETARG_B	lopcodes.h	i.arg_b()	-> u32; debug-assert iABC mode
+GETARG_sB	lopcodes.h	i.arg_s_b()	-> i32; subtracts OFFSET_S_C
+SETARG_B	lopcodes.h	i.set_arg_b(v)	-
+GETARG_C	lopcodes.h	i.arg_c()	-> u32; debug-assert iABC mode
+GETARG_sC	lopcodes.h	i.arg_s_c()	-> i32
+SETARG_C	lopcodes.h	i.set_arg_c(v)	-
+TESTARG_k	lopcodes.h	i.test_k()	-> bool (k bit set?)
+GETARG_k	lopcodes.h	i.arg_k()	-> u32 (0 or 1)
+SETARG_k	lopcodes.h	i.set_arg_k(v)	-
+GETARG_Bx	lopcodes.h	i.arg_bx()	-> u32; debug-assert iABx mode
+SETARG_Bx	lopcodes.h	i.set_arg_bx(v)	-
+GETARG_Ax	lopcodes.h	i.arg_ax()	-> u32; debug-assert iAx mode
+SETARG_Ax	lopcodes.h	i.set_arg_ax(v)	-
+GETARG_sBx	lopcodes.h	i.arg_s_bx()	-> i32; subtracts OFFSET_S_BX
+SETARG_sBx	lopcodes.h	i.set_arg_s_bx(v)	-
+GETARG_sJ	lopcodes.h	i.arg_s_j()	-> i32; subtracts OFFSET_S_J
+SETARG_sJ	lopcodes.h	i.set_arg_s_j(v)	-
+CREATE_ABCk	lopcodes.h	Instruction::abck(o, a, b, c, k)	build an iABC instruction
+CREATE_ABx	lopcodes.h	Instruction::abx(o, a, bc)	build an iABx instruction
+CREATE_Ax	lopcodes.h	Instruction::ax(o, a)	build an iAx instruction
+CREATE_sJ	lopcodes.h	Instruction::sj(o, j, k)	build an isJ instruction
+checkopm	lopcodes.h	i.opmode() == m	mode-check for opcode
+getarg	lopcodes.h	((i >> pos) & MASK1(size, 0)) as i32	low-level field extractor
+setarg	lopcodes.h	i.set_arg(v, pos, size)	low-level field setter
+getOpMode	lopcodes.h	OpMode::from(luaP_opmodes[m as usize] & 7)	-
+testAMode	lopcodes.h	(luaP_opmodes[m as usize] & (1 << 3)) != 0	"instruction sets register A" predicate
+testTMode	lopcodes.h	(luaP_opmodes[m as usize] & (1 << 4)) != 0	"is test (next must be jump)" predicate
+testITMode	lopcodes.h	(luaP_opmodes[m as usize] & (1 << 5)) != 0	"uses L->top from previous" predicate
+testOTMode	lopcodes.h	(luaP_opmodes[m as usize] & (1 << 6)) != 0	"sets L->top for next" predicate
+testMMMode	lopcodes.h	(luaP_opmodes[m as usize] & (1 << 7)) != 0	"is MM instruction" predicate
+isOT	lopcodes.h	i.is_out_top()	-
+isIT	lopcodes.h	i.is_in_top()	-
+opmode	lopcodes.h	opmode_byte(mm, ot, it, t, a, m)	build a luaP_opmodes entry
+L_INTHASBITS	lopcodes.h		C-only feature test; drop — Rust int width is fixed
+MAXINDEXRK	lopcodes.h	const MAXINDEXRK: u32 = MAXARG_B	-
+#
+# --- Codegen / parser macros ---
+foldbinop	lcode.h	(op as u32) <= BinOpr::Shr as u32	const-foldable binop predicate
+getinstruction	lcode.h	fs.f.code[e.u.info as usize]	&mut Instruction for an `expdesc`
+luaK_codeABC	lcode.h	fs.code_abc(o, a, b, c)	wraps codeABCk with k=0
+luaK_setmultret	lcode.h	fs.set_returns(e, LUA_MULTRET)	-
+luaK_jumpto	lcode.h	fs.patch_list(fs.jump(), t)	-
+vkisvar	lparser.h	(VLOCAL..=VINDEXSTR).contains(&k)	expkind predicate: variable-like expression
+vkisindexed	lparser.h	(VINDEXED..=VINDEXSTR).contains(&k)	expkind predicate: indexed variable
+VDKREG	lparser.h	VarKind::Reg	regular local var
+RDKCONST	lparser.h	VarKind::Const	const local var
+RDKTOCLOSE	lparser.h	VarKind::ToBeClosed	to-be-closed local var
+RDKCTC	lparser.h	VarKind::CompileTimeConst	compile-time-constant local
+FIRST_RESERVED	llex.h	const FIRST_RESERVED: i32 = 257	first reserved-word token id (UCHAR_MAX+1)
+NUM_RESERVED	llex.h	const NUM_RESERVED: usize = (TK_WHILE - FIRST_RESERVED + 1) as usize	-
+LUA_ENV	llex.h	const LUA_ENV: &[u8] = b"_ENV"	name of the global environment upvalue
+#
+# --- Lexer / IO buffer macros ---
+EOZ	lzio.h	const EOZ: i32 = -1	end-of-stream sentinel
+zgetc	lzio.h	z.getc()	method on ZIO returning i32 (next byte or EOZ)
+luaZ_initbuffer	lzio.h	buf.init()	usually `Mbuffer::new()` — most call sites just construct
+luaZ_buffer	lzio.h	buf.as_mut_slice()	-> &mut [u8]
+luaZ_sizebuffer	lzio.h	buf.capacity()	-
+luaZ_bufflen	lzio.h	buf.len()	-
+luaZ_buffremove	lzio.h	buf.truncate_by(i)	shorten by i bytes
+luaZ_resetbuffer	lzio.h	buf.clear()	-
+luaZ_resizebuffer	lzio.h	buf.resize(state, size)?	-
+luaZ_freebuffer	lzio.h		Rust's Drop handles deallocation; drop the call
+#
+# --- API public macros (lua.h) ---
+LUA_MULTRET	lua.h	const LUA_MULTRET: i32 = -1	"all return values" sentinel
+LUA_REGISTRYINDEX	lua.h	const LUA_REGISTRYINDEX: i32 = -LUAI_MAXSTACK - 1000	pseudo-index for the registry
+lua_upvalueindex	lua.h	upvalue_index(i)	helper fn `fn(i: i32) -> i32`
+LUA_OK	lua.h	LuaStatus::Ok	-
+LUA_YIELD	lua.h	LuaStatus::Yield	-
+LUA_ERRRUN	lua.h	LuaStatus::ErrRun	-
+LUA_ERRSYNTAX	lua.h	LuaStatus::ErrSyntax	-
+LUA_ERRMEM	lua.h	LuaStatus::ErrMem	-
+LUA_ERRERR	lua.h	LuaStatus::ErrErr	-
+LUA_MINSTACK	lua.h	const LUA_MINSTACK: u32 = 20	guaranteed-available slots for C funcs
+LUA_RIDX_MAINTHREAD	lua.h	const LUA_RIDX_MAINTHREAD: i64 = 1	predefined registry key
+LUA_RIDX_GLOBALS	lua.h	const LUA_RIDX_GLOBALS: i64 = 2	predefined registry key
+LUA_SIGNATURE	lua.h	const LUA_SIGNATURE: &[u8] = b"\x1bLua"	precompiled-chunk header
+lua_call	lua.h	state.call(n, r)?	wraps lua_callk with no continuation
+lua_pcall	lua.h	state.protected_call(n, r, f)?	wraps lua_pcallk
+lua_yield	lua.h	state.yield_(n)?	wraps lua_yieldk
+lua_newtable	lua.h	state.new_table()	wraps create_table(0,0)
+lua_register	lua.h	state.register_fn(name, f)	push + setglobal
+lua_pushcfunction	lua.h	state.push_cfunction(f)	wraps push_cclosure(f, 0)
+lua_isfunction	lua.h	state.type_at(n) == LuaType::Function	-
+lua_istable	lua.h	state.type_at(n) == LuaType::Table	-
+lua_islightuserdata	lua.h	state.type_at(n) == LuaType::LightUserData	-
+lua_isnil	lua.h	state.type_at(n) == LuaType::Nil	-
+lua_isboolean	lua.h	state.type_at(n) == LuaType::Boolean	-
+lua_isthread	lua.h	state.type_at(n) == LuaType::Thread	-
+lua_isnone	lua.h	state.type_at(n) == LuaType::None	-
+lua_isnoneornil	lua.h	matches!(state.type_at(n), LuaType::None | LuaType::Nil)	-
+lua_pop	lua.h	state.pop_n(n)	wraps settop(-(n)-1)
+lua_pushliteral	lua.h	state.push_string(b"...")	-
+lua_pushglobaltable	lua.h	state.push_globals()	-
+lua_tostring	lua.h	state.to_lua_string(i)	-> Option<GcRef<LuaString>>
+lua_insert	lua.h	state.insert(idx)	wraps rotate(idx, 1)
+lua_remove	lua.h	state.remove(idx)	wraps rotate(idx, -1) + pop(1)
+lua_replace	lua.h	state.replace(idx)	wraps copy(-1, idx) + pop(1)
+lua_getextraspace	lua.h	state.extra_space_mut()	-> &mut [u8] of LUA_EXTRASPACE bytes
+lua_tonumber	lua.h	state.to_number(i)	wraps to_numberx(i, NULL)
+lua_tointeger	lua.h	state.to_integer(i)	wraps to_integerx(i, NULL)
+LUA_HOOKCALL	lua.h	HookEvent::Call	-
+LUA_HOOKRET	lua.h	HookEvent::Return	-
+LUA_HOOKLINE	lua.h	HookEvent::Line	-
+LUA_HOOKCOUNT	lua.h	HookEvent::Count	-
+LUA_HOOKTAILCALL	lua.h	HookEvent::TailCall	-
+LUA_MASKCALL	lua.h	const LUA_MASKCALL: u32 = 1 << HookEvent::Call as u32	-
+#
+# --- Misc / utility ---
+l_likely	luaconf.h	x	`#[cold]`/`std::intrinsics::likely` are nightly; emit branch unchanged and rely on PGO
+l_unlikely	luaconf.h	x	same: drop the hint
+l_floor	luaconf.h	x.floor()	float floor; for `lua_Number`
+luai_likely	luaconf.h	x	drop branch hint
+luai_unlikely	luaconf.h	x	drop branch hint
+LUA_VERSION_NUM	lua.h	const LUA_VERSION_NUM: i32 = 504	-
+LUA_VERSION_MAJOR	lua.h	const LUA_VERSION_MAJOR: &[u8] = b"5"	-
+LUA_VERSION_MINOR	lua.h	const LUA_VERSION_MINOR: &[u8] = b"4"	-
+LUA_VERSION_RELEASE	lua.h	const LUA_VERSION_RELEASE: &[u8] = b"7"	-
+condmovestack	llimits.h		HARDSTACKTESTS-only; no-op in default build
+condchangemem	llimits.h		HARDMEMTESTS-only; no-op in default build
+UTF8BUFFSZ	lobject.h	const UTF8_BUF_SZ: usize = 8	buffer size for `luaO_utf8esc`
+luaO_ceillog2	lobject.h	x.next_power_of_two().trailing_zeros() as i32	called as a function, not a macro, but worth noting: prefer Rust int methods

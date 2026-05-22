@@ -1,16 +1,84 @@
 # error_sites.tsv — every error-throwing call site → corresponding Err(...)
 # Columns: c_call	rust_equivalent	notes
-# STATUS: STUB. Real content built before Phase B (when error paths matter).
-luaG_runerror(L, fmt, ...)	return Err(LuaError::runtime(format_args!(fmt, ...)))	generic runtime error
-luaG_typeerror(L, o, "op")	return Err(LuaError::type_error(o, "op"))	"attempt to <op> a <type> value"
-luaG_concaterror(L, p1, p2)	return Err(LuaError::concat_error(p1, p2))	"attempt to concatenate"
-luaG_opinterror(L, p1, p2, "msg")	return Err(LuaError::arith_error(p1, p2, "msg"))	"attempt to perform arithmetic"
-luaG_tointerror(L, p1, p2)	return Err(LuaError::int_overflow(p1, p2))	int conversion error
-luaG_ordererror(L, p1, p2)	return Err(LuaError::order_error(p1, p2))	"attempt to compare"
-luaG_errormsg(L)	return Err(LuaError::from_top(state))	throw value already on top
-luaG_traceexec(L, ...)	state.debug_trace_exec(...)	not an error per se
-luaD_throw(L, status)	return Err(LuaError::with_status(status))	low-level throw
-luaO_pushfstring(L, ...)	let s = state.push_fstring(format_args!(...))?;	build error message; usually followed by luaG_runerror
-luaO_pushvfstring(L, ...)	state.push_vfstring(...)?	same, va_list form (rare in Lua source)
-luaM_toobig(L)	return Err(LuaError::Memory)	memory overflow
-luaM_error(L)	return Err(LuaError::Memory)	allocation failure
+# STATUS: populated. Patterns grouped by C-side error function. One row per
+# distinct call shape; specific verbatim call sites in the source tree are
+# instances of these patterns. The Rust equivalent is the canonical form
+# to emit at the call site (see PORTING.md §4.2 and §6).
+#
+# Conventions:
+#  - `state` is the conventional binding for `&mut LuaState`.
+#  - `?` propagates from any helper that itself returns `Result<_, LuaError>`.
+#  - `format_args!(...)` is preferred over `format!(...)`: no allocation
+#    unless the error is realized.
+#  - Constructors referenced (defined in `crates/lua-core/src/error.rs`):
+#      LuaError::runtime(args)         -> Runtime(LuaValue::String(...))
+#      LuaError::syntax(args)          -> Syntax(LuaValue::String(...))
+#      LuaError::type_error(v, op)     -> Runtime with "attempt to <op> a <t> value"
+#      LuaError::concat_error(p1, p2)  -> Runtime, typeerror on first non-coercible
+#      LuaError::arith_error(p1, p2)   -> Runtime, "attempt to perform arithmetic"
+#      LuaError::int_overflow(p1, p2)  -> Runtime, "number ... has no integer representation"
+#      LuaError::order_error(p1, p2)   -> Runtime, "attempt to compare ..."
+#      LuaError::call_error(v)         -> Runtime, "attempt to call a <t> value"
+#      LuaError::for_error(v, what)    -> Runtime, "bad 'for' <what> (number expected...)"
+#      LuaError::arg_error(narg, msg)  -> Runtime, "bad argument #N (...)"
+#      LuaError::type_arg_error(narg, expected, got_v)
+#                                      -> Runtime, "<expected> expected, got <type>"
+#      LuaError::from_value(v)         -> Runtime(v)        (caller-supplied value)
+#      LuaError::from_top(state)       -> Runtime(state.pop())
+#      LuaError::with_status(status)   -> variant chosen by status code
+#
+# --- runtime errors (ldebug.c) ---
+luaG_runerror(L, fmt, ...)	return Err(LuaError::runtime(format_args!(fmt, ...)))	generic runtime error; in C also formats msg, prepends source:line for Lua frames, then routes through luaG_errormsg → luaD_throw. The Rust constructor records the call site's source/line via `state.current_loc()` if available.
+luaG_typeerror(L, o, "op")	return Err(LuaError::type_error(o, "op"))	"attempt to <op> a <type> value [extra]". `extra` is `varinfo` (local/upvalue/global name) — supply via `state.varinfo(o)` inside the constructor.
+luaG_callerror(L, o)	return Err(LuaError::call_error(o))	"attempt to call a <type> value". Variant of type_error with op="call" and an extended varinfo via funcnamefromcall.
+luaG_forerror(L, o, "limit"|"step"|"initial value")	return Err(LuaError::for_error(o, "limit"))	"bad 'for' <what> (number expected, got <type>)".
+luaG_concaterror(L, p1, p2)	return Err(LuaError::concat_error(p1, p2))	"attempt to concatenate a <type> value". In C, dispatches to typeerror on whichever of p1/p2 isn't a string/number.
+luaG_opinterror(L, p1, p2, "msg")	return Err(LuaError::arith_error(p1, p2, "msg"))	Used for bit ops where a float operand has no int representation. Routes to typeerror on the offending operand.
+luaG_tointerror(L, p1, p2)	return Err(LuaError::int_overflow(p1, p2))	"number%s has no integer representation". The `%s` is `varinfo`; pass the offending operand to the constructor.
+luaG_ordererror(L, p1, p2)	return Err(LuaError::order_error(p1, p2))	"attempt to compare two <t> values" or "attempt to compare <t1> with <t2>".
+luaG_errormsg(L)	return Err(LuaError::from_top(state))	Raises the value already on top of stack. In C, also invokes the message handler if `errfunc != 0` then luaD_throw(LUA_ERRRUN). In Rust the message-handler step happens inside `state.protected_call`; here we just propagate.
+luaG_traceexec(L, pc)	state.debug_trace_exec(pc)?	NOT an error per se — the line/count hook may *itself* raise, in which case `?` propagates. Keep as a fallible call, not an Err site.
+#
+# --- low-level throw and catch (ldo.c) ---
+luaD_throw(L, errcode)	return Err(LuaError::with_status(errcode))	Final throw point in C (setjmp/longjmp). In Rust, every caller already builds the Err — this row exists for completeness when porting code that calls luaD_throw directly with a precomputed status code (LUA_ERRMEM, LUA_ERRRUN, LUA_ERRSYNTAX, LUA_ERRERR).
+luaD_rawrunprotected(L, f, ud)	state.run_protected(|s| f(s, ud))	CATCHER, not thrower. Returns `Result<(), LuaError>`; caller inspects the Err variant to recover the status. Replaces the setjmp landing pad.
+luaD_pcall(L, func, ud, oldtop, errfunc)	state.protected_call(func, ud, oldtop, errfunc)	CATCHER. Higher-level than rawrunprotected: also resets stack and CallInfo on error. Returns `Result<(), LuaError>`.
+#
+# --- memory errors (lmem.h / lmem.c) ---
+luaM_toobig(L)	return Err(LuaError::Memory)	"memory allocation error: block too big". In C this throws via luaD_throw(LUA_ERRMEM).
+luaM_error(L)	return Err(LuaError::Memory)	Macro: `luaD_throw(L, LUA_ERRMEM)`. Use directly when an allocator returns NULL.
+luaM_saferealloc_ / luaM_malloc_ / luaM_growaux_ returning NULL	let p = state.alloc(size)?;	The Rust allocator returns `Result<*mut T, LuaError>`; `?` propagates `LuaError::Memory`. No explicit `luaM_error` call site needed at the use point.
+luaM_checksize(L, n, e)	state.check_alloc_size(n, e)?	Macro: tests `n * e` overflow then calls `luaM_toobig`. Folded into the safe allocator wrapper.
+#
+# --- string-building (lobject.c) — NOT throwers; usually paired with a throw ---
+luaO_pushfstring(L, fmt, ...)	let s = state.push_fstring(format_args!(fmt, ...))?;	Builds a Lua string on top of the stack and returns its C pointer. The `?` propagates only OOM. In C this is frequently the immediate argument of `luaG_runerror`/`luaX_syntaxerror`; in Rust collapse the two-step pattern into a single `Err(LuaError::runtime(format_args!(...)))` whenever possible.
+luaO_pushvfstring(L, fmt, va)	state.push_vfstring(fmt, args)?	va_list form; almost never used outside `luaG_runerror`'s internals. In Rust, prefer the `format_args!` constructor on `LuaError::runtime` and skip the push-then-throw indirection.
+#
+# --- aux library errors (lauxlib.c) ---
+luaL_error(L, fmt, ...)	return Err(LuaError::runtime(format_args!(fmt, ...)))	C-API top-level error; equivalent to `luaL_where + pushvfstring + lua_concat + lua_error`. In Rust, the constructor prepends location info from the current CallInfo.
+luaL_argerror(L, narg, "extramsg")	return Err(LuaError::arg_error(narg, "extramsg"))	"bad argument #N to '<fname>' (extramsg)". `<fname>` is derived from the calling C function name; in Rust the constructor reads it from the current CallInfo / hook context.
+luaL_typeerror(L, narg, "tname")	return Err(LuaError::type_arg_error(narg, "tname", state.arg(narg)))	"<tname> expected, got <actual type>". Wraps `luaL_argerror` in C.
+luaL_argexpected(L, cond, narg, "tname")	if !cond { return Err(LuaError::type_arg_error(narg, "tname", state.arg(narg))) }	Macro: `cond || luaL_typeerror(...)`. Translate to an explicit guard.
+luaL_argcheck(L, cond, narg, "extramsg")	if !cond { return Err(LuaError::arg_error(narg, "extramsg")) }	Macro form of argerror.
+luaL_checkstack(L, sz, "msg")	state.ensure_stack(sz, "msg")?	Throws "stack overflow (msg)" if growth fails. Returns `Result<(), LuaError>`.
+luaL_checktype(L, narg, t)	state.check_arg_type(narg, t)?	Throws type_arg_error on mismatch. Constants like LUA_TTABLE map to `LuaType::Table`.
+luaL_checkany(L, narg)	state.check_arg_any(narg)?	Throws `LuaError::arg_error(narg, "value expected")` if narg is none/nil-absent.
+luaL_checklstring(L, narg, &len)	let s: &[u8] = state.check_arg_string(narg)?;	Throws type_arg_error("string") if non-string and non-coercible-number.
+luaL_checkstring(L, narg)	let s: &[u8] = state.check_arg_string(narg)?;	Macro for `luaL_checklstring(L, n, NULL)`.
+luaL_checknumber(L, narg)	let n: f64 = state.check_arg_number(narg)?;	Throws type_arg_error("number").
+luaL_checkinteger(L, narg)	let i: i64 = state.check_arg_integer(narg)?;	Throws either "number expected, got <t>" or `LuaError::arg_error(narg, "number has no integer representation")`.
+luaL_checkudata(L, narg, "tname")	let p = state.check_arg_userdata(narg, "tname")?;	Throws type_arg_error("tname"). Verifies metatable identity.
+luaL_checkoption(L, narg, def, lst)	let i = state.check_arg_option(narg, def, &LST)?;	Throws `LuaError::arg_error(narg, "invalid option '<s>'")`.
+#
+# --- lexer / parser errors (llex.c, lparser.c) ---
+luaX_syntaxerror(ls, "msg")	return Err(LuaError::syntax(format_args!("msg")))	Parser/lexer error at current token. In C this prepends `<source>:<line>:` and appends ` near <token>` (via lexerror), then luaD_throw(LUA_ERRSYNTAX). The Rust constructor reads source+line from `LexState`.
+luaX_lexerror(ls, "msg", token)	return Err(LuaError::syntax_at(ls, "msg", token))	Like syntaxerror but for a specific token (not always the current one); used in numeric/string literal scanning. Internal in C (static `lexerror`); only `syntaxerror` is exported.
+error_expected(ls, token)	return Err(LuaError::syntax(format_args!("{} expected", token_name(token))))	Static helper in lparser.c. In Rust make it a free fn in the parser module returning `Result<Never, LuaError>` or just inline.
+errorlimit(fs, limit, "what")	return Err(LuaError::syntax(format_args!("too many {} (limit is {}) in {}", what, limit, where_str)))	Static helper for compile-time-limit overruns (locals, upvalues, constants, etc.).
+check_match(ls, what, who, where_line)	state.parser_check_match(what, who, where_line)?	Helper that raises a syntax error mentioning the opening token if the closing token is missing on a different line. Fallible — propagate with `?`.
+check_condition(ls, cond, "msg")	if !cond { return Err(LuaError::syntax(format_args!("msg"))) }	Macro form of `if (!cond) luaX_syntaxerror(ls, msg);`.
+#
+# --- top-level API (lapi.c) ---
+lua_error(L)	return Err(LuaError::from_value(state.pop()))	Pops the error value from the stack and raises it. Special-cases the global "not enough memory" string to raise `LuaError::Memory` instead — replicate that check in `from_value`.
+lua_pcall(L, n, r, f) / lua_pcallk(...)	state.protected_call(n, r, f)	CATCHER (alias for luaD_pcall at the C API layer). Returns `Result<(), LuaError>`; the status code is reconstructed by the caller from the Err variant if needed.
+lua_atpanic(L, fn)	state.set_panic_handler(fn)	NOT an error site. The panic handler runs when an Err escapes a thread with no protected frame; in Rust this typically becomes a `process::abort` analogue in `lua-cli`.

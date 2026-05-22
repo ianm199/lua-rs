@@ -1,27 +1,297 @@
 # types.tsv — every C struct in Lua's headers → Rust struct + field types
 # Columns: c_type	rust_type	source_header	notes
-# STATUS: STUB. Real content built before Phase A.
-TValue	LuaValue	lobject.h	enum, not struct; see PORT_STRATEGY §3.2
-Value	(internal; payload of LuaValue variants)	lobject.h	union — not directly exposed
-StackValue	StackValue	lobject.h	wrapper containing LuaValue + tbc linkage
-StkId	StackIdx	lobject.h	u32 newtype — never a borrow
-StkIdRel	StackIdx	lobject.h	pointer-or-offset union collapses to index
-GCObject	(trait Collectable + GcRef<dyn Collectable>)	lobject.h	common header replaced by trait impl
-TString	LuaString	lobject.h	byte-string + intern info
-Udata	LuaUserData	lobject.h	full userdata
-Udata0	(merged into LuaUserData)	lobject.h	no-user-values variant; merged
-Table	LuaTable	lobject.h	hybrid array+hash
-Node	(internal; Vec<TableNode>)	lobject.h	hash bucket
-Upvaldesc	UpvalDesc	lobject.h	closure capture descriptor
-LocVar	LocalVar	lobject.h	debug info; local variable
-AbsLineInfo	AbsLineInfo	lobject.h	debug info; absolute line mapping
-Proto	LuaProto	lobject.h	function prototype
-UpVal	UpVal	lobject.h	enum Open{thread,idx} | Closed(LuaValue) — §2 #8
-ClosureHeader	(merged into LuaClosure)	lobject.h	common header
-CClosure	(LuaClosure::CClosure variant)	lobject.h	enum variant
-LClosure	(LuaClosure::LClosure variant)	lobject.h	enum variant
-Closure	LuaClosure	lobject.h	enum of CCl/LCl/LightC
-CallInfo	CallInfo	lstate.h	per-call frame info; stored in Vec, addressed by CallInfoIdx
-stringtable	StringPool	lstate.h	interning hash; lives on GlobalState
-global_State	GlobalState	lstate.h	shared state; not exposed at API
-lua_State	LuaState	lstate.h	per-thread state; main type
+# Field rows are indented in column 1 (two leading spaces) and give the field's Rust type in column 2.
+# For unions, the Rust mapping is an enum; see PORT_STRATEGY §3 for the canonical variant lists.
+# --- Primitive type aliases (lua.h, llimits.h, luaconf.h) ---
+lu_byte	u8	llimits.h	unsigned byte; pervasive (tag bits, marked, flags)
+ls_byte	i8	llimits.h	signed byte; used for Proto.lineinfo deltas
+lu_mem	usize	llimits.h	unsigned memory counter (LUAI_UMEM → usize on 64-bit)
+l_mem	isize	llimits.h	signed memory counter (LUAI_MEM → isize); GCdebt can go negative
+l_uint32	u32	llimits.h	explicit 32-bit unsigned; used for nCcalls
+Instruction	Instruction	llimits.h	u32 newtype; bytecode word; see lopcodes for encoding helpers
+lua_Number	f64	lua.h / luaconf.h	default LUA_NUMBER is double
+lua_Integer	i64	lua.h / luaconf.h	default LUA_INTEGER is long long
+lua_Unsigned	u64	lua.h / luaconf.h	unsigned counterpart of lua_Integer
+lua_KContext	isize	lua.h / luaconf.h	continuation context; ptrdiff_t by default; coroutine stub in Phase A–D
+lua_CFunction	fn(&mut LuaState) -> Result<usize, LuaError>	lua.h	C-callable function; returns count of pushed values
+lua_KFunction	fn(&mut LuaState, status: i32, ctx: isize) -> Result<usize, LuaError>	lua.h	continuation for yield/resume; coroutine stub in Phase A–D
+lua_Reader	?	lua.h	chunk loader callback; signature TBD when load/dofile lands (Phase B/C); likely `Box<dyn FnMut() -> Option<&[u8]>>`
+lua_Writer	?	lua.h	chunk writer callback for ldump; signature TBD; likely `Box<dyn FnMut(&[u8]) -> Result<(), LuaError>>`
+lua_Alloc	(removed)	lua.h	C allocator hook; not exposed in Rust-native API — Rust's allocator handles it
+lua_WarnFunction	Box<dyn FnMut(&[u8], bool)>	lua.h	warning sink stored on GlobalState
+lua_Hook	Box<dyn FnMut(&mut LuaState, &LuaDebug)>	lua.h	debug hook; Phase E (debug)
+lua_State	LuaState	lua.h	per-thread state; full struct mapped under State types
+lua_Debug	LuaDebug	lua.h	debug introspection record; full mapping deferred to Phase E
+# --- Tagged value types (lobject.h) ---
+TValue	LuaValue	lobject.h	Rust enum per PORT_STRATEGY §3.2; replaces the {Value, tt_} struct
+Value	(payload of LuaValue variants)	lobject.h	C union (gc/p/f/i/n); subsumed by enum payload; no standalone Rust type
+  Value.gc	GcRef<dyn Collectable>	lobject.h	collectable pointer; in Rust the enum variant carries the typed GcRef directly
+  Value.p	*mut c_void	lobject.h	light userdata pointer; only raw-ptr case allowed by PORTING.md §3.1
+  Value.f	lua_CFunction	lobject.h	light C function; held by LuaValue::Function (LightC variant)
+  Value.i	i64	lobject.h	integer payload
+  Value.n	f64	lobject.h	float payload
+  Value.ub	u8	lobject.h	unused/warning-suppressor; dropped
+StackValue	StackValue	lobject.h	stack slot; wrapper around LuaValue + optional tbc linkage
+  StackValue.val	LuaValue	lobject.h	the actual value
+  StackValue.tbclist.delta	u16	lobject.h	tbc (to-be-closed) linked-list delta; stored in StackValue's tbc variant
+StkId	StackIdx	lobject.h	pointer into stack → u32 newtype index; PORT_STRATEGY §3.5
+StkIdRel	StackIdx	lobject.h	pointer-or-offset union collapses to a single index; reallocation no longer requires the dual
+# --- GC heap header (lobject.h, lstate.h) ---
+GCObject	(trait Collectable; concrete = GcRef<T>)	lobject.h	intrusive common header replaced by trait + enum/Rc dispatch
+  GCObject.next	(removed)	lobject.h	intrusive list pointer; replaced by per-list `Vec<GcRef<T>>` on GlobalState (allgc, finobj, etc.)
+  GCObject.tt	(encoded in enum discriminant)	lobject.h	type tag stored in C; in Rust the enum variant + concrete type carry it
+  GCObject.marked	u8	lobject.h	GC color/age bits; Phase D only — Phase A–C ignores it
+CommonHeader	(merged into each Rust struct)	lobject.h	macro-expanded header in C; in Rust each Collectable carries needed fields directly
+GCUnion	(removed)	lstate.h	C-only union for safe cast_u; Rust uses typed GcRef<T> per object — no union needed
+# --- Strings (lobject.h, lstate.h) ---
+TString	LuaString	lobject.h	byte-string newtype wrapping Rc<[u8]>; never `String` or `&str` — PORT_STRATEGY §3.3
+  TString.extra	u8	lobject.h	reserved-word index for short strings; "has-hash" flag for longs; kept as u8 field
+  TString.shrlen	u8	lobject.h	0xFF sentinel for long strings; in Rust use `enum LuaStringRepr { Short(Rc<[u8]>), Long(Rc<[u8]>) }` or carry the byte directly
+  TString.hash	u32	lobject.h	cached content hash (seeded)
+  TString.u.lnglen	usize	lobject.h	long-string length; for short strings, shrlen holds length
+  TString.u.hnext	(removed)	lobject.h	intrusive intern-table chain; replaced by HashSet-style StringPool on GlobalState
+  TString.contents	Rc<[u8]>	lobject.h	flexible array member in C; Rust uses inline `Rc<[u8]>` (cheap clone, shared)
+stringtable	StringPool	lstate.h	hash table for interned short strings; lives on GlobalState
+  stringtable.hash	Vec<Option<GcRef<LuaString>>>	lstate.h	open-addressing/chained buckets in C; in Rust use HashSet<Rc<[u8]>> or HashMap<&[u8], GcRef<LuaString>>
+  stringtable.nuse	usize	lstate.h	live entry count
+  stringtable.size	usize	lstate.h	bucket count
+# --- Userdata (lobject.h) ---
+Udata	LuaUserData	lobject.h	full userdata; carries optional user values + raw byte payload
+  Udata.nuvalue	u16	lobject.h	number of user values; in Rust covered by Vec::len of uv field
+  Udata.len	usize	lobject.h	number of raw bytes; covered by `data: Box<[u8]>`.len()
+  Udata.metatable	Option<GcRef<LuaTable>>	lobject.h	per-instance metatable
+  Udata.gclist	(removed)	lobject.h	intrusive gray-list link; replaced per PORT_STRATEGY §3.4
+  Udata.uv	Vec<LuaValue>	lobject.h	flexible array member of UValue; Rust uses inline Vec (or Box<[LuaValue]>)
+Udata0	(merged into LuaUserData)	lobject.h	no-user-values variant; C uses it for alignment math only — drop in Rust
+UValue	(removed)	lobject.h	C alignment-padding union over a TValue; in Rust just store `LuaValue` directly
+# --- Tables (lobject.h) ---
+Table	LuaTable	lobject.h	hybrid array+hash; the workhorse Lua container
+  Table.flags	TableFlags(u8)	lobject.h	bitfield: which metamethods are absent + BITRAS (array-real-size flag); Tag-style newtype per PORTING.md §4.9
+  Table.lsizenode	u8	lobject.h	log2 of hash-bucket count; keep as u8 to preserve bit-trick `1 << lsizenode`
+  Table.alimit	u32	lobject.h	array-size hint OR real array size (gated by BITRAS bit in flags)
+  Table.array	Vec<LuaValue>	lobject.h	array part; Rust uses Vec (or Box<[LuaValue]> + separate len) — PERF(port) revisit in Phase B
+  Table.node	Vec<TableNode>	lobject.h	hash part; sized 2^lsizenode; rehashed by luaH_resize
+  Table.lastfree	Option<usize>	lobject.h	first-free-position cursor for hash chaining; index into node
+  Table.metatable	Option<GcRef<LuaTable>>	lobject.h	metatable pointer
+  Table.gclist	(removed)	lobject.h	intrusive gray-list link; replaced per PORT_STRATEGY §3.4
+Node	TableNode	lobject.h	one hash-bucket entry (key, value, next-chain index)
+  Node.i_val	LuaValue	lobject.h	value field; in C reached as `node->i_val` (proper TValue alias of the key_val/tt fields)
+  Node.u.key_tt	(folded into key: LuaValue)	lobject.h	key's tag byte; merged with key_val into a single Rust LuaValue
+  Node.u.key_val	(folded into key: LuaValue)	lobject.h	key's Value union; merged with key_tt into a single Rust LuaValue
+  Node.u.next	i32	lobject.h	chaining offset within the node array (can be negative); keep as i32
+NodeKey	(removed; folded into TableNode)	lobject.h	C-only embedded struct enabling tight layout; Rust holds key+value+next as plain fields
+# --- Function prototypes (lobject.h) ---
+Proto	LuaProto	lobject.h	compiled function prototype; immutable post-compile
+  Proto.numparams	u8	lobject.h	fixed parameter count
+  Proto.is_vararg	bool	lobject.h	stored as lu_byte in C; Rust uses bool (or keep u8 if bit-tricked)
+  Proto.maxstacksize	u8	lobject.h	register window size
+  Proto.sizeupvalues	(removed)	lobject.h	C size companion to upvalues array; in Rust covered by Vec::len
+  Proto.sizek	(removed)	lobject.h	covered by Vec::len of k field
+  Proto.sizecode	(removed)	lobject.h	covered by Vec::len of code field
+  Proto.sizelineinfo	(removed)	lobject.h	covered by Vec::len of lineinfo field
+  Proto.sizep	(removed)	lobject.h	covered by Vec::len of p field
+  Proto.sizelocvars	(removed)	lobject.h	covered by Vec::len of locvars field
+  Proto.sizeabslineinfo	(removed)	lobject.h	covered by Vec::len of abslineinfo field
+  Proto.linedefined	i32	lobject.h	source line where function starts
+  Proto.lastlinedefined	i32	lobject.h	source line where function ends
+  Proto.k	Vec<LuaValue>	lobject.h	constant pool (was `TValue *k`); Box<[LuaValue]> after freeze
+  Proto.code	Vec<Instruction>	lobject.h	bytecode buffer; Box<[Instruction]> after freeze
+  Proto.p	Vec<GcRef<LuaProto>>	lobject.h	nested function prototypes (was `Proto **p`)
+  Proto.upvalues	Vec<UpvalDesc>	lobject.h	upvalue descriptors (was `Upvaldesc *upvalues`)
+  Proto.lineinfo	Vec<i8>	lobject.h	per-instruction line deltas (was `ls_byte *lineinfo`)
+  Proto.abslineinfo	Vec<AbsLineInfo>	lobject.h	absolute-line index for binary search
+  Proto.locvars	Vec<LocalVar>	lobject.h	debug info for local variables
+  Proto.source	GcRef<LuaString>	lobject.h	source name (chunk identifier)
+  Proto.gclist	(removed)	lobject.h	intrusive gray-list link; replaced per PORT_STRATEGY §3.4
+Upvaldesc	UpvalDesc	lobject.h	closure-capture descriptor; lives inside Proto.upvalues
+  Upvaldesc.name	GcRef<LuaString>	lobject.h	upvalue name (debug info; never null in practice)
+  Upvaldesc.instack	bool	lobject.h	whether captured from parent's stack (true) or parent's upvalue list (false)
+  Upvaldesc.idx	u8	lobject.h	register index or outer-upvalue index
+  Upvaldesc.kind	u8	lobject.h	variable kind (regular/const/to-be-closed/compile-const) — VDKREG/RDKCONST/RDKTOCLOSE/RDKCTC
+LocVar	LocalVar	lobject.h	debug info for one local variable's lifetime
+  LocVar.varname	GcRef<LuaString>	lobject.h	variable name
+  LocVar.startpc	i32	lobject.h	first pc where variable is active
+  LocVar.endpc	i32	lobject.h	first pc where variable is dead
+AbsLineInfo	AbsLineInfo	lobject.h	absolute-line record for fast line lookup
+  AbsLineInfo.pc	i32	lobject.h	bytecode pc
+  AbsLineInfo.line	i32	lobject.h	source line at that pc
+# --- Closures and upvalues (lobject.h) ---
+Closure	LuaClosure	lobject.h	Rust enum over LClosure/CClosure (and LightC handled as a LuaValue::Function variant)
+ClosureHeader	(merged into each LuaClosure variant)	lobject.h	C macro header; Rust carries nupvalues implicitly via Vec::len
+LClosure	LuaClosure::Lua	lobject.h	Lua closure (Proto + captured upvalues)
+  LClosure.nupvalues	(removed)	lobject.h	covered by upvals.len()
+  LClosure.gclist	(removed)	lobject.h	intrusive list link; replaced per PORT_STRATEGY §3.4
+  LClosure.p	GcRef<LuaProto>	lobject.h	function prototype
+  LClosure.upvals	Vec<GcRef<UpVal>>	lobject.h	flexible array member in C; inline Vec in Rust (Box<[GcRef<UpVal>]> after freeze)
+CClosure	LuaClosure::C	lobject.h	C closure (lua_CFunction + captured TValue upvalues)
+  CClosure.nupvalues	(removed)	lobject.h	covered by upvalue.len()
+  CClosure.gclist	(removed)	lobject.h	intrusive list link
+  CClosure.f	lua_CFunction	lobject.h	the C callback (Rust fn pointer; signature per primitive table)
+  CClosure.upvalue	Vec<LuaValue>	lobject.h	flexible array member of plain LuaValues (not UpVal cells — C closures don't share)
+UpVal	UpVal	lobject.h	Rust enum per PORT_STRATEGY §3.8: `enum UpVal { Open { thread, idx }, Closed(LuaValue) }`
+  UpVal.v.p	(folded into UpVal::Open)	lobject.h	C pointer to either a stack slot or to UpVal.u.value; Rust replaces with the enum discriminant
+  UpVal.v.offset	(removed)	lobject.h	C-only stack-realloc shim; not needed when stack is indexed
+  UpVal.u.open.next	(removed)	lobject.h	intrusive open-upvalue list link; in Rust GlobalState/LuaState owns a `Vec<GcRef<UpVal>>` of open upvals
+  UpVal.u.open.previous	(removed)	lobject.h	intrusive list backlink; same disposition
+  UpVal.u.value	(folded into UpVal::Closed)	lobject.h	closed value payload; carried inside the Closed variant
+# --- Call/state (lstate.h) ---
+CallInfo	CallInfo	lstate.h	per-call frame info; stored as `Vec<CallInfo>` on LuaState, addressed by CallInfoIdx
+  CallInfo.func	StackIdx	lstate.h	stack index of the called function
+  CallInfo.top	StackIdx	lstate.h	stack-top reservation for this call
+  CallInfo.previous	CallInfoIdx	lstate.h	prev frame index (Option<CallInfoIdx> at boundary); PORTING.md §3.2
+  CallInfo.next	CallInfoIdx	lstate.h	next frame index; Option<CallInfoIdx> at tail
+  CallInfo.u.l.savedpc	u32	lstate.h	saved program counter (was `const Instruction *savedpc`); offset into Proto.code
+  CallInfo.u.l.trap	bool	lstate.h	line/count hook trap flag (volatile sig_atomic_t in C)
+  CallInfo.u.l.nextraargs	i32	lstate.h	extra varargs count
+  CallInfo.u.c.k	Option<lua_KFunction>	lstate.h	continuation function for yieldable C calls; Phase E
+  CallInfo.u.c.old_errfunc	isize	lstate.h	saved errfunc index across pcall
+  CallInfo.u.c.ctx	isize	lstate.h	continuation context (lua_KContext)
+  CallInfo.u2	CallInfoExtra	lstate.h	C union {funcidx, nyield, nres, transferinfo}; Rust uses an enum or transient field per call phase
+  CallInfo.nresults	i16	lstate.h	expected number of results from this call
+  CallInfo.callstatus	u16	lstate.h	bit-packed CIST_* flags; Tag(u16) newtype with accessor methods per PORTING.md §4.9
+global_State	GlobalState	lstate.h	process-wide state shared by all threads; not exposed at API (accessed via state.global())
+  global_State.frealloc	(removed)	lstate.h	custom allocator hook; not exposed
+  global_State.ud	(removed)	lstate.h	allocator userdata; not exposed
+  global_State.totalbytes	isize	lstate.h	Phase D — memory accounting
+  global_State.GCdebt	isize	lstate.h	Phase D — GC pacing
+  global_State.GCestimate	usize	lstate.h	Phase D
+  global_State.lastatomic	usize	lstate.h	Phase D
+  global_State.strt	StringPool	lstate.h	intern table for short strings (PORT_STRATEGY §3.3)
+  global_State.l_registry	LuaValue	lstate.h	the Lua registry (a table value)
+  global_State.nilvalue	LuaValue	lstate.h	canonical nil; in Rust just `LuaValue::Nil` — may be removed
+  global_State.seed	u32	lstate.h	per-state hash seed
+  global_State.currentwhite	u8	lstate.h	Phase D — GC color bit
+  global_State.gcstate	u8	lstate.h	Phase D — GC FSM state
+  global_State.gckind	u8	lstate.h	Phase D — KGC_INC vs KGC_GEN
+  global_State.gcstopem	bool	lstate.h	Phase D
+  global_State.genminormul	u8	lstate.h	Phase D — generational tuning
+  global_State.genmajormul	u8	lstate.h	Phase D
+  global_State.gcstp	u8	lstate.h	Phase D — GC stop flag
+  global_State.gcemergency	bool	lstate.h	Phase D
+  global_State.gcpause	u8	lstate.h	Phase D
+  global_State.gcstepmul	u8	lstate.h	Phase D
+  global_State.gcstepsize	u8	lstate.h	Phase D
+  global_State.allgc	Vec<GcRef<dyn Collectable>>	lstate.h	all collectable objects; Phase A–C this leaks (Rc cycles); Phase D adds proper tracing
+  global_State.sweepgc	(removed)	lstate.h	C uses `GCObject **` cursor into allgc; replaced by `usize` cursor in Phase D
+  global_State.finobj	Vec<GcRef<dyn Collectable>>	lstate.h	Phase D — finalizable objects
+  global_State.gray	Vec<GcRef<dyn Collectable>>	lstate.h	Phase D — GC gray list
+  global_State.grayagain	Vec<GcRef<dyn Collectable>>	lstate.h	Phase D
+  global_State.weak	Vec<GcRef<LuaTable>>	lstate.h	Phase D — weak-value tables
+  global_State.ephemeron	Vec<GcRef<LuaTable>>	lstate.h	Phase D — ephemeron tables
+  global_State.allweak	Vec<GcRef<LuaTable>>	lstate.h	Phase D
+  global_State.tobefnz	Vec<GcRef<dyn Collectable>>	lstate.h	Phase D — pending finalizers
+  global_State.fixedgc	Vec<GcRef<dyn Collectable>>	lstate.h	Phase D — non-collectable objects (reserved-word strings)
+  global_State.survival	(removed)	lstate.h	Phase D — generational cohort marker; replaced by index into allgc
+  global_State.old1	(removed)	lstate.h	Phase D — same
+  global_State.reallyold	(removed)	lstate.h	Phase D — same
+  global_State.firstold1	(removed)	lstate.h	Phase D — same
+  global_State.finobjsur	(removed)	lstate.h	Phase D — same disposition
+  global_State.finobjold1	(removed)	lstate.h	Phase D — same
+  global_State.finobjrold	(removed)	lstate.h	Phase D — same
+  global_State.twups	Vec<GcRef<LuaState>>	lstate.h	threads with open upvalues; coroutine list (Phase E)
+  global_State.panic	Option<lua_CFunction>	lstate.h	panic handler; Phase B
+  global_State.mainthread	GcRef<LuaState>	lstate.h	the primordial thread
+  global_State.memerrmsg	GcRef<LuaString>	lstate.h	preallocated OOM message
+  global_State.tmname	[GcRef<LuaString>; TM_N]	lstate.h	array of tag-method names indexed by TMS enum (ltm.h)
+  global_State.mt	[Option<GcRef<LuaTable>>; LUA_NUMTYPES]	lstate.h	per-primitive-type metatables
+  global_State.strcache	[[GcRef<LuaString>; STRCACHE_M]; STRCACHE_N]	lstate.h	short-string cache for luaS_new (53x2 entries)
+  global_State.warnf	Option<Box<dyn FnMut(&[u8], bool)>>	lstate.h	warning sink
+  global_State.ud_warn	(removed)	lstate.h	warning userdata; folded into the closure
+lua_State	LuaState	lstate.h	per-thread state; primary user-facing type
+  lua_State.status	u8	lstate.h	thread status (LUA_OK / LUA_YIELD / LUA_ERR*); could become an enum
+  lua_State.allowhook	bool	lstate.h	hook-enabled flag
+  lua_State.nci	u32	lstate.h	number of CallInfo entries in use; redundant once stack is `Vec<CallInfo>` — keep for parity initially
+  lua_State.top	StackIdx	lstate.h	first free stack slot
+  lua_State.l_G	(accessed via method)	lstate.h	pointer to GlobalState in C; in Rust access via `state.global()` or an Rc<RefCell<GlobalState>>
+  lua_State.ci	CallInfoIdx	lstate.h	current call-frame index
+  lua_State.stack_last	StackIdx	lstate.h	end-of-stack sentinel; redundant once we use `Vec<StackValue>` — keep as `stack.len()` cap
+  lua_State.stack	Vec<StackValue>	lstate.h	the stack itself; reallocates → never hold &/&mut across mutating calls (PORT_STRATEGY §3.5)
+  lua_State.openupval	Vec<GcRef<UpVal>>	lstate.h	open-upvalue list (was intrusive); ordered by stack position
+  lua_State.tbclist	Vec<StackIdx>	lstate.h	to-be-closed variable slots; was intrusive list via StkIdRel + delta field on StackValue
+  lua_State.gclist	(removed)	lstate.h	intrusive gray-list link
+  lua_State.twups	(removed)	lstate.h	intrusive threads-with-upvals link; replaced by membership in global_State.twups Vec
+  lua_State.errorJmp	(removed)	lstate.h	C longjmp recovery point; replaced by `Result<T, LuaError>` per PORT_STRATEGY §3.7
+  lua_State.base_ci	CallInfo	lstate.h	bottom CallInfo for first C→Lua entry; the Vec<CallInfo>'s element 0
+  lua_State.hook	Option<Box<dyn FnMut(&mut LuaState, &LuaDebug)>>	lstate.h	debug hook (Phase E)
+  lua_State.errfunc	isize	lstate.h	error-handler stack position (or 0 for none)
+  lua_State.nCcalls	u32	lstate.h	packed (recursion_count | non_yieldable_count << 16); keep packed for parity
+  lua_State.oldpc	u32	lstate.h	last pc traced (for hooks)
+  lua_State.basehookcount	i32	lstate.h	count-hook reset value
+  lua_State.hookcount	i32	lstate.h	count-hook remaining
+  lua_State.hookmask	u8	lstate.h	mask of which hook events are enabled (LUA_MASK*)
+# --- Tag-method enum (ltm.h) ---
+TMS	TagMethod	ltm.h	enum (TM_INDEX..TM_N); 24 metamethod slots; PORTING.md §3.2 references it
+# --- Buffer / stream types (lzio.h) ---
+Mbuffer	LexBuffer	lzio.h	growable byte buffer used by the lexer for token text
+  Mbuffer.buffer	Vec<u8>	lzio.h	growable byte storage; was `char *buffer` + manual realloc
+  Mbuffer.n	usize	lzio.h	current length (covered by Vec::len())
+  Mbuffer.buffsize	usize	lzio.h	capacity (covered by Vec::capacity())
+Zio	ZIO	lzio.h	chunk-reader stream wrapper; Phase A internal to the lexer crate
+ZIO	ZIO	lzio.h	typedef alias for `struct Zio`
+  Zio.n	usize	lzio.h	bytes remaining in current chunk
+  Zio.p	usize	lzio.h	cursor index into current chunk (was `const char *p`); switch to index when chunk is owned
+  Zio.reader	Box<dyn FnMut() -> Option<&[u8]>>	lzio.h	chunk reader callback
+  Zio.data	(folded into the closure)	lzio.h	C-style userdata; absorbed by the Rust closure
+  Zio.L	(removed)	lzio.h	back-pointer to lua_State; the lexer holds &mut LuaState directly
+# --- Parser/lexer-local types (lparser.h, llex.h — internal to lua-parse crate) ---
+expkind	ExprKind	lparser.h	parser-internal enum (VVOID..VVARARG); 20 variants; mirror as Rust enum
+expdesc	ExprDesc	lparser.h	parser-internal; describes a deferred expression
+  expdesc.k	ExprKind	lparser.h	expression kind
+  expdesc.u	ExprDescPayload	lparser.h	C union {ival, nval, strval, info, ind{idx,t}, var{ridx,vidx}}; Rust represents as enum payload tied to ExprKind or as a struct of all fields
+  expdesc.t	i32	lparser.h	patch list for 'exit when true'
+  expdesc.f	i32	lparser.h	patch list for 'exit when false'
+Vardesc	VarDesc	lparser.h	C union of compile-time-const TValue and active-var record; in Rust use a struct with all fields (kind + ridx + pidx + name + optional const value)
+  Vardesc.vd.kind	u8	lparser.h	VDKREG/RDKCONST/RDKTOCLOSE/RDKCTC
+  Vardesc.vd.ridx	u8	lparser.h	register holding the variable
+  Vardesc.vd.pidx	i16	lparser.h	index in Proto.locvars
+  Vardesc.vd.name	GcRef<LuaString>	lparser.h	variable name
+  Vardesc.k	LuaValue	lparser.h	compile-time constant value (only valid for RDKCTC)
+Labeldesc	LabelDesc	lparser.h	pending goto / label record
+  Labeldesc.name	GcRef<LuaString>	lparser.h	label identifier
+  Labeldesc.pc	i32	lparser.h	bytecode position
+  Labeldesc.line	i32	lparser.h	source line
+  Labeldesc.nactvar	u8	lparser.h	active-var count at this point
+  Labeldesc.close	bool	lparser.h	whether this goto escapes upvalues
+Labellist	(folded into Vec<LabelDesc>)	lparser.h	C dynamic array; Rust uses Vec
+Dyndata	DynData	lparser.h	parser-local mutable state (active vars + goto/label lists)
+  Dyndata.actvar	Vec<VarDesc>	lparser.h	all currently-active local variables (C: actvar.arr/n/size)
+  Dyndata.gt	Vec<LabelDesc>	lparser.h	pending gotos
+  Dyndata.label	Vec<LabelDesc>	lparser.h	active labels
+FuncState	FuncState	lparser.h	per-function compile-time state; internal to lua-parse
+  FuncState.f	GcRef<LuaProto>	lparser.h	the Proto being built
+  FuncState.prev	Option<Box<FuncState>>	lparser.h	enclosing function (was raw pointer); use Box-chain or stack-of-frames
+  FuncState.ls	(removed; access via &mut LexState)	lparser.h	back-pointer; Rust passes &mut LexState into methods
+  FuncState.bl	Option<Box<BlockCnt>>	lparser.h	chain of nested blocks; BlockCnt is defined in lparser.c (translation-unit-local)
+  FuncState.pc	i32	lparser.h	next bytecode position to emit
+  FuncState.lasttarget	i32	lparser.h	pc of last jump-label
+  FuncState.previousline	i32	lparser.h	last line saved in lineinfo
+  FuncState.nk	i32	lparser.h	# constants emitted (covered by Proto.k.len() during build — keep for parity)
+  FuncState.np	i32	lparser.h	# nested protos emitted
+  FuncState.nabslineinfo	i32	lparser.h	# absline records emitted
+  FuncState.firstlocal	i32	lparser.h	index of first local var in dyd.actvar
+  FuncState.firstlabel	i32	lparser.h	index of first label in dyd.label
+  FuncState.ndebugvars	i16	lparser.h	# entries in f.locvars
+  FuncState.nactvar	u8	lparser.h	number of active locals
+  FuncState.nups	u8	lparser.h	number of upvalues
+  FuncState.freereg	u8	lparser.h	next free register
+  FuncState.iwthabs	u8	lparser.h	instructions issued since last abs-line
+  FuncState.needclose	bool	lparser.h	whether function needs CLOSE on return
+BlockCnt	BlockCnt	lparser.c	defined in lparser.c (not header); ?internal-only?  — keep struct definition local to lua-parse crate
+SemInfo	TokenValue	llex.h	C union {r: lua_Number, i: lua_Integer, ts: TString*}; Rust uses an enum variant payload
+Token	Token	llex.h	lexer token
+  Token.token	TokenKind	llex.h	int in C (chars + TK_* reserved values); Rust uses a TokenKind enum
+  Token.seminfo	TokenValue	llex.h	semantic payload (number/string)
+LexState	LexState	llex.h	per-chunk lexer + parser state
+  LexState.current	i32	llex.h	current character (charint; -1 for EOZ)
+  LexState.linenumber	i32	llex.h	source line counter
+  LexState.lastline	i32	llex.h	line of last consumed token
+  LexState.t	Token	llex.h	current token
+  LexState.lookahead	Token	llex.h	one-token lookahead
+  LexState.fs	Option<Box<FuncState>>	llex.h	current parser FuncState chain
+  LexState.L	(removed; access via &mut LuaState)	llex.h	back-pointer; Rust threads state via fn args
+  LexState.z	ZIO	llex.h	owned input stream
+  LexState.buff	LexBuffer	llex.h	owned token-text buffer (Mbuffer)
+  LexState.h	GcRef<LuaTable>	llex.h	table that pins token strings to prevent GC during parse
+  LexState.dyd	DynData	llex.h	parser dynamic data; owned by LexState during the parse
+  LexState.source	GcRef<LuaString>	llex.h	current chunk name
+  LexState.envn	GcRef<LuaString>	llex.h	cached "_ENV" name (so we don't re-intern it constantly)
