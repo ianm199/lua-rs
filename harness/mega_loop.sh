@@ -56,6 +56,12 @@ MODEL_ESCALATE=${MODEL_ESCALATE:-opus}
 # infrastructure landing first). Override at invocation time:
 #   SKIP_TESTS="calls.lua,nextvar.lua" ./harness/mega_loop.sh
 SKIP_TESTS=${SKIP_TESTS:-"calls.lua,nextvar.lua,gengc.lua"}
+# Comma-separated list of test labels that start on MODEL_ESCALATE (Opus)
+# directly — skip the Sonnet-first attempt for tests where Sonnet has no
+# realistic shot at the underlying design problem (e.g. ephemeron
+# fixed-point in gc.lua, to-be-closed semantics in locals.lua). Tests not
+# in this list still go Sonnet → Opus via stuck-escalation.
+HARD_TESTS=${HARD_TESTS:-"gc.lua,locals.lua"}
 # Tell the lua-rs binary to emit the [n/4] + [ok] status lines that
 # count_passing depends on. The CLI defaults to quiet output for human use.
 export LUA_RS_VERBOSE=1
@@ -507,7 +513,9 @@ error_signature() {
 emit "═════════════════════════════════════════════════════════════════"
 emit "mega-loop start. ${#PROGS[@]} test programs."
 emit "  MAX_OUTER=$MAX_OUTER  MAX_PER_OUTER=$MAX_PER_OUTER  PER_AGENT_BUDGET=\$$PER_AGENT_BUDGET  SESSION_BUDGET=\$$SESSION_BUDGET"
-emit "  MODEL_DEFAULT=$MODEL_DEFAULT  MODEL_ESCALATE=$MODEL_ESCALATE  SKIP_TESTS=$SKIP_TESTS"
+emit "  MODEL_DEFAULT=$MODEL_DEFAULT  MODEL_ESCALATE=$MODEL_ESCALATE"
+emit "  SKIP_TESTS=$SKIP_TESTS"
+emit "  HARD_TESTS=$HARD_TESTS"
 emit "═════════════════════════════════════════════════════════════════"
 
 OUTER=0
@@ -636,7 +644,14 @@ while [ "$OUTER" -lt "$MAX_OUTER" ]; do
             fi
 
             agent_model="$MODEL_DEFAULT"
-            if [ "$stuck_count" = "1" ]; then
+            for hard_pat in $(echo "$HARD_TESTS" | tr ',' ' '); do
+                if [[ "$prog_key" == *"$hard_pat"* ]]; then
+                    agent_model="$MODEL_ESCALATE"
+                    emit "  [hard-test] $prog_key → $agent_model (skip Sonnet)"
+                    break
+                fi
+            done
+            if [ "$stuck_count" = "1" ] && [ "$agent_model" = "$MODEL_DEFAULT" ]; then
                 agent_model="$MODEL_ESCALATE"
                 emit "  [stuck-escalate] $prog_key → $agent_model"
             fi
