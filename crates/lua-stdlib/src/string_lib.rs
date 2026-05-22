@@ -598,14 +598,17 @@ fn classend(ms: &MatchState, p: usize) -> Result<usize, LuaError> {
 ///
 /// C: `static int check_capture(MatchState *ms, int l)`
 fn check_capture(ms: &MatchState, l: u8) -> Result<usize, LuaError> {
-    let idx = (l as usize).saturating_sub(b'1' as usize);
-    if idx >= ms.level as usize || ms.captures[idx].len == CAP_UNFINISHED {
+    let signed = (l as i32) - (b'1' as i32);
+    if signed < 0
+        || signed >= ms.level as i32
+        || ms.captures[signed as usize].len == CAP_UNFINISHED
+    {
         return Err(LuaError::runtime(format_args!(
             "invalid capture index %{}",
-            idx + 1
+            signed + 1
         )));
     }
-    Ok(idx)
+    Ok(signed as usize)
 }
 
 /// Find the most recent unfinished capture to close.

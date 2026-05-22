@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 150247,
+  "duration_api_ms": 150391,
+  "ttft_ms": 2596,
+  "num_turns": 19,
+  "result": "## Report\n\n**Target:** `crates/lua-stdlib/src/state_stub.rs:155` — `get_meta_field`.\n\n**What it does:** Wraps `auxlib::get_metafield` and converts its `LuaType` result to a `bool` — `true` if a non-nil metafield was found and left on the stack (mirrors `luaL_getmetafield(...) != LUA_TNIL` in `lauxlib.c:860`).\n\n**Family members implemented in the `impl LuaStateStubExt for LuaState` block** (all metatable/metafield/userdata wrappers around existing `auxlib` and `lua_vm::api` functions):\n\n- `get_meta_field` — boolean wrap of `auxlib::get_metafield`.\n- `to_display_string` — delegates to `auxlib::to_lua_string` (`luaL_tolstring`).\n- `get_subtable_registry` — `auxlib::get_subtable` against `LUA_REGISTRYINDEX`.\n- `new_metatable` — `auxlib::new_metatable` (`luaL_newmetatable`).\n- `set_metatable_by_name` — `auxlib::set_metatable` (`luaL_setmetatable`).\n- `check_arg_userdata` — `auxlib::check_udata` (`luaL_checkudata`).\n- `test_arg_userdata` — `auxlib::test_udata` (`luaL_testudata`).\n- `get_table` — wraps `lua_vm::api::get_table` (`lua_gettable`).\n\n**Surfaced but NOT implemented** (different families / risky; left for sibling tickets):\n- Debug/hook family: `get_local_at`, `set_local_at`, `get_param_name`, `get_debug_info`, `get_stack_level`, `has_frames`, `lua_traceback`, `set_hook_full`, `get_hook_count`, `get_hook_mask`, `hook_is_set`, `hook_is_internal_lua_hook`.\n- Threading family: `new_thread`, `is_same_thread`.\n- Upvalue family: `get_upvalue`, `set_upvalue`, `upvalue_id`, `join_upvalues`.\n- Generic libs: `new_lib`, `new_lib_table`, `register_funcs`, `register_lib`, `set_funcs_with_upvalues` (generic-`F` signatures need a different binding strategy).\n- I/O loaders: `load_file`, `load_file_ex`, `load_with_reader`.\n- Userdata: `new_userdata_typed`, `get_iuservalue`, `set_iuservalue`.\n\n**Build:** `cargo build -p lua-cli` → green (warnings only).",
+  "stop_reason": "end_turn",
+  "session_id": "da65bf08-f69e-41e1-9b76-1bf5e83e8889",
+  "total_cost_usd": 1.340542,
+  "usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 73140,
+    "cache_read_input_tokens": 1319520,
+    "output_tokens": 8884,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 73140,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 900,
+        "cache_read_input_tokens": 91638,
+        "cache_creation_input_tokens": 401,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 401
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1322,
+      "outputTokens": 23,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0014370000000000001,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 24,
+      "outputTokens": 8884,
+      "cacheReadInputTokens": 1319520,
+      "cacheCreationInputTokens": 73140,
+      "webSearchRequests": 0,
+      "costUSD": 1.339105,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "d82ba80f-fb2e-477a-915b-461517962dd2"
+}
