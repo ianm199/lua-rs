@@ -16,3 +16,6 @@
 {"ts":"2026-05-16T13:58:19Z","action":"dispatch_done","detail":"func=fast_get cost=1.85217225","total_cost":0.00}
 {"ts":"2026-05-16T13:58:19Z","action":"no_panic","detail":"iter=6 rc=101","total_cost":0.00}
 {"ts":"2026-05-16T13:58:19Z","action":"run_end","detail":"iterations=5 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T13:59:19Z","action":"run_start","detail":"print(\"hello\")","total_cost":0.00}
+{"ts":"2026-05-16T13:59:19Z","action":"panic_detected","detail":"func=LuaTable::get iter=1","total_cost":0.00}
+{"ts":"2026-05-16T13:59:19Z","action":"dispatch_start","detail":"func=LuaTable::get iter=1","total_cost":0.00}

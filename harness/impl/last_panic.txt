@@ -1,1 +1,1 @@
-fast_get
+LuaTable::get

@@ -434,7 +434,10 @@ pub trait LuaTableRefExt {
 impl LuaTableRefExt for GcRef<LuaTable> {
     fn metatable(&self) -> Option<GcRef<LuaTable>> { todo!("phase-b: LuaTable metatable accessor") }
     fn as_ptr(&self) -> *const () { GcRef::identity(self) as *const () }
-    fn get(&self, _k: &LuaValue) -> LuaValue { todo!("phase-b: LuaTable::get") }
+    fn get(&self, k: &LuaValue) -> LuaValue {
+        let slot = self.0.get_slot(k);
+        self.0.slot_value(slot)
+    }
     fn get_int(&self, _k: i64) -> LuaValue { todo!("phase-b: LuaTable::get_int") }
     fn get_short_str(&self, _k: &GcRef<LuaString>) -> LuaValue { todo!("phase-b: LuaTable::get_short_str") }
     fn raw_set(&self, _state: &mut LuaState, _k: &LuaValue, _v: LuaValue) -> Result<(), LuaError> { todo!("phase-b: LuaTable::raw_set") }
