@@ -607,6 +607,18 @@ fn reserve_reg(fs: &mut FuncState) -> u8 {
     r
 }
 
+fn reserve_regs(fs: &mut FuncState, n: i32) -> Result<(), LuaError> {
+    let newstack = fs.freereg as i32 + n;
+    if newstack >= 255 {
+        return Err(LuaError::syntax(format_args!(
+            "function or expression needs too many registers"
+        )));
+    }
+    fs.freereg = newstack as u8;
+    bump_maxstack(fs, fs.freereg);
+    Ok(())
+}
+
 /// Free `reg` if it sits above the active-local watermark.
 ///
 /// Mirrors C's `freereg` from `lcode.c`: registers below `nactvar` belong to
@@ -2932,8 +2944,7 @@ fn forbody(
 
     enter_block(ls, false); // scope for declared variables
     adjust_local_vars(ls, state, nvars)?;
-    // C: luaK_reserveregs(fs, nvars)
-    // TODO(port): lua_code::reserve_regs(ls.fs.as_mut().unwrap(), nvars)?;
+    reserve_regs(ls.fs.as_mut().unwrap(), nvars)?;
     block(ls, state)?;
     leave_block(ls, state)?;
 
@@ -2977,9 +2988,14 @@ fn fornum(
     if test_next(ls, state, b',' as TokenKind)? {
         exp1(ls, state)?; // optional step
     } else {
-        // C: luaK_int(fs, fs->freereg, 1); luaK_reserveregs(fs, 1)
-        // TODO(port): lua_code::emit_int(ls.fs.as_mut().unwrap(), ls.fs.as_ref().unwrap().freereg as i32, 1)?;
-        // TODO(port): lua_code::reserve_regs(ls.fs.as_mut().unwrap(), 1)?;
+        let fs = ls.fs.as_mut().unwrap();
+        let reg = fs.freereg as u32;
+        let bx = (1i32 + lua_code::opcodes::OFFSET_S_BX) as u32;
+        let inst = lua_code::opcodes::Instruction::abx(
+            lua_code::opcodes::OpCode::LoadI, reg, bx,
+        );
+        emit_inst(fs, line, inst);
+        reserve_regs(fs, 1)?;
     }
     adjust_local_vars(ls, state, 3)?; // control variables
     forbody(ls, state, base, line, 1, false)?;
