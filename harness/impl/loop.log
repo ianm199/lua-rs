@@ -209,3 +209,7 @@ help: use `let _ = ...` to ignore the resulting value
 [2026-05-16T17:07:15Z] ─── iter 2  (spent: $0.00) ───
 [2026-05-16T17:07:15Z]   stub blocker: protected_parser
 [2026-05-16T17:07:15Z]   dispatching IMPLEMENT agent for protected_parser at crates/lua-vm/src/state.rs:1241:112 (budget $10)
+[2026-05-16T17:08:31Z]   agent done. iter cost=$0.77108075  total=$0.00
+[2026-05-16T17:08:31Z] ─── iter 3  (spent: $0.00) ───
+[2026-05-16T17:08:31Z]   stub blocker: hook lua-parse::parse
+[2026-05-16T17:08:32Z]   dispatching IMPLEMENT agent for hook lua-parse::parse at crates/lua-vm/src/do_.rs:39:5 (budget $10)

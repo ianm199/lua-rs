@@ -27,16 +27,31 @@ impl DynDataStub {
     fn new() -> Self { DynDataStub }
 }
 
-/// TODO(phase-b): wire to real `lua-parse` parser entry point.
+/// Text-source parser entry point.
+///
+/// C: `LClosure *luaY_parser(lua_State *L, ZIO *z, Mbuffer *buff,
+///                            Dyndata *dyd, const char *name, int firstchar)`
+///
+/// PORT NOTE: A direct call into `lua_parse::parse` would create a cyclic
+/// crate dependency (`lua-parse` already depends on `lua-vm`). The Phase B
+/// reconcile that breaks the cycle (either by moving `protected_parser` into
+/// `lua-parse` or by registering a parser hook on `GlobalState`) has not yet
+/// landed. Until then, this function reports a syntax error so the runtime
+/// can surface it through `pcall` instead of panicking. Functionally this
+/// matches the current state of `lua_parse::parse` itself, which still
+/// returns `LuaError::syntax` for every input.
 fn parse_stub(
     _state: &mut LuaState,
     _z: &mut ZIO,
     _buff: &mut LexBuffer,
     _dyd: &mut DynDataStub,
-    _name: &[u8],
+    name: &[u8],
     _c: i32,
 ) -> Result<lua_types::GcRef<lua_types::closure::LuaLClosure>, LuaError> {
-    todo!("phase-b: hook lua-parse::parse")
+    Err(LuaError::syntax(format_args!(
+        "{}: Lua text parser not yet wired (phase-b: lua-parse::parse)",
+        core::str::from_utf8(name).unwrap_or("?"),
+    )))
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────

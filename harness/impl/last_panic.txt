@@ -1,1 +1,1 @@
-protected_parser
+hook lua-parse::parse

@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 74295,
+  "duration_api_ms": 74147,
+  "ttft_ms": 2186,
+  "num_turns": 15,
+  "result": "Build is green.\n\n## Report\n\n**Modified:** `crates/lua-vm/src/state.rs:1241-1243`\n\n**What it does:** `LuaState::protected_parser` now delegates to the already-implemented `crate::do_::protected_parser(self, z, name, mode)`. The do_.rs version is a faithful port of `luaD_protectedparser` from `ldo.c:1009` — it sets `nny`, constructs an `SParser` (ZIO + LexBuffer + DynDataStub + mode/name), invokes `pcall` over `f_parser`, decrements `nny`, and returns status. The state.rs method was just a missing wrapper, matching the established pattern at line 1244-1246 (`call_no_yield`).\n\n**Next todo!()s likely to surface (downstream of f_parser):**\n- `parse_stub` (crates/lua-vm/src/do_.rs:39) — `todo!(\"phase-b: hook lua-parse::parse\")` will fire for text chunks. Most likely the next panic.\n- `pcall` internals if pcall itself hits an unstubbed path.\n\n**cargo build -p lua-cli:** green (warnings only).",
+  "stop_reason": "end_turn",
+  "session_id": "f27892d7-847a-427c-a2c8-88cc91565b91",
+  "total_cost_usd": 0.77108075,
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 45131,
+    "cache_read_input_tokens": 783332,
+    "output_tokens": 3836,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 45131,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 389,
+        "cache_read_input_tokens": 63443,
+        "cache_creation_input_tokens": 587,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 587
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1256,
+      "outputTokens": 18,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001346,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 20,
+      "outputTokens": 3836,
+      "cacheReadInputTokens": 783332,
+      "cacheCreationInputTokens": 45131,
+      "webSearchRequests": 0,
+      "costUSD": 0.7697347499999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "3d8a4493-3f53-4a79-9d00-a0d19d409a83"
+}

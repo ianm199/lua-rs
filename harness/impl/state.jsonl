@@ -109,3 +109,6 @@
 {"ts":"2026-05-16T17:07:15Z","action":"dispatch_done","detail":"type=implement func=load cost=1.0547005","total_cost":0.00}
 {"ts":"2026-05-16T17:07:15Z","action":"panic_detected","detail":"func=protected_parser iter=2","total_cost":0.00}
 {"ts":"2026-05-16T17:07:15Z","action":"dispatch_start","detail":"type=implement func=protected_parser iter=2","total_cost":0.00}
+{"ts":"2026-05-16T17:08:31Z","action":"dispatch_done","detail":"type=implement func=protected_parser cost=0.77108075","total_cost":0.00}
+{"ts":"2026-05-16T17:08:31Z","action":"panic_detected","detail":"func=hook lua-parse::parse iter=3","total_cost":0.00}
+{"ts":"2026-05-16T17:08:32Z","action":"dispatch_start","detail":"type=implement func=hook lua-parse::parse iter=3","total_cost":0.00}
