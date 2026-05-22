@@ -1,0 +1,20 @@
+[1/4] Creating LuaState...
+[2/4] Opening standard library...
+[3/4] Loading source (parse + compile)...
+[4/4] Executing chunk...
+===@Y test===
+st=	false
+msg=	[string "-- harness preamble: emulate the globals lua-..."]:21: @Y
+match=	nil
+===@x123 test===
+st=	false
+msg=	[string "-- harness preamble: emulate the globals lua-..."]:43: @x123
+stack traceback:
+	[C]: in function 'error'
+	[string "-- harness preamble: emulate the globals lua-..."]:43: in function <:-1>
+	[string "-- harness preamble: emulate the globals lua-..."]:44: in function <:-1>
+	[C]: in function 'xpcall'
+	[string "-- harness preamble: emulate the globals lua-..."]:46: in function <:-1>
+match1=	nil
+find2=	nil
+[ok] execution completed, status=Ok

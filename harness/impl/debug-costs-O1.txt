@@ -1,0 +1,3 @@
+1 0.3001427 inline [sonnet]
+4 [2026-05-18T18:38:01Z mega]   → committed 71b48a8 (debug/reference/lua-c/testes/errors.lua )
+8.005384349999998 reference/lua-c/testes/errors.lua [sonnet]

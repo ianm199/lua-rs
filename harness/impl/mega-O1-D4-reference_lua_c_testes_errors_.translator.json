@@ -1,0 +1,86 @@
+{
+  "type": "result",
+  "subtype": "error_max_budget_usd",
+  "duration_ms": 1827816,
+  "duration_api_ms": 1814658,
+  "is_error": true,
+  "num_turns": 168,
+  "stop_reason": "end_turn",
+  "session_id": "6a4e7538-094d-42ea-8c53-cba7db014d3b",
+  "total_cost_usd": 8.005384349999998,
+  "usage": {
+    "input_tokens": 169,
+    "cache_creation_input_tokens": 196506,
+    "cache_read_input_tokens": 19093277,
+    "output_tokens": 97888,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 196506,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 109,
+        "cache_read_input_tokens": 209843,
+        "cache_creation_input_tokens": 257,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 257
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1495,
+      "outputTokens": 16,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001575,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-sonnet-4-6": {
+      "inputTokens": 170,
+      "outputTokens": 98310,
+      "cacheReadInputTokens": 19303377,
+      "cacheCreationInputTokens": 196703,
+      "webSearchRequests": 0,
+      "costUSD": 8.003809349999997,
+      "contextWindow": 600000,
+      "maxOutputTokens": 32000
+    }
+  },
+  "permission_denials": [
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01JtJDrwpmL7mZFBH1ojXfZD",
+      "tool_input": {
+        "command": "cat > /tmp/test_errors.lua << 'EOF'\n_soft = true\n_port = true\n_nomsg = true\nlocal debug = require\"debug\"\nlocal mt = getmetatable(_G) or {}\nlocal oldmm = mt.__index\nmt.__index = nil\n\nlocal function checkerr (msg, f, ...)\n  local st, err = pcall(f, ...)\n  assert(not st and string.find(err, msg))\nend\n\nlocal function doit (s)\n  local f, msg = load(s)\n  if not f then return msg end\n  local cond, msg = pcall(f)\n  return (not cond) and msg\nend\n\nlocal _count = 0\nlocal function checkmessage (prog, msg, debug)\n  _count = _count + 1\n  local m = doit(prog)\n  if debug then print(m, msg) end\n  if not string.find(m, msg, 1, true) then\n    print(\"FAIL #\" .. _count .. \": prog=\" .. tostring(prog):sub(1, 60))\n    print(\"  expected: \" .. tostring(msg))\n    print(\"  got: \" .. tostring(m))\n    error(\"stopped\")\n  end\nend\n\nlocal function checksyntax (prog, extra, token, line)\n  local msg = doit(prog)\n  if not string.find(token, \"^<%a\") and not string.find(token, \"^char%(\")\n    then token = \"'\"..token..\"'\" end\n  token = string.gsub(token, \"(%p)\", \"%%%1\")\n  local pt = string.format([[^%%[string \".*\"%%]:%d: .- near %s$]],\n                           line, token)\n  assert(string.find(msg, pt))\n  assert(string.find(msg, msg, 1, true))\nend\n\n-- test error message with no extra info\nassert(doit(\"error('hi', 0)\") == 'hi')\nassert(doit(\"error()\") == nil)\n\n-- test common errors\nassert(doit(\"table.unpack({}, 1, n=2^30)\"))\nassert(doit(\"a=math.sin()\"))\nassert(not doit(\"tostring(1)\") and doit(\"tostring()\"))\nassert(doit\"tonumber()\")\nassert(doit\"repeat until 1; a\")\nassert(doit\"return;;\")\nassert(doit\"assert(false)\")\nassert(doit\"assert(nil)\")\nassert(doit(\"function a (... , ...) end\"))\nassert(doit(\"function a (, ...) end\"))\nassert(doit(\"local t={}; t = t[#t] + 1\"))\n\nchecksyntax([[\n  local a = {4\n\n]], \"'}' expected (to close '{' at line 1)\", \"<eof>\", 3)\n\ndo   -- testing errors in goto/break\n  local function checksyntax (prog, msg, line)\n    local st, err = load(prog)\n    assert(string.find(err, \"line \" .. line))\n    assert(string.find(err, msg, 1, true))\n  end\n  checksyntax([[\n    ::A:: a = 1\n    ::A::\n  ]], \"label 'A' already defined\", 1)\n  checksyntax([[\n    a = 1\n    goto A\n    do ::A:: end\n  ]], \"no visible label 'A'\", 2)\nend\n\n-- testC not active - skip that block\n\n-- tests for better error messages\ncheckmessage(\"a = {} + 1\", \"arithmetic\")\ncheckmessage(\"a = {} | 1\", \"bitwise operation\")\ncheckmessage(\"a = {} < 1\", \"attempt to compare\")\ncheckmessage(\"a = {} <= 1\", \"attempt to compare\")\ncheckmessage(\"aaa=1; bbbb=2; aaa=math.sin(3)+bbbb(3)\", \"global 'bbbb'\")\ncheckmessage(\"aaa={}; do local aaa=1 end aaa:bbbb(3)\", \"method 'bbbb'\")\ncheckmessage(\"local a={}; a.bbbb(3)\", \"field 'bbbb'\")\nassert(not string.find(doit\"aaa={13}; local bbbb=1; aaa[bbbb](3)\", \"'bbbb'\"))\ncheckmessage(\"aaa={13}; local bbbb=1; aaa[bbbb](3)\", \"number\")\ncheckmessage(\"aaa=(1)..{}\", \"a table value\")\ncheckmessage(\"a = {_ENV = {}}; print(a._ENV.x + 1)\", \"field 'x'\")\ncheckmessage(\"local a; a(13)\", \"local 'a'\")\ncheckmessage([[\n  local a = setmetatable({}, {__add = 34})\n  a = a + 1\n]], \"metamethod 'add'\")\ncheckmessage([[\n  local a = setmetatable({}, {__lt = {}})\n  a = a > a\n]], \"metamethod 'lt'\")\ncheckmessage(\"local a={}; return a.bbbb(3)\", \"field 'bbbb'\")\ncheckmessage(\"aaa={}; do local aaa=1 end; return aaa:bbbb(3)\", \"method 'bbbb'\")\ncheckmessage(\"aaa = #print\", \"length of a function value\")\ncheckmessage(\"aaa = #3\", \"length of a number value\")\n_G.aaa = nil\ncheckmessage(\"aaa.bbb:ddd(9)\", \"global 'aaa'\")\ncheckmessage(\"local aaa={bbb=1}; aaa.bbb:ddd(9)\", \"field 'bbb'\")\ncheckmessage(\"local aaa={bbb={}}; aaa.bbb:ddd(9)\", \"method 'ddd'\")\ncheckmessage(\"local a,b,c; (function () a = b+1.1 end)()\", \"upvalue 'b'\")\nassert(not doit\"local aaa={bbb={ddd=next}}; aaa.bbb:ddd(nil)\")\n\nprint(\"PASSED all checkmessage tests (count=\" .. _count .. \")\")\nEOF\ntarget/debug/lua-rs \"$(cat /tmp/test_errors.lua)\" 2>/dev/null",
+        "timeout": 30000
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01A5uthw54A6hnfsqSTffzNb",
+      "tool_input": {
+        "command": "target/debug/lua-rs \"$(</tmp/test_errors_diag.lua)\" 2>/dev/null",
+        "timeout": 30000
+      }
+    }
+  ],
+  "fast_mode_state": "off",
+  "uuid": "7375333f-3c35-4e02-a9e0-d6ceff0ebd82",
+  "errors": [
+    "Reached maximum budget ($8)"
+  ]
+}

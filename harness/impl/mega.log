@@ -1119,3 +1119,7 @@
 [2026-05-18T18:31:39Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/gengc.lua
 [2026-05-18T18:31:39Z mega]   [O1.D3] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [model=sonnet] [parallel]
 [2026-05-18T18:31:39Z mega]   [hard-test] reference/lua-c/testes/locals.lua → opus (skip Sonnet)
+[2026-05-18T18:32:33Z mega]   [O1.D4] DEBUG dispatch on file: reference/lua-c/testes/locals.lua [model=opus] [parallel]
+[2026-05-18T18:32:33Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/calls.lua
+[2026-05-18T18:32:33Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/nextvar.lua
+[2026-05-18T18:38:01Z mega]   → committed 71b48a8 (debug/reference/lua-c/testes/errors.lua )
