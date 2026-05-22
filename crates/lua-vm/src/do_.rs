@@ -575,8 +575,7 @@ fn try_func_tm(state: &mut LuaState, func_idx: StackIdx) -> Result<StackIdx, Lua
     // C: if (l_unlikely(ttisnil(tm))) luaG_callerror(L, s2v(func))
     if matches!(tm, LuaValue::Nil) {
         let offender = state.get_at(func_idx).clone();
-        let line = state.current_line();
-        eprintln!("DEBUG try_func_tm: call_error func_idx={:?} offender={:?} line={}", func_idx, offender, line);
+        eprintln!("DEBUG try_func_tm: call_error func_idx={:?} offender={:?}", func_idx, offender);
         return Err(LuaError::call_error(&offender));
     }
 
