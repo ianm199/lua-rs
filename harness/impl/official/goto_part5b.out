@@ -3,13 +3,10 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 entered L1 block
-DEBUG new_tbc_upval level=4
-DEBUG new_tbc_upval kind=table
 a created, X =	nil
 first assert passed
 about to goto L2
-DEBUG func::close called level=4 status=0 tbclist_len=1
-DEBUG call_close_method tm_kind=function
-at L3, X =	nil
-DEBUG func::close called level=1 status=2 tbclist_len=0
-[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:30: assertion failed!
+close fired
+at L3, X =	true
+part5-b ok
+[ok] execution completed, status=Ok

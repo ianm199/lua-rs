@@ -530,8 +530,6 @@ pub(crate) fn close(
     status: i32,
     yy: bool,
 ) -> Result<StackIdx, LuaError> {
-    eprintln!("DEBUG func::close called level={} status={} tbclist_len={}",
-        level.0, status, state.tbclist.len());
     // C: ptrdiff_t levelrel = savestack(L, level);
     // macros.tsv: savestack → idx (StackIdx is already stable across reallocs in Rust)
     // PORT NOTE: savestack / restorestack are no-ops here. In C they save/restore a
