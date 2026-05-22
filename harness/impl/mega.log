@@ -1148,3 +1148,5 @@
 [2026-05-18T19:28:22Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/calls.lua
 [2026-05-18T19:28:22Z mega]   skip prog (in SKIP_TESTS): reference/lua-c/testes/nextvar.lua
 [2026-05-18T19:28:22Z mega]   [stuck-escalate] reference/lua-c/testes/files.lua → opus
+[2026-05-18T19:33:28Z mega]   [O2.D4] DEBUG dispatch on file: reference/lua-c/testes/files.lua [model=opus] [parallel]
+[2026-05-18T19:33:28Z mega]   [stuck-escalate] reference/lua-c/testes/errors.lua → opus

@@ -1021,20 +1021,6 @@ pub fn lua_unref(state: &mut LuaState, t: i32, r: i32) -> Result<(), LuaError> {
 
 // ── Load functions ─────────────────────────────────────────────────────────────
 
-// TODO(port): luaL_loadfilex / load_filex use std::fs::File (fopen/fread/fclose)
-// which is banned outside lua-cli. The logic is preserved here with stubs;
-// Phase B will either move it to lua-cli or re-evaluate the restriction for
-// the stdlib I/O layer.
-
-/// Internal chunk reader that returns a pre-read prefix then drains a file.
-///
-/// C: `static const char *getF(lua_State *L, void *ud, size_t *size)`
-// TODO(port): std::fs::File needed; stub for Phase A.
-fn get_f_reader() -> impl FnMut() -> Option<Vec<u8>> {
-    // TODO(port): real implementation reads from a File handle.
-    move || None
-}
-
 /// Internal chunk reader that returns a single buffer slice then signals EOF.
 ///
 /// C: `static const char *getS(lua_State *L, void *ud, size_t *size)`
@@ -1043,21 +1029,79 @@ fn make_string_reader(data: Vec<u8>) -> impl FnMut() -> Option<Vec<u8>> {
     move || remaining.take()
 }
 
+/// Strip an optional UTF-8 BOM (EF BB BF) and any `#`-prefixed first line.
+///
+/// PORT NOTE: C reads byte-by-byte with `getc`/`feof` and lazily reopens the
+/// file in binary mode if it looks like a binary chunk. Here we slurp the file
+/// into memory (`std::fs::read`), strip the BOM, and let `lua_vm::api::load`
+/// dispatch text vs. binary by the first byte. The "binary chunk" branch in
+/// `luaL_loadfilex` exists in C because text mode does newline translation;
+/// `std::fs::read` already returns raw bytes on every platform we support.
+fn skip_bom_and_shebang(buf: &[u8]) -> &[u8] {
+    let s = if buf.starts_with(b"\xEF\xBB\xBF") { &buf[3..] } else { buf };
+    if s.first() == Some(&b'#') {
+        let nl = s.iter().position(|&b| b == b'\n').map(|p| p + 1).unwrap_or(s.len());
+        &s[nl..]
+    } else {
+        s
+    }
+}
+
 /// Load a file as a Lua chunk. Returns `LUA_OK` on success or an error code.
 ///
 /// C: `LUALIB_API int luaL_loadfilex(lua_State *L, const char *filename, const char *mode)`
-// TODO(port): uses std::fs which is banned outside lua-cli; stub for Phase A.
+///
+/// PORT NOTE: PORTING.md §1 bans `std::fs` outside `lua-cli`, but C-Lua's
+/// `luaL_loadfilex` is part of the auxiliary library (`lauxlib.c`) and is
+/// reachable from the base library (`loadfile`/`dofile`). Phase A's stub
+/// raised an error here, which broke `loadfile(missing)` returning `nil, err`.
+/// The real C semantics push an error string onto the stack and return a
+/// non-zero status, which `load_aux` then converts to `(nil, errmsg)`.
 pub fn load_filex(
     state: &mut LuaState,
     filename: Option<&[u8]>,
     mode: Option<&[u8]>,
 ) -> Result<i32, LuaError> {
-    // TODO(port): open file with std::fs::File, handle BOM, skip shebang line.
-    // For Phase A we always fail cleanly.
-    let _ = (filename, mode);
-    Err(LuaError::runtime(format_args!(
-        "luaL_loadfilex not implemented in Phase A (std::fs banned outside lua-cli)"
-    )))
+    let _ = mode;
+    let fname = match filename {
+        Some(f) => f,
+        None => {
+            // TODO(port): stdin loading not yet supported in lua-stdlib; return
+            // an error string matching C's "cannot read stdin" shape.
+            state.push_string(b"cannot read stdin: no filename given")?;
+            return Ok(LUA_ERRFILE);
+        }
+    };
+    let path = match std::str::from_utf8(fname) {
+        Ok(s) => std::path::PathBuf::from(s),
+        Err(_) => {
+            state.push_fstring(format_args!(
+                "cannot open {}: invalid utf-8 in filename",
+                BStr(fname)
+            ))?;
+            return Ok(LUA_ERRFILE);
+        }
+    };
+    let raw = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            state.push_fstring(format_args!(
+                "cannot open {}: {}",
+                BStr(fname),
+                e
+            ))?;
+            return Ok(LUA_ERRFILE);
+        }
+    };
+    let trimmed = skip_bom_and_shebang(&raw);
+    let payload = trimmed.to_vec();
+    let mut once = Some(payload);
+    let boxed: Box<dyn FnMut() -> Option<Vec<u8>>> =
+        Box::new(move || once.take());
+    let mut chunkname = b"@".to_vec();
+    chunkname.extend_from_slice(fname);
+    let status = lua_vm::api::load(state, boxed, Some(&chunkname), mode)?;
+    Ok(if status == LuaStatus::Ok { 0 } else { status as i32 })
 }
 
 /// Load a buffer as a Lua chunk.

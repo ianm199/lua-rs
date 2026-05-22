@@ -1972,12 +1972,14 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
 
         let spec_slice = &fmt_bytes[spec_start + 1..i - 1];
         let form = &fmt_bytes[spec_start..i];
-        let spec = parse_fmt_spec(spec_slice);
 
         // C: getformat rejects spec bodies >= MAX_FORMAT - 10 = 22 bytes.
+        // Must check before parse_fmt_spec to avoid overflow on huge widths.
         if spec_slice.len() + 1 >= 22 {
             return Err(LuaError::runtime(format_args!("invalid format (too long)")));
         }
+
+        let spec = parse_fmt_spec(spec_slice);
 
         match conv {
             b'c' => {

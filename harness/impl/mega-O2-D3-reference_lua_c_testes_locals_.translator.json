@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 300975,
+  "duration_api_ms": 299959,
+  "ttft_ms": 2918,
+  "num_turns": 45,
+  "result": "The error message now correctly shows `'x'` instead of `'?'`. Build is green.\n\n**Root cause:** `LuaState::debug_find_local` in `crates/lua-vm/src/func.rs:785` was a Phase-B stub that always returned `None`, and `find_local` in `crates/lua-vm/src/debug.rs:520` set `name = None` for the Lua-function branch instead of calling `luaF_getlocalname`. As a result, `check_close_mth` always emitted `variable '?' got a non-closable value`, but the test on `locals.lua:504` expects the actual variable name (`'x'`).\n\n**Fix:** Implemented `find_local` to call the existing `crate::func::get_local_name(&proto, n, pc)` (returning `Option<Vec<u8>>` rather than `&'a [u8]` since the proto borrow can't escape), wired `state.debug_find_local` to delegate to it, and updated `check_close_mth` and the two `get_local`/`set_local` callers to consume the owned `Vec<u8>`.\n\n**New state:** Minimal repro now prints `variable 'x' got a non-closable value`, matching the test's expected pattern. Did not re-run the full `locals.lua` (mega-loop will re-test) — the next assert at line 511 (the `__close = nil` case) depends on a different code path (call-of-nil error path in `try_func_tm`), which should now also benefit since `funcname_from_call` was already wired correctly.",
+  "stop_reason": "end_turn",
+  "session_id": "c29ad2c4-76bb-4120-a917-998769b9b5c1",
+  "total_cost_usd": 2.4103414999999995,
+  "usage": {
+    "input_tokens": 50,
+    "cache_creation_input_tokens": 74140,
+    "cache_read_input_tokens": 3129851,
+    "output_tokens": 15209,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 74140,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 493,
+        "cache_read_input_tokens": 92725,
+        "cache_creation_input_tokens": 304,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 304
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1491,
+      "outputTokens": 15,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001566,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7": {
+      "inputTokens": 50,
+      "outputTokens": 15209,
+      "cacheReadInputTokens": 3129851,
+      "cacheCreationInputTokens": 74140,
+      "webSearchRequests": 0,
+      "costUSD": 2.408775499999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "dd909214-7e3b-4baa-803d-3dd2b6e2e17b"
+}
