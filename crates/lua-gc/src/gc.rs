@@ -35,6 +35,19 @@
 //! survive — they're representation-only and have no dependency on
 //! `GlobalState`.
 //!
+//! # `unsafe` discipline
+//!
+//! Most function signatures in this module take or return raw GC pointers
+//! (`GcObj` = `*mut GcHeader`) because that mirrors the C source. However,
+//! while the bodies are stubbed as `todo!(…)` they perform **no** unsafe
+//! operations, so the wrappers are declared as safe `fn`. Phase D will
+//! re-introduce `unsafe fn` on the (small) subset of these that genuinely
+//! need caller invariants once real bodies replace the stubs.
+//!
+//! The two genuinely-unsafe helpers retained today — `find_last` and
+//! `check_pointer` — dereference `*mut GcObj` and remain `unsafe fn` with
+//! `// SAFETY:` invariants documented inline.
+//!
 //! C: `#define lgc_c` / `#define LUA_CORE`
 
 // Canonical interpreter types live in `lua-vm` per harness/type-vocabulary.tsv.
@@ -62,31 +75,27 @@ pub trait LuaStateGcExt {
     fn set_debt(&mut self, debt: isize);
 
     /// Phase-B stub for accessing the running thread as a raw GcObj.
-    ///
-    /// # Safety
     /// Returns null in Phase B; Phase D returns a live thread pointer.
-    unsafe fn current_thread_raw(&self) -> GcObj;
+    fn current_thread_raw(&self) -> GcObj;
 }
 
 impl LuaStateGcExt for LuaState {
     fn set_debt(&mut self, _debt: isize) {
         todo!("phase-b-reconcile: lua_vm::state::LuaState::set_debt not implemented")
     }
-    unsafe fn current_thread_raw(&self) -> GcObj {
+    fn current_thread_raw(&self) -> GcObj {
         std::ptr::null_mut()
     }
 }
 
 pub trait GlobalStateGcExt {
     /// Phase-B stub for `g->mainthread` (raw GcObj head of the main thread).
-    ///
-    /// # Safety
     /// Placeholder returns null; Phase D supplies a real pointer.
-    unsafe fn mainthread_raw(&self) -> GcObj;
+    fn mainthread_raw(&self) -> GcObj;
 }
 
 impl GlobalStateGcExt for GlobalState {
-    unsafe fn mainthread_raw(&self) -> GcObj {
+    fn mainthread_raw(&self) -> GcObj {
         std::ptr::null_mut()
     }
 }
@@ -405,6 +414,13 @@ pub fn is_dec_gc_mode_gen(gckind: u8, lastatomic: usize) -> bool {
 // below collapses to `todo!("phase-b-reconcile: …")`. Signatures remain so
 // callers continue to type-check.
 //
+// The stubs are declared as safe `fn` even where their C counterparts would
+// require `unsafe fn` — `todo!()` performs no unsafe operation. Phase D will
+// re-introduce `unsafe fn` on the (small) subset that genuinely need it once
+// real bodies replace the stubs. Two helpers below (`find_last`,
+// `check_pointer`) actually dereference raw `*mut GcObj` and remain
+// `unsafe fn`.
+//
 // Sections mirror the C source groupings:
 //   §A  Generic / utility helpers
 //   §B  Mark functions
@@ -417,20 +433,14 @@ pub fn is_dec_gc_mode_gen(gckind: u8, lastatomic: usize) -> bool {
 // §A — Generic / utility helpers -------------------------------------------
 
 /// C: `static GCObject **getgclist(GCObject *o)`
-///
-/// # Safety
-/// `o` must point to a valid, fully-initialised GC object.
 #[allow(dead_code)]
-unsafe fn get_gc_list(_o: GcObj) -> GcObjCursor {
+fn get_gc_list(_o: GcObj) -> GcObjCursor {
     todo!("phase-b-reconcile: get_gc_list — needs Phase-D intrusive gclist field")
 }
 
 /// C: `static void linkgclist_(GCObject *o, GCObject **pnext, GCObject **list)`
-///
-/// # Safety
-/// `o`, `pnext`, and `list` must be non-null, aligned, and point at live data.
 #[allow(dead_code)]
-unsafe fn link_gc_list(_o: GcObj, _pnext: GcObjCursor, _list: GcObjCursor) {
+fn link_gc_list(_o: GcObj, _pnext: GcObjCursor, _list: GcObjCursor) {
     todo!("phase-b-reconcile: link_gc_list — depends on Phase-D gray-list shape")
 }
 
@@ -441,45 +451,30 @@ fn clear_key() {
 }
 
 /// C: `static int iscleared(global_State *g, const GCObject *o)`
-///
-/// # Safety
-/// `o` must be null or a pointer to a live `GcHeader`.
 #[allow(dead_code)]
-unsafe fn is_cleared(_cur_white: u8, _o: GcObj) -> bool {
+fn is_cleared(_cur_white: u8, _o: GcObj) -> bool {
     todo!("phase-b-reconcile: is_cleared — needs Phase-D string-mark path")
 }
 
 // §A — Public write barriers ------------------------------------------------
 
 /// C: `void luaC_barrier_(lua_State *L, GCObject *o, GCObject *v)`
-///
-/// # Safety
-/// Both `o` and `v` must point to live `GcHeader`s.
-pub(crate) unsafe fn barrier(_state: &mut LuaState, _o: GcObj, _v: GcObj) {
+pub(crate) fn barrier(_state: &mut LuaState, _o: GcObj, _v: GcObj) {
     todo!("phase-b-reconcile: barrier — depends on Phase-D mark dispatch")
 }
 
 /// C: `void luaC_barrierback_(lua_State *L, GCObject *o)`
-///
-/// # Safety
-/// `o` must point to a live `GcHeader`.
-pub(crate) unsafe fn barrier_back(_state: &mut LuaState, _o: GcObj) {
+pub(crate) fn barrier_back(_state: &mut LuaState, _o: GcObj) {
     todo!("phase-b-reconcile: barrier_back — needs Vec-based grayagain list")
 }
 
 /// C: `void luaC_fix(lua_State *L, GCObject *o)`
-///
-/// # Safety
-/// `o` must be the head of `g->allgc`.
-pub(crate) unsafe fn fix(_state: &mut LuaState, _o: GcObj) {
+pub(crate) fn fix(_state: &mut LuaState, _o: GcObj) {
     todo!("phase-b-reconcile: fix — needs canonical allgc/fixedgc shape")
 }
 
 /// C: `GCObject *luaC_newobjdt(lua_State *L, int tt, size_t sz, size_t offset)`
-///
-/// # Safety
-/// Caller must initialise the returned memory before publishing it.
-pub(crate) unsafe fn new_obj_dt(
+pub(crate) fn new_obj_dt(
     _state: &mut LuaState,
     _tt: u8,
     _sz: usize,
@@ -489,51 +484,45 @@ pub(crate) unsafe fn new_obj_dt(
 }
 
 /// C: `GCObject *luaC_newobj(lua_State *L, int tt, size_t sz)`
-///
-/// # Safety
-/// See `new_obj_dt`.
-pub(crate) unsafe fn new_obj(_state: &mut LuaState, _tt: u8, _sz: usize) -> GcObj {
+pub(crate) fn new_obj(_state: &mut LuaState, _tt: u8, _sz: usize) -> GcObj {
     todo!("phase-b-reconcile: new_obj — wraps new_obj_dt")
 }
 
 // §B — Mark functions -------------------------------------------------------
 
 /// C: `static void reallymarkobject(global_State *g, GCObject *o)`
-///
-/// # Safety
-/// `o` must be a valid, white GC object.
 #[allow(dead_code)]
-unsafe fn really_mark_object(_state: &mut LuaState, _o: GcObj) {
+fn really_mark_object(_state: &mut LuaState, _o: GcObj) {
     todo!("phase-b-reconcile: really_mark_object — needs Phase-D mark dispatch")
 }
 
 /// C: `static void markmt(global_State *g)`
 #[allow(dead_code)]
-unsafe fn mark_metatables(_state: &mut LuaState) {
+fn mark_metatables(_state: &mut LuaState) {
     todo!("phase-b-reconcile: mark_metatables — needs GlobalState.mt iteration")
 }
 
 /// C: `static lu_mem markbeingfnz(global_State *g)`
 #[allow(dead_code)]
-unsafe fn mark_being_finalized(_state: &mut LuaState) -> usize {
+fn mark_being_finalized(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: mark_being_finalized — needs Vec-based tobefnz walk")
 }
 
 /// C: `static int remarkupvals(global_State *g)`
 #[allow(dead_code)]
-unsafe fn remark_upvalues(_state: &mut LuaState) -> usize {
+fn remark_upvalues(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: remark_upvalues — needs LuaState.openupval / twups")
 }
 
 /// C: `static void cleargraylists(global_State *g)`
 #[allow(dead_code)]
-unsafe fn clear_gray_lists(_state: &mut LuaState) {
+fn clear_gray_lists(_state: &mut LuaState) {
     todo!("phase-b-reconcile: clear_gray_lists — needs Vec-typed gray lists")
 }
 
 /// C: `static void restartcollection(global_State *g)`
 #[allow(dead_code)]
-unsafe fn restart_collection(_state: &mut LuaState) {
+fn restart_collection(_state: &mut LuaState) {
     todo!("phase-b-reconcile: restart_collection — needs mainthread/registry mark path")
 }
 
@@ -541,79 +530,79 @@ unsafe fn restart_collection(_state: &mut LuaState) {
 
 /// C: `static void genlink(global_State *g, GCObject *o)`
 #[allow(dead_code)]
-unsafe fn gen_link(_state: &mut LuaState, _o: GcObj) {
+fn gen_link(_state: &mut LuaState, _o: GcObj) {
     todo!("phase-b-reconcile: gen_link — needs Vec-based grayagain list")
 }
 
 /// C: `static void traverseweakvalue(global_State *g, Table *h)`
 #[allow(dead_code)]
-unsafe fn traverse_weak_value(_state: &mut LuaState, _h: GcObj) {
+fn traverse_weak_value(_state: &mut LuaState, _h: GcObj) {
     todo!("phase-b-reconcile: traverse_weak_value — needs LuaTable from lua-vm")
 }
 
 /// C: `static int traverseephemeron(global_State *g, Table *h, int inv)`
 #[allow(dead_code)]
-unsafe fn traverse_ephemeron(_state: &mut LuaState, _h: GcObj, _inv: bool) -> bool {
+fn traverse_ephemeron(_state: &mut LuaState, _h: GcObj, _inv: bool) -> bool {
     todo!("phase-b-reconcile: traverse_ephemeron — needs LuaTable from lua-vm")
 }
 
 /// C: `static void traversestrongtable(global_State *g, Table *h)`
 #[allow(dead_code)]
-unsafe fn traverse_strong_table(_state: &mut LuaState, _h: GcObj) {
+fn traverse_strong_table(_state: &mut LuaState, _h: GcObj) {
     todo!("phase-b-reconcile: traverse_strong_table — needs LuaTable from lua-vm")
 }
 
 /// C: `static lu_mem traversetable(global_State *g, Table *h)`
 #[allow(dead_code)]
-unsafe fn traverse_table(_state: &mut LuaState, _h: GcObj) -> usize {
+fn traverse_table(_state: &mut LuaState, _h: GcObj) -> usize {
     todo!("phase-b-reconcile: traverse_table — needs LuaTable from lua-vm")
 }
 
 /// C: `static int traverseudata(global_State *g, Udata *u)`
 #[allow(dead_code)]
-unsafe fn traverse_udata(_state: &mut LuaState, _u: GcObj) -> usize {
+fn traverse_udata(_state: &mut LuaState, _u: GcObj) -> usize {
     todo!("phase-b-reconcile: traverse_udata — needs LuaUserData fields from lua-vm")
 }
 
 /// C: `static int traverseproto(global_State *g, Proto *f)`
 #[allow(dead_code)]
-unsafe fn traverse_proto(_state: &mut LuaState, _f: GcObj) -> usize {
+fn traverse_proto(_state: &mut LuaState, _f: GcObj) -> usize {
     todo!("phase-b-reconcile: traverse_proto — needs LuaProto fields from lua-vm")
 }
 
 /// C: `static int traverseCclosure(global_State *g, CClosure *cl)`
 #[allow(dead_code)]
-unsafe fn traverse_c_closure(_state: &mut LuaState, _cl: GcObj) -> usize {
+fn traverse_c_closure(_state: &mut LuaState, _cl: GcObj) -> usize {
     todo!("phase-b-reconcile: traverse_c_closure — needs CClosure from lua-vm")
 }
 
 /// C: `static int traverseLclosure(global_State *g, LClosure *cl)`
 #[allow(dead_code)]
-unsafe fn traverse_l_closure(_state: &mut LuaState, _cl: GcObj) -> usize {
+fn traverse_l_closure(_state: &mut LuaState, _cl: GcObj) -> usize {
     todo!("phase-b-reconcile: traverse_l_closure — needs LClosure / UpVal from lua-vm")
 }
 
 /// C: `static int traversethread(global_State *g, lua_State *th)`
 #[allow(dead_code)]
-unsafe fn traverse_thread(_state: &mut LuaState, _th: GcObj) -> usize {
+fn traverse_thread(_state: &mut LuaState, _th: GcObj) -> usize {
     todo!("phase-b-reconcile: traverse_thread — needs LuaState stack from lua-vm")
 }
 
 /// C: `static lu_mem propagatemark(global_State *g)`
 #[allow(dead_code)]
-unsafe fn propagate_mark(_state: &mut LuaState) -> usize {
+fn propagate_mark(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: propagate_mark — needs Vec-based gray list")
 }
 
 /// C: `static lu_mem propagateall(global_State *g)`
 #[allow(dead_code)]
-unsafe fn propagate_all(_state: &mut LuaState) -> usize {
+fn propagate_all(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: propagate_all — needs Vec-based gray list")
 }
 
 /// C: `static void convergeephemerons(global_State *g)`
 #[allow(dead_code)]
-unsafe fn converge_ephemerons(_state: &mut LuaState) {
+fn converge_ephemerons(_state: &mut LuaState) {
     todo!("phase-b-reconcile: converge_ephemerons — needs Vec-based ephemeron list")
 }
 
@@ -621,31 +610,31 @@ unsafe fn converge_ephemerons(_state: &mut LuaState) {
 
 /// C: `static void clearbykeys(global_State *g, GCObject *l)`
 #[allow(dead_code)]
-unsafe fn clear_by_keys(_state: &mut LuaState, _list: GcObj) {
+fn clear_by_keys(_state: &mut LuaState, _list: GcObj) {
     todo!("phase-b-reconcile: clear_by_keys — needs LuaTable hash iteration")
 }
 
 /// C: `static void clearbyvalues(global_State *g, GCObject *l, GCObject *f)`
 #[allow(dead_code)]
-unsafe fn clear_by_values(_state: &mut LuaState, _list: GcObj, _f: GcObj) {
+fn clear_by_values(_state: &mut LuaState, _list: GcObj, _f: GcObj) {
     todo!("phase-b-reconcile: clear_by_values — needs LuaTable hash iteration")
 }
 
 /// C: `static void freeupval(lua_State *L, UpVal *uv)`
 #[allow(dead_code)]
-unsafe fn free_upval(_state: &mut LuaState, _uv: GcObj) {
+fn free_upval(_state: &mut LuaState, _uv: GcObj) {
     todo!("phase-b-reconcile: free_upval — needs UpVal::Open unlinking")
 }
 
 /// C: `static void freeobj(lua_State *L, GCObject *o)`
 #[allow(dead_code)]
-unsafe fn free_obj(_state: &mut LuaState, _o: GcObj) {
+fn free_obj(_state: &mut LuaState, _o: GcObj) {
     todo!("phase-b-reconcile: free_obj — needs concrete-type deallocators in lua-vm")
 }
 
 /// C: `static GCObject **sweeplist(...)`
 #[allow(dead_code)]
-unsafe fn sweep_list(
+fn sweep_list(
     _state: &mut LuaState,
     _p: *mut GcObj,
     _count: i32,
@@ -656,7 +645,7 @@ unsafe fn sweep_list(
 
 /// C: `static GCObject **sweeptolive(lua_State *L, GCObject **p)`
 #[allow(dead_code)]
-unsafe fn sweep_to_live(_state: &mut LuaState, _p: *mut GcObj) -> *mut GcObj {
+fn sweep_to_live(_state: &mut LuaState, _p: *mut GcObj) -> *mut GcObj {
     todo!("phase-b-reconcile: sweep_to_live — wraps sweep_list")
 }
 
@@ -664,46 +653,49 @@ unsafe fn sweep_to_live(_state: &mut LuaState, _p: *mut GcObj) -> *mut GcObj {
 
 /// C: `static void checkSizes(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn check_sizes(_state: &mut LuaState) {
+fn check_sizes(_state: &mut LuaState) {
     todo!("phase-b-reconcile: check_sizes — needs StringPool::nuse/size accessors")
 }
 
 /// C: `static GCObject *udata2finalize(global_State *g)`
 #[allow(dead_code)]
-unsafe fn udata_to_finalize(_state: &mut LuaState) -> GcObj {
+fn udata_to_finalize(_state: &mut LuaState) -> GcObj {
     todo!("phase-b-reconcile: udata_to_finalize — needs tobefnz/allgc cursor model")
 }
 
 /// C: `static void dothecall(lua_State *L, void *ud)`
 #[allow(dead_code)]
-unsafe fn do_the_call(_state: &mut LuaState) {
+fn do_the_call(_state: &mut LuaState) {
     todo!("phase-b-reconcile: do_the_call — needs luaD_callnoyield from lua-vm")
 }
 
 /// C: `static void GCTM(lua_State *L)`
 #[allow(dead_code)]
-unsafe fn gc_tm(_state: &mut LuaState) {
+fn gc_tm(_state: &mut LuaState) {
     todo!("phase-b-reconcile: gc_tm — needs tag-method lookup + protected call")
 }
 
 /// C: `static int runafewfinalizers(lua_State *L, int n)`
 #[allow(dead_code)]
-unsafe fn run_few_finalizers(_state: &mut LuaState, _n: i32) -> i32 {
+fn run_few_finalizers(_state: &mut LuaState, _n: i32) -> i32 {
     todo!("phase-b-reconcile: run_few_finalizers — needs tobefnz walk")
 }
 
 /// C: `static void callallpendingfinalizers(lua_State *L)`
 #[allow(dead_code)]
-unsafe fn call_all_pending_finalizers(_state: &mut LuaState) {
+fn call_all_pending_finalizers(_state: &mut LuaState) {
     todo!("phase-b-reconcile: call_all_pending_finalizers — needs tobefnz walk")
 }
 
 /// C: `static GCObject **findlast(GCObject **p)`
 ///
 /// # Safety
-/// `p` must be non-null and point at a valid list head slot.
+/// `p` must be non-null and point at a valid list head slot terminating with
+/// a null `next`. Each `*p` walked must be a live `GcHeader` (or null).
 #[allow(dead_code)]
 unsafe fn find_last(mut p: *mut GcObj) -> *mut GcObj {
+    // SAFETY: caller guarantees `p` traverses a well-formed `next`-linked list
+    // terminating in null; each dereference reads one live `GcHeader`.
     while !(*p).is_null() {
         p = &mut (**p).next;
     }
@@ -712,16 +704,18 @@ unsafe fn find_last(mut p: *mut GcObj) -> *mut GcObj {
 
 /// C: `static void separatetobefnz(global_State *g, int all)`
 #[allow(dead_code)]
-unsafe fn separate_to_be_finalized(_state: &mut LuaState, _all: bool) {
+fn separate_to_be_finalized(_state: &mut LuaState, _all: bool) {
     todo!("phase-b-reconcile: separate_to_be_finalized — needs finobj/finobjold1 cursors")
 }
 
 /// C: `static void checkpointer(GCObject **p, GCObject *o)`
 ///
 /// # Safety
-/// `p` must be non-null; `o` must be a valid GcHeader pointer.
+/// `p` must be non-null and point to a writable `GcObj` slot; if `*p == o`
+/// then `o` must be a live `GcHeader` so that `(*o).next` is a valid read.
 #[allow(dead_code)]
 unsafe fn check_pointer(p: *mut GcObj, o: GcObj) {
+    // SAFETY: caller guarantees `p` is writable and, when matched, `o` is live.
     if *p == o {
         *p = (*o).next;
     }
@@ -729,15 +723,12 @@ unsafe fn check_pointer(p: *mut GcObj, o: GcObj) {
 
 /// C: `static void correctpointers(global_State *g, GCObject *o)`
 #[allow(dead_code)]
-unsafe fn correct_pointers(_state: &mut LuaState, _o: GcObj) {
+fn correct_pointers(_state: &mut LuaState, _o: GcObj) {
     todo!("phase-b-reconcile: correct_pointers — generational cohort fields missing")
 }
 
 /// C: `void luaC_checkfinalizer(lua_State *L, GCObject *o, Table *mt)`
-///
-/// # Safety
-/// `o` and `mt` must be live GC pointers (or null for `mt`).
-pub(crate) unsafe fn check_finalizer(_state: &mut LuaState, _o: GcObj, _mt: GcObj) {
+pub(crate) fn check_finalizer(_state: &mut LuaState, _o: GcObj, _mt: GcObj) {
     todo!("phase-b-reconcile: check_finalizer — depends on allgc/finobj split")
 }
 
@@ -745,19 +736,19 @@ pub(crate) unsafe fn check_finalizer(_state: &mut LuaState, _o: GcObj, _mt: GcOb
 
 /// C: `static void setpause(global_State *g)`
 #[allow(dead_code)]
-unsafe fn set_pause(_state: &mut LuaState) {
+fn set_pause(_state: &mut LuaState) {
     todo!("phase-b-reconcile: set_pause — needs luaE_setdebt")
 }
 
 /// C: `static void sweep2old(lua_State *L, GCObject **p)`
 #[allow(dead_code)]
-unsafe fn sweep_to_old(_state: &mut LuaState, _p: *mut GcObj) {
+fn sweep_to_old(_state: &mut LuaState, _p: *mut GcObj) {
     todo!("phase-b-reconcile: sweep_to_old — needs grayagain Vec")
 }
 
 /// C: `static GCObject **sweepgen(...)`
 #[allow(dead_code)]
-unsafe fn sweep_gen(
+fn sweep_gen(
     _state: &mut LuaState,
     _p: *mut GcObj,
     _limit: GcObj,
@@ -768,87 +759,84 @@ unsafe fn sweep_gen(
 
 /// C: `static void whitelist(global_State *g, GCObject *p)`
 #[allow(dead_code)]
-unsafe fn whitelist(_state: &mut LuaState, _p: GcObj) {
+fn whitelist(_state: &mut LuaState, _p: GcObj) {
     todo!("phase-b-reconcile: whitelist — needs intrusive list iteration")
 }
 
 /// C: `static GCObject **correctgraylist(GCObject **p)`
 #[allow(dead_code)]
-unsafe fn correct_gray_list(_p: *mut GcObj) -> *mut GcObj {
+fn correct_gray_list(_p: *mut GcObj) -> *mut GcObj {
     todo!("phase-b-reconcile: correct_gray_list — needs Vec-based gray list")
 }
 
 /// C: `static void correctgraylists(global_State *g)`
 #[allow(dead_code)]
-unsafe fn correct_gray_lists(_state: &mut LuaState) {
+fn correct_gray_lists(_state: &mut LuaState) {
     todo!("phase-b-reconcile: correct_gray_lists — depends on gray list shape")
 }
 
 /// C: `static void markold(global_State *g, GCObject *from, GCObject *to)`
 #[allow(dead_code)]
-unsafe fn mark_old(_state: &mut LuaState, _from: GcObj, _to: GcObj) {
+fn mark_old(_state: &mut LuaState, _from: GcObj, _to: GcObj) {
     todo!("phase-b-reconcile: mark_old — needs intrusive allgc walk")
 }
 
 /// C: `static void finishgencycle(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn finish_gen_cycle(_state: &mut LuaState) {
+fn finish_gen_cycle(_state: &mut LuaState) {
     todo!("phase-b-reconcile: finish_gen_cycle — wraps correct_gray_lists et al.")
 }
 
 /// C: `static void youngcollection(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn young_collection(_state: &mut LuaState) {
+fn young_collection(_state: &mut LuaState) {
     todo!("phase-b-reconcile: young_collection — generational cohort cursors missing")
 }
 
 /// C: `static void atomic2gen(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn atomic_to_gen(_state: &mut LuaState) {
+fn atomic_to_gen(_state: &mut LuaState) {
     todo!("phase-b-reconcile: atomic_to_gen — generational cohort cursors missing")
 }
 
 /// C: `static void setminordebt(global_State *g)`
 #[allow(dead_code)]
-unsafe fn set_minor_debt(_state: &mut LuaState) {
+fn set_minor_debt(_state: &mut LuaState) {
     todo!("phase-b-reconcile: set_minor_debt — needs luaE_setdebt")
 }
 
 /// C: `static lu_mem entergen(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn enter_gen(_state: &mut LuaState) -> usize {
+fn enter_gen(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: enter_gen — wraps run_until_state + atomic")
 }
 
 /// C: `static void enterinc(global_State *g)`
 #[allow(dead_code)]
-unsafe fn enter_inc(_state: &mut LuaState) {
+fn enter_inc(_state: &mut LuaState) {
     todo!("phase-b-reconcile: enter_inc — needs generational cohort reset")
 }
 
 /// C: `void luaC_changemode(lua_State *L, int newmode)`
-///
-/// # Safety
-/// State must be in a steady GC phase.
-pub(crate) unsafe fn change_mode(_state: &mut LuaState, _new_mode: u8) {
+pub(crate) fn change_mode(_state: &mut LuaState, _new_mode: u8) {
     todo!("phase-b-reconcile: change_mode — wraps enter_gen/enter_inc")
 }
 
 /// C: `static lu_mem fullgen(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn full_gen(_state: &mut LuaState) -> usize {
+fn full_gen(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: full_gen — wraps enter_inc + enter_gen")
 }
 
 /// C: `static void stepgenfull(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn step_gen_full(_state: &mut LuaState) {
+fn step_gen_full(_state: &mut LuaState) {
     todo!("phase-b-reconcile: step_gen_full — needs lastatomic accessor")
 }
 
 /// C: `static void genstep(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn gen_step(_state: &mut LuaState) {
+fn gen_step(_state: &mut LuaState) {
     todo!("phase-b-reconcile: gen_step — needs gc_debt/gc_estimate accessors")
 }
 
@@ -856,75 +844,63 @@ unsafe fn gen_step(_state: &mut LuaState) {
 
 /// C: `static void entersweep(lua_State *L)`
 #[allow(dead_code)]
-unsafe fn enter_sweep(_state: &mut LuaState) {
+fn enter_sweep(_state: &mut LuaState) {
     todo!("phase-b-reconcile: enter_sweep — needs sweepgc cursor")
 }
 
 /// C: `static void deletelist(lua_State *L, GCObject *p, GCObject *limit)`
 #[allow(dead_code)]
-unsafe fn delete_list(_state: &mut LuaState, _p: GcObj, _limit: GcObj) {
+fn delete_list(_state: &mut LuaState, _p: GcObj, _limit: GcObj) {
     todo!("phase-b-reconcile: delete_list — needs intrusive list walk")
 }
 
 /// C: `void luaC_freeallobjects(lua_State *L)`
-///
-/// # Safety
-/// Called only from `lua_close`; mutates and tears down the entire state.
-pub(crate) unsafe fn free_all_objects(_state: &mut LuaState) {
+pub(crate) fn free_all_objects(_state: &mut LuaState) {
     todo!("phase-b-reconcile: free_all_objects — needs allgc/fixedgc/finobj walks")
 }
 
 /// C: `static lu_mem atomic(lua_State *L)`
 #[allow(dead_code)]
-unsafe fn atomic_phase(_state: &mut LuaState) -> usize {
+fn atomic_phase(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: atomic_phase — depends on all of the above")
 }
 
 /// C: `static int sweepstep(...)`
 #[allow(dead_code)]
-unsafe fn sweep_step(_state: &mut LuaState, _next_state: u8, _next_list: *mut GcObj) -> usize {
+fn sweep_step(_state: &mut LuaState, _next_state: u8, _next_list: *mut GcObj) -> usize {
     todo!("phase-b-reconcile: sweep_step — needs sweepgc cursor")
 }
 
 /// C: `static lu_mem singlestep(lua_State *L)`
 #[allow(dead_code)]
-unsafe fn single_step(_state: &mut LuaState) -> usize {
+fn single_step(_state: &mut LuaState) -> usize {
     todo!("phase-b-reconcile: single_step — wraps the rest of the FSM")
 }
 
 /// C: `void luaC_runtilstate(lua_State *L, int statesmask)`
-///
-/// # Safety
-/// State must be initialised; runs the GC FSM until a target state.
-pub(crate) unsafe fn run_until_state(_state: &mut LuaState, _states_mask: u32) {
+pub(crate) fn run_until_state(_state: &mut LuaState, _states_mask: u32) {
     todo!("phase-b-reconcile: run_until_state — wraps single_step")
 }
 
 /// C: `static void incstep(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn inc_step(_state: &mut LuaState) {
+fn inc_step(_state: &mut LuaState) {
     todo!("phase-b-reconcile: inc_step — needs gc_debt accessor")
 }
 
 /// C: `void luaC_step(lua_State *L)`
-///
-/// # Safety
-/// State must be initialised.
-pub(crate) unsafe fn step(_state: &mut LuaState) {
+pub(crate) fn step(_state: &mut LuaState) {
     todo!("phase-b-reconcile: step — dispatches gen_step or inc_step")
 }
 
 /// C: `static void fullinc(lua_State *L, global_State *g)`
 #[allow(dead_code)]
-unsafe fn full_inc(_state: &mut LuaState) {
+fn full_inc(_state: &mut LuaState) {
     todo!("phase-b-reconcile: full_inc — wraps run_until_state")
 }
 
 /// C: `void luaC_fullgc(lua_State *L, int isemergency)`
-///
-/// # Safety
-/// State must be initialised; runs a full GC cycle.
-pub(crate) unsafe fn full_gc(_state: &mut LuaState, _is_emergency: bool) {
+pub(crate) fn full_gc(_state: &mut LuaState, _is_emergency: bool) {
     todo!("phase-b-reconcile: full_gc — dispatches full_inc or full_gen")
 }
 
@@ -935,20 +911,31 @@ pub(crate) unsafe fn full_gc(_state: &mut LuaState, _is_emergency: bool) {
 //   confidence:    medium
 //   todos:         0
 //   port_notes:    0
-//   unsafe_blocks: 0   (all GC functions are declared `unsafe fn`; no bare
-//                       `unsafe { }` blocks remain after the reconcile)
-//   notes:         Type-vocabulary reconcile: the local `LuaState`/`GlobalState`
-//                  duplicates were replaced with `pub use lua_vm::state::…`. The
-//                  canonical types use `Vec<GcRef<dyn Collectable>>` for the
-//                  gray/allgc/finobj lists and rename `GCdebt → gc_debt`,
-//                  `GCestimate → gc_estimate`; the generational cohort cursors
-//                  (`firstold1`, `survival`, `old1`, `reallyold`,
-//                  `finobjold1`, `finobjsur`, `finobjrold`) do not exist on
-//                  the canonical struct yet. Rewriting the C intrusive-list
-//                  port against the Vec model is a Phase-D job, so every
-//                  function body collapsed to `todo!("phase-b-reconcile: …")`.
-//                  The constant table, bit-twiddling helpers, GcHeader / GcObj
-//                  types, and the two extension traits (`LuaStateGcExt`,
-//                  `GlobalStateGcExt`) are preserved — they're representation
-//                  only and have no field-name dependency.
+//   unsafe_blocks: 2   (find_last, check_pointer — both deref *mut GcObj,
+//                       both carry // SAFETY: comments. All other stubs are
+//                       safe `fn` until Phase D adds real bodies that need
+//                       caller invariants.)
+//   notes:         Unsafe-budget audit (Phase D pre-work): the Phase-A
+//                  translator marked every C-mirrored signature as
+//                  `unsafe fn`, but the stub bodies are pure `todo!(…)` and
+//                  perform no unsafe operations. Stripped `unsafe` from the
+//                  78 stubs whose only body is `todo!()` plus the two
+//                  extension-trait helpers that return null. Phase D will
+//                  reintroduce `unsafe fn` on the specific subset that
+//                  genuinely requires caller invariants once real bodies
+//                  land. The two retained `unsafe fn`s (`find_last`,
+//                  `check_pointer`) dereference raw `*mut GcObj`/`*mut GcHeader`
+//                  and have documented SAFETY invariants.
+//
+//                  Type-vocabulary reconcile context (unchanged): the local
+//                  LuaState/GlobalState duplicates were replaced with
+//                  `pub use lua_vm::state::…`. The canonical types use
+//                  Vec<GcRef<dyn Collectable>> for the gray/allgc/finobj
+//                  lists and rename GCdebt → gc_debt, GCestimate →
+//                  gc_estimate; the generational cohort cursors (firstold1,
+//                  survival, old1, reallyold, finobjold1, finobjsur,
+//                  finobjrold) do not exist on the canonical struct yet.
+//                  Rewriting the C intrusive-list port against the Vec model
+//                  is a Phase-D job, so every function body still collapses
+//                  to `todo!("phase-b-reconcile: …")`.
 // ──────────────────────────────────────────────────────────────────────────

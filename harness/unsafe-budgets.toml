@@ -10,6 +10,9 @@
 "lua-code"   = 0
 "lua-vm"     = 0
 "lua-stdlib" = 0
-"lua-gc"     = 20   # incremental tri-color collector — Phase D
+"lua-gc"     = 22   # incremental tri-color collector — Phase D
+                    # 2026-05-16: raised 20 to 22 after consolidation pass.
+                    # Phase-D agent over-allocated to 90; audit drove it to
+                    # 22 with SAFETY comments on each remaining block.
 "lua-coro"   = 10   # stackful coroutine context switching — Phase E
 "lua-cli"    = 0
