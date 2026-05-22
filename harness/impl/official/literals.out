@@ -3,4 +3,13 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing scanner
-[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:18: 
++
++
++
++
++
+
+thread 'main' (7915968) panicked at crates/lua-stdlib/src/coro_lib.rs:129:5:
+coroutine.resume is not yet implemented (Phase A–D stub; see PORTING.md §2 #6)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[panic] coroutine.resume is not yet implemented (Phase A–D stub; see PORTING.md §2 #6)

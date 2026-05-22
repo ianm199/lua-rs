@@ -1387,8 +1387,20 @@ impl LuaState {
         }
     }
 
-    pub fn new_string(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> { self.intern_str(bytes) }
-    pub fn intern_or_create_str(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> { self.intern_str(bytes) }
+    pub fn new_string(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> { self.intern_or_create_str(bytes) }
+    /// Mirrors `luaS_newlstr`: short strings are interned globally so equal
+    /// content shares a single TString; long strings (> LUAI_MAXSHORTLEN = 40)
+    /// always create a fresh TString without interning. This is what lets
+    /// `string.format("%p", "long" .. "concat")` differ from a same-content
+    /// literal — concat must produce a new object even when the literal already
+    /// lives in the lexer's constant pool.
+    pub fn intern_or_create_str(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> {
+        if bytes.len() <= 40 {
+            self.intern_str(bytes)
+        } else {
+            Ok(GcRef::new(LuaString::from_bytes(bytes.to_vec())))
+        }
+    }
     pub fn new_userdata(&mut self, _size: usize, _nuvalue: usize) -> Result<GcRef<LuaUserData>, LuaError> { todo!("phase-b: new_userdata") }
     pub fn new_c_closure(&mut self, _f: LuaCFunction, _n: i32) -> Result<LuaClosure, LuaError> { todo!("phase-b: new_c_closure") }
     pub fn push_closure(

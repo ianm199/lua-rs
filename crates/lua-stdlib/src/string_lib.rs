@@ -1689,13 +1689,9 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
                 buf.extend_from_slice(s.as_bytes());
             }
             b'p' => {
-                // C: pointer as hex; not meaningful in safe Rust
-                // TODO(port): %p format not directly portable; push placeholder
-                buf.extend_from_slice(b"(ptr)");
-                arg -= 1; // no argument consumed for %p? Actually yes: lua_topointer
-                // PORT NOTE: %p takes an argument in Lua's string.format (the value);
-                // we just push a placeholder.
-                arg += 1;
+                let ptr = lua_vm::api::to_pointer(state, arg).unwrap_or(0);
+                let s = format!("0x{:x}", ptr);
+                buf.extend_from_slice(s.as_bytes());
             }
             b'q' => {
                 addliteral(state, &mut buf, arg)?;

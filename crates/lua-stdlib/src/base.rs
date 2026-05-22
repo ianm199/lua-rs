@@ -827,8 +827,6 @@ pub(crate) fn assert_fn(state: &mut LuaState) -> Result<usize, LuaError> {
     if state.to_boolean(1) {
         return Ok(state.top() as usize);
     }
-    eprintln!("[DBG assert] arg1 is falsy, top={}, type_at(1)={:?}, type_at(2)={:?}",
-        state.top(), state.type_at(1), state.type_at(2));
     // C: luaL_checkany(L, 1); lua_remove(L, 1);
     state.check_arg_any(1)?;
     state.remove(1);
