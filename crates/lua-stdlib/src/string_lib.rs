@@ -1420,21 +1420,39 @@ fn adddigit(buf: &mut Vec<u8>, x: f64) -> f64 {
     x - dd
 }
 
-/// Convert a float to a hex-float string (like `%a`).
+/// Convert a float to a hex-float string body (digits only, no sign, no `0x` prefix).
+///
+/// Returns `(frac_digits, exponent_string)` for use by `format_hex_float`.
 ///
 /// C: `static int num2straux(char *buff, int sz, lua_Number x)`
 fn num2straux(x: f64) -> Vec<u8> {
-    if x.is_nan() || x.is_infinite() {
-        // C: return l_sprintf(buff, sz, LUA_NUMBER_FMT, x);
-        // Use %g-like representation
-        return format!("{}", x).into_bytes();
+    format_hex_float(x, None)
+}
+
+/// Produce a hex-float string for `x` with optional precision (digits after the point).
+///
+/// When `precision` is `None` the minimum number of digits needed for a round-trip
+/// is emitted (C's default `%a` behaviour). When `precision` is `Some(p)` exactly `p`
+/// digits follow the radix point; trailing zeros are added as needed, and excess
+/// digits are discarded (C truncates rather than rounds, matching the C `printf`
+/// behaviour on the tested platforms).
+fn format_hex_float(x: f64, precision: Option<usize>) -> Vec<u8> {
+    if x.is_nan() {
+        return b"nan".to_vec();
+    }
+    if x.is_infinite() {
+        return if x < 0.0 { b"-inf".to_vec() } else { b"inf".to_vec() };
     }
     if x == 0.0 {
-        // C: return l_sprintf(buff, sz, LUA_NUMBER_FMT "x0p+0", x);
-        if x.is_sign_negative() {
-            return b"-0x0p+0".to_vec();
-        }
-        return b"0x0p+0".to_vec();
+        let sign: &[u8] = if x.is_sign_negative() { b"-" } else { b"" };
+        return match precision {
+            None => [sign, b"0x0p+0"].concat(),
+            Some(0) => [sign, b"0x0p+0"].concat(),
+            Some(p) => {
+                let zeros = "0".repeat(p);
+                [sign, b"0x0.", zeros.as_bytes(), b"p+0"].concat()
+            }
+        };
     }
 
     let (m_raw, exp) = frexp(x);
@@ -1446,15 +1464,29 @@ fn num2straux(x: f64) -> Vec<u8> {
     }
     buf.extend_from_slice(b"0x");
 
-    // C: L_NBFD = (MANT_DIG - 1) % 4 + 1  where MANT_DIG=53 → (52%4)+1 = 1
     let nbfd = 1;
     m = adddigit(&mut buf, m * (1 << nbfd) as f64);
     let e = exp - nbfd;
 
-    if m > 0.0 {
-        buf.push(b'.');
-        while m > 0.0 {
-            m = adddigit(&mut buf, m * 16.0);
+    match precision {
+        None => {
+            if m > 0.0 {
+                buf.push(b'.');
+                while m > 0.0 {
+                    m = adddigit(&mut buf, m * 16.0);
+                }
+            }
+        }
+        Some(0) => {}
+        Some(p) => {
+            buf.push(b'.');
+            for _ in 0..p {
+                if m > 0.0 {
+                    m = adddigit(&mut buf, m * 16.0);
+                } else {
+                    buf.push(b'0');
+                }
+            }
         }
     }
 
@@ -1463,21 +1495,23 @@ fn num2straux(x: f64) -> Vec<u8> {
     buf
 }
 
-/// Decompose `x` into mantissa in `[0.5, 1.0)` and exponent.
-/// Equivalent to C's `frexp`.
+/// Decompose `x` into mantissa in `[-1.0, -0.5] ∪ [0.5, 1.0)` and exponent.
+///
+/// Equivalent to C's `frexp`. The sign of `x` is preserved in the returned mantissa
+/// so that `num2straux` can emit the leading `-` correctly for negative inputs.
 fn frexp(x: f64) -> (f64, i32) {
     if x == 0.0 || x.is_nan() || x.is_infinite() {
         return (x, 0);
     }
     let bits = x.to_bits();
+    let sign_bit = bits & 0x8000_0000_0000_0000u64;
     let exp_bits = ((bits >> 52) & 0x7FF) as i32;
     if exp_bits == 0 {
-        // subnormal
         let (m, e) = frexp(x * (1u64 << 52) as f64);
         return (m, e - 52);
     }
     let exp = exp_bits - 1022;
-    let mantissa_bits = (bits & 0x000F_FFFF_FFFF_FFFF) | 0x3FE0_0000_0000_0000;
+    let mantissa_bits = sign_bit | (bits & 0x000F_FFFF_FFFF_FFFF) | 0x3FE0_0000_0000_0000;
     (f64::from_bits(mantissa_bits), exp)
 }
 
@@ -1910,15 +1944,34 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
                 let (prefix, digits) = unsigned_int_parts(n, 16, true, &spec);
                 pad_int(&mut buf, &prefix, &digits, &spec);
             }
-            b'a' => {
+            b'a' | b'A' => {
                 let n = state.check_arg_number(arg)?;
-                let hex = num2straux(n);
-                buf.extend_from_slice(&hex);
-            }
-            b'A' => {
-                let n = state.check_arg_number(arg)?;
-                let hex: Vec<u8> = num2straux(n).into_iter().map(|b| b.to_ascii_uppercase()).collect();
-                buf.extend_from_slice(&hex);
+                let body = format_hex_float(n, spec.precision);
+                let body: Vec<u8> = if conv == b'A' {
+                    body.into_iter().map(|b| b.to_ascii_uppercase()).collect()
+                } else {
+                    body
+                };
+                let (sign, digits): (Vec<u8>, Vec<u8>) =
+                    if !body.is_empty() && (body[0] == b'-' || body[0] == b'+') {
+                        (vec![body[0]], body[1..].to_vec())
+                    } else if spec.plus_sign {
+                        (b"+".to_vec(), body)
+                    } else if spec.space_sign {
+                        (b" ".to_vec(), body)
+                    } else {
+                        (Vec::new(), body)
+                    };
+                let no_prec_spec = FmtSpec {
+                    left_align: spec.left_align,
+                    plus_sign: spec.plus_sign,
+                    space_sign: spec.space_sign,
+                    alt_form: spec.alt_form,
+                    zero_pad: spec.zero_pad,
+                    width: spec.width,
+                    precision: None,
+                };
+                pad_int(&mut buf, &sign, &digits, &no_prec_spec);
             }
             b'f' | b'F' | b'e' | b'E' | b'g' | b'G' => {
                 let n = state.check_arg_number(arg)?;
