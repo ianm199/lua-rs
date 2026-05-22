@@ -236,3 +236,6 @@
 {"ts":"2026-05-16T19:33:32Z","action":"dispatch_done","detail":"type=debug err=Syntax: syntax error (load_string status=1) cost=8.803945249999998","total_cost":0.00}
 {"ts":"2026-05-16T19:33:32Z","action":"real_error","detail":"err=crates/lua-parse/src/lib.rs:1805:5: step=3/4 Loading source (parse + compile) iter=3","total_cost":0.00}
 {"ts":"2026-05-16T19:33:32Z","action":"dispatch_start","detail":"type=debug err=crates/lua-parse/src/lib.rs:1805:5: iter=3","total_cost":0.00}
+{"ts":"2026-05-16T19:34:40Z","action":"dispatch_done","detail":"type=debug err=crates/lua-parse/src/lib.rs:1805:5: cost=0.5149262499999999","total_cost":0.00}
+{"ts":"2026-05-16T19:34:41Z","action":"real_error","detail":"err=crates/lua-vm/src/do_.rs:1613:5: step=3/4 Loading source (parse + compile) iter=4","total_cost":0.00}
+{"ts":"2026-05-16T19:34:41Z","action":"dispatch_start","detail":"type=debug err=crates/lua-vm/src/do_.rs:1613:5: iter=4","total_cost":0.00}

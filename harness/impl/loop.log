@@ -424,3 +424,7 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [2026-05-16T19:33:32Z] ─── iter 3  (spent: $0.00) ───
 [2026-05-16T19:33:32Z]   real-error blocker at step 3/4 Loading source (parse + compile): crates/lua-parse/src/lib.rs:1805:5:
 [2026-05-16T19:33:32Z]   dispatching DEBUG agent for real-error (budget $15)
+[2026-05-16T19:34:40Z]   agent done. iter cost=$0.5149262499999999  total=$0.00
+[2026-05-16T19:34:40Z] ─── iter 4  (spent: $0.00) ───
+[2026-05-16T19:34:41Z]   real-error blocker at step 3/4 Loading source (parse + compile): crates/lua-vm/src/do_.rs:1613:5:
+[2026-05-16T19:34:41Z]   dispatching DEBUG agent for real-error (budget $15)

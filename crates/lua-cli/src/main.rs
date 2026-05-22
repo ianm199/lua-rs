@@ -18,6 +18,7 @@ use lua_stdlib::init::open_libs;
 use lua_types::closure::LuaLClosure;
 use lua_types::error::LuaError;
 use lua_types::gc::GcRef;
+use lua_types::upval::UpVal;
 use lua_types::value::LuaValue;
 use lua_vm::api::{pcall_k, to_lua_string};
 use lua_vm::state::{new_state, LuaState};
@@ -35,9 +36,14 @@ fn parser_hook(
         name,
         firstchar,
     )?;
+    let nupvals = proto.upvalues.len();
+    let mut upvals = Vec::with_capacity(nupvals);
+    for _ in 0..nupvals {
+        upvals.push(GcRef::new(UpVal::Closed(LuaValue::Nil)));
+    }
     Ok(GcRef::new(LuaLClosure {
         proto: GcRef::new(*proto),
-        upvals: Vec::new(),
+        upvals,
     }))
 }
 
