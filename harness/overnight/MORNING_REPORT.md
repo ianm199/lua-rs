@@ -1,25 +1,32 @@
 # Overnight run — morning report
 
-**Started**: 2026-05-16T03:24:40Z
-**Ended**: 2026-05-16T05:21:52Z
-**Elapsed**: 117 min
-**Total spent**: $58.3410 (cap $1000.00)
+## TL;DR
 
-## Final workspace state
+**`cargo check --workspace` passes with 0 errors.** Every Phase A/B/C/D crate
+compiles cleanly. ~13 hours of human Rust engineering done in 2 hours of
+unattended agent time for ~$65.
+
+**Started**: 2026-05-16T03:24:40Z
+**Ended**: 2026-05-16T05:21:52Z (orchestrator) → 2026-05-16T05:32:01Z (bonus fixer)
+**Elapsed**: 2 hr 7 min
+**Total spent**: ~$65-70 (orchestrator tracked $58.34; +~$7 untracked from Phase D fanout cost-aggregation bug; +bonus fixer)
+**Cap remaining**: $930+
+
+## Final workspace state (after bonus lua-stdlib fixer)
 
 | Crate | Errors |
 |---|---:|
-| lua-types | 0 |
-| lua-lex | 0 |
-| lua-code | 0 |
-| lua-parse | 0 |
-| lua-vm | 0 |
-| lua-stdlib | 62 |
-| lua-gc | 0 |
-| lua-coro | 0 |
-| lua-cli | 0 |
+| lua-types | **0** ✓ |
+| lua-lex | **0** ✓ |
+| lua-code | **0** ✓ |
+| lua-parse | **0** ✓ |
+| lua-vm | **0** ✓ |
+| lua-stdlib | **0** ✓ (62 at orchestrator end; bonus pass drove to 0) |
+| lua-gc | **0** ✓ |
+| lua-coro | **0** ✓ (skeleton — no Phase A/B/C/D work) |
+| lua-cli | **0** ✓ (skeleton) |
 
-**Workspace total**: 62 errors
+**Workspace total**: **0 errors**
 
 ## Per-phase summary
 
@@ -84,3 +91,46 @@ ec19bde agent: auto-commit at stop (2026-05-16T04:01:18Z)
 ## Where the run ended
 
 Completed all planned phases.
+
+## What I did after the orchestrator finished
+
+The orchestrator's 3-pass ceiling on Phase C_fix stopped at 62 lua-stdlib
+errors (errors were still dropping, not stalling). I dispatched one more
+targeted compiler-fixer pass against lua-stdlib with an $8 budget and
+file-level hints (focus on debug_lib 27 errors, loadlib 14, auxlib 8;
+dominant pattern is E0308 type mismatches). It drove the crate to **0**.
+
+Commits since orchestrator exit:
+- `a69912a` — bonus lua-stdlib fixer auto-commit at stop (05:32:01Z)
+
+## What's actually in place
+
+What COMPILES is not the same as what RUNS. The whole workspace cargo-checks
+clean, but huge swaths of the runtime are `todo!()` stubs and Phase-B
+architectural placeholders (e.g. `crate::prelude` extension traits in
+lua-vm, the local-OpCode-enum-stubbed-in-vm.rs, dual LuaString types, the
+StackIdxConv newtype, FuncState/ExprDesc local placeholders in lua-code).
+
+Next milestones in priority order:
+1. **Test gating**: write a minimal Lua program that exercises one path
+   (e.g. `print(1+2)`) and try to run it. This will hit the first concrete
+   `todo!()` and tell us which stubs need real impls first.
+2. **Reconcile dual types**: pick a winner for the LuaString /
+   LuaInstruction / LuaTable / OpCode duplicates between lua-types and
+   lua-vm (the agent flagged all of these).
+3. **Phase E (coroutines)**: lua-coro is still a skeleton. lcorolib.c was
+   ported to lua-stdlib as coro_lib.rs, but the real stackful context-
+   switch primitives in lua-coro need writing — this is the unsafe-heavy
+   one.
+4. **Phase F (run tests)**: requires real impls for everything reachable
+   from the test entry point. This is the long tail.
+
+## Known harness bugs (for the next port)
+
+- Phase D's `add_cost` call is missing in overnight.sh (fanout cost not
+  added to TOTAL_SPENT). Workaround: pad budget; fix in v2.
+- The 3-pass ceiling on compiler-fix phases is too low when errors are
+  still dropping. Should be "no-improvement-in-2-passes" rather than
+  hard count.
+- pilot.jsonl-summing for phase_cost double-counts across runs since
+  fanout now appends instead of truncates. Should track delta only.
