@@ -18,12 +18,19 @@ local function f(x)
       a[i] = function () B.g = B.g+1; y = y+x; return y+A end
     end
   end
+  print "P1"
   local dummy = function () return a[A] end
+  print "P2"
   collectgarbage()
+  print "P3"
   A = 1; assert(dummy() == a[1]); A = 0;
+  print "P4"
   assert(a[1]() == x)
+  print "P5"
   assert(a[3]() == x)
+  print "P6"
   collectgarbage()
+  print "P7"
   return a
 end
 

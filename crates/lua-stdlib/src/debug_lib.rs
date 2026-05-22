@@ -590,17 +590,13 @@ pub(crate) fn upvalue_id(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: void *id = checkupval(L, 1, 2, NULL);
     let (id, _nup) = check_upval(state, 1, 2, false)?;
     match id {
-        Some(_uid) => {
+        Some(uid) => {
             // C: lua_pushlightuserdata(L, id);
-            // TODO(port): LuaValue::LightUserData(*mut c_void) requires a raw pointer.
-            // Converting UpvalId (usize) to *mut c_void is only permitted inside
-            // lua-gc. Pushing fail as a safe placeholder until the GC layer exposes
-            // a capability-based upvalue-identity API.
-            state.push_fail();
+            lua_vm::api::push_light_userdata(state, uid as *mut core::ffi::c_void);
         }
         None => {
             // C: luaL_pushfail(L);
-            state.push_fail();
+            state.push_fail()?;
         }
     }
     Ok(1)

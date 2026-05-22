@@ -3,8 +3,13 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing closures
+P1
+P2
+P3
+P4
+DEBUG close_upval: uv_idx=13 level=1 top=13 ci.func=10 ci.top=32 ci_count=4
 
-thread 'main' (8216245) panicked at crates/lua-vm/src/func.rs:485:9:
+thread 'main' (8224684) panicked at crates/lua-vm/src/func.rs:492:9:
 open upvalue index must be below stack top
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [panic] open upvalue index must be below stack top
