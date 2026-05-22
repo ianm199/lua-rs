@@ -5,3 +5,4 @@
 5 2.5811925 reference/lua-c/testes/calls.lua
 7 [2026-05-17T20:19:43Z mega]   → committed 4c1255d (debug/reference/lua-c/testes/utf8.lua )
 4.1847365000000005 reference/lua-c/testes/utf8.lua
+8 2.325589000000001 reference/lua-c/testes/files.lua

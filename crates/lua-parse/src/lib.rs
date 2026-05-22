@@ -684,6 +684,10 @@ fn cg_posfix_fold(
         }
     };
 
+    let foldable = e1.t == NO_JUMP && e1.f == NO_JUMP
+        && e2.t == NO_JUMP && e2.f == NO_JUMP;
+
+    if foldable {
     if let (ExprKind::KInt, ExprKind::KInt) = (e1.k, e2.k) {
         let a = e1.u.ival;
         let b = e2.u.ival;
@@ -720,6 +724,7 @@ fn cg_posfix_fold(
                 return Ok(());
             }
         }
+    }
     }
 
     if matches!(op, BinOpr::Lt | BinOpr::Le) {
@@ -1301,7 +1306,9 @@ fn cg_infix(
         | BinOpr::Shl | BinOpr::Shr
         | BinOpr::Eq | BinOpr::Ne
         | BinOpr::Lt | BinOpr::Le | BinOpr::Gt | BinOpr::Ge => {
-            if matches!(v.k, ExprKind::KInt | ExprKind::KFlt) {
+            if matches!(v.k, ExprKind::KInt | ExprKind::KFlt)
+                && v.t == NO_JUMP && v.f == NO_JUMP
+            {
                 cg_discharge_vars(fs, line, v)
             } else {
                 cg_exp_to_any_reg(fs, line, v).map(|_| ())
