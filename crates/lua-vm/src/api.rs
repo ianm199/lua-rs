@@ -1615,8 +1615,8 @@ pub fn pcall_k(
     let func_idx = top - (nargs + 1);
     // C: if (k == NULL || !yieldable(L)) { conventional protected call }
     // TODO(port): continuation and yieldable deferred to Phase E.
-    let _ = (err_handler_idx, k, ctx);
-    state.protected_call_raw(func_idx, nresults, StackIdx(0))?;
+    let _ = (k, ctx);
+    state.protected_call_raw(func_idx, nresults, StackIdx(err_handler_idx as u32))?;
     state.adjust_results(nresults);
     Ok(LuaStatus::Ok)
 }

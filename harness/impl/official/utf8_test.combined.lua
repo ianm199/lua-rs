@@ -7,19 +7,15 @@ arg = arg or {}
 _G = _G or _ENV
 if _VERSION == nil then _VERSION = "Lua 5.4" end
 
-local function len (s)
-  print("inside len, s type:", type(s), s)
-  local x = string.gsub(s, "[\x80-\xBF]", "")
-  print("inside len, x type:", type(x), x)
-  return #x
-end
+print("test: gsub with no match")
+local x, n = string.gsub("hello", "[\x80-\xBF]", "")
+print("x type:", type(x), "val:", x)
+print("n type:", type(n), "val:", n)
 
-print("len of hello:", len("hello"))
+print("test: gsub with no match, single var")
+local y = string.gsub("hello", "[\x80-\xBF]", "")
+print("y type:", type(y), "val:", y)
 
-local function check (s)
-  print("CHECK enter, len type:", type(len))
-  local r = len(s)
-  print("CHECK got r =", r)
-end
-
-check("hello World")
+print("test: gsub direct in len")
+local r = #string.gsub("hello", "[\x80-\xBF]", "")
+print("r =", r)

@@ -490,3 +490,4 @@
 [2026-05-17T20:11:47Z mega]   [O10.D6] DEBUG dispatch on file: reference/lua-c/testes/constructs.lua [parallel]
 [2026-05-17T20:11:47Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: _soft = true): reference/lua-c/testes/nextvar.lua
 [2026-05-17T20:12:19Z mega]   [O10.D7] DEBUG dispatch on file: reference/lua-c/testes/utf8.lua [parallel]
+[2026-05-17T20:17:05Z mega]   [O10.D8] DEBUG dispatch on file: reference/lua-c/testes/files.lua [parallel]

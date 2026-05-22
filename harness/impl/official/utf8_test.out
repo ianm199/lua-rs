@@ -2,6 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-inside len, s type:	string	hello
-inside len, x type:	function	function: 0x600003c1f040
+test: gsub with no match
+x type:	function	val:	function: 0x600002c27010
+n type:	number	val:	0
+test: gsub with no match, single var
+y type:	function	val:	function: 0x600002c27010
+test: gsub direct in len
 [err] pcall_k failed: Runtime: attempt to get length of a function value

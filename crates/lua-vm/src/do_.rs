@@ -1509,14 +1509,28 @@ where
 
     // C: status = luaD_rawrunprotected(L, func, u)
     // PORT NOTE: In C, luaD_throw pushes the error value onto the stack before
-    // longjmp-ing. In Rust the error rides inside LuaError; we must push its
-    // payload here so set_error_obj (which reads from top-1) finds it.
+    // longjmp-ing, and luaG_errormsg invokes the message handler at the error
+    // site before the throw. In Rust the error rides inside LuaError and
+    // propagates via `?`, so the handler is never invoked along the way; we
+    // synthesise that invocation here once we've caught the Err.
     let mut status = match raw_run_protected(state, func) {
         Ok(()) => LuaStatus::Ok,
         Err(e) => {
             let s = e.to_status();
             state.push(e.into_value());
-            s
+            if ef != 0 && error_status(s) && s != LuaStatus::ErrErr {
+                let errfunc_idx = StackIdx(ef as u32);
+                let arg = state.get_at(state.top_idx() - 1).clone();
+                state.push(arg);
+                let handler = state.get_at(errfunc_idx).clone();
+                state.set_at(state.top_idx() - 2, handler);
+                match state.call_no_yield(state.top_idx() - 2, 1) {
+                    Ok(()) => s,
+                    Err(_) => LuaStatus::ErrErr,
+                }
+            } else {
+                s
+            }
         }
     };
 
