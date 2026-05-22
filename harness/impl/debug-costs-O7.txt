@@ -1,1 +1,2 @@
 4 0.7598192500000002 reference/lua-c/testes/calls.lua
+5 0.42539250000000006 reference/lua-c/testes/nextvar.lua

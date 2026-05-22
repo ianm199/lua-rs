@@ -1530,7 +1530,7 @@ fn addliteral(state: &mut LuaState, buf: &mut Vec<u8>, arg: i32) -> Result<(), L
             addquoted(buf, &s);
         }
         LuaType::Number => {
-            if matches!(state.get_at(arg), LuaValue::Int(_)) {
+            if state.is_integer(arg) {
                 let n = state.to_integer(arg).unwrap_or(0);
                 let formatted = if n == i64::MIN {
                     format!("0x{:016x}", n as u64)
