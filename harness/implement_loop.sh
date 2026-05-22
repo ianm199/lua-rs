@@ -105,15 +105,27 @@ detect_failure_type() {
         && ! grep -qE "not yet implemented:" "$out"; then
         echo "real-error"; return
     fi
+    if grep -qE "^\[ok\] execution completed" "$out" \
+        && ! grep -q '^hello$' "$out"; then
+        echo "real-error"; return
+    fi
     echo "unknown"
 }
 
 extract_real_error() {
-    # Prefer [err] line (LuaError path); fall back to panic message.
+    # Prefer [err] line (LuaError path); fall back to panic message;
+    # finally describe a silent "Ok but no hello" execution.
     local err
     err=$(grep -E "^\[err\]" "$1" | head -1 | sed 's/^\[err\] //')
     if [ -n "$err" ]; then echo "$err"; return; fi
-    grep -oE "panicked at [^:]+:[0-9]+:[0-9]+:.*" "$1" | head -1 | sed -E 's/^panicked at //'
+    local panic
+    panic=$(grep -oE "panicked at [^:]+:[0-9]+:[0-9]+:.*" "$1" | head -1 | sed -E 's/^panicked at //')
+    if [ -n "$panic" ]; then echo "$panic"; return; fi
+    if grep -qE "^\[ok\] execution completed" "$1"; then
+        echo "execution completed with status=Ok but did NOT produce 'hello' on stdout — print() is reachable as a global but the call never actually invokes the C function, OR codegen produced empty bytecode (proto.code) so OP_CALL is never dispatched. Trace the call path: pcall_k → protected_call_raw → callnoyield → ccall_inner → precall → vm::execute → OP_CALL → state.precall(). Verify the compiled chunk's proto.code is non-empty (it should contain GETTABUP, LOADK, CALL, RETURN). If proto.code IS empty, the bug is in the parser/codegen: expression statements are not emitting instructions because luaK_dischargevars / luaK_exp2nextreg / luaK_indexed in crates/lua-parse/ are stubbed."
+        return
+    fi
+    echo "(no diagnosable error)"
 }
 
 extract_step() {

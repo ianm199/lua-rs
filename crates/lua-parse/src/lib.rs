@@ -542,6 +542,178 @@ fn sync_from_lex(ls: &mut LexState) {
 // TODO_ARCH(phase-b-reconcile): re-exporting canonical LuaState from lua-vm.
 pub use lua_vm::state::LuaState;
 
+// ── Minimal inline codegen (Phase A bootstrap) ──────────────────────────────
+//
+// The full code generator lives in `lua-code` but operates on its own
+// placeholder `FuncState` / `ExprDesc` types (see `lua-code/src/codegen.rs`
+// "PHASE B PLACEHOLDERS"), so it cannot yet be called from `lua-parse` with
+// the real types defined here. Until that reconciliation lands, the parser
+// emits the small subset of bytecode required to execute simple programs
+// (global lookup + function call + string literal arg) directly, using the
+// shared `Instruction` encoding from `lua-code::opcodes`.
+//
+// These helpers mirror the behaviour of the C codegen functions they replace
+// (`luaK_codeABC`, `luaK_stringK`, `luaK_dischargevars` for the VINDEXUP
+// case, `luaK_exp2nextreg` for the VKSTR case). Phase B should delete this
+// section once lua-code is reachable from lua-parse with unified types.
+
+fn emit_inst(fs: &mut FuncState, line: i32, inst: lua_code::opcodes::Instruction) -> i32 {
+    let pc = fs.pc as usize;
+    if fs.f.code.len() <= pc {
+        fs.f.code.resize(pc + 1, lua_types::opcode::Instruction::default());
+    }
+    fs.f.code[pc] = lua_types::opcode::Instruction::new(inst.0);
+    if fs.f.lineinfo.len() <= pc {
+        fs.f.lineinfo.resize(pc + 1, 0i8);
+    }
+    fs.f.lineinfo[pc] = (line - fs.previousline).clamp(i8::MIN as i32, i8::MAX as i32) as i8;
+    fs.previousline = line;
+    let result = fs.pc;
+    fs.pc += 1;
+    result
+}
+
+fn add_k_value(fs: &mut FuncState, v: LuaValue) -> i32 {
+    let idx = fs.nk;
+    if (fs.f.k.len() as i32) <= idx {
+        fs.f.k.resize((idx + 1) as usize, LuaValue::Nil);
+    }
+    fs.f.k[idx as usize] = v;
+    fs.nk += 1;
+    idx
+}
+
+fn add_k_string(fs: &mut FuncState, s: GcRef<LuaString>) -> i32 {
+    for (i, k) in fs.f.k.iter().take(fs.nk as usize).enumerate() {
+        if let LuaValue::Str(existing) = k {
+            if GcRef::ptr_eq(existing, &s) {
+                return i as i32;
+            }
+        }
+    }
+    add_k_value(fs, LuaValue::Str(s))
+}
+
+fn bump_maxstack(fs: &mut FuncState, n: u8) {
+    if fs.f.maxstacksize < n {
+        fs.f.maxstacksize = n;
+    }
+}
+
+fn reserve_reg(fs: &mut FuncState) -> u8 {
+    let r = fs.freereg;
+    fs.freereg += 1;
+    bump_maxstack(fs, fs.freereg);
+    r
+}
+
+/// Minimal `luaK_dischargevars` covering the cases the parser bootstrap can
+/// produce: `VUpVal`, `VIndexUp`, `VKStr`. Other variants are left untouched.
+/// Returns Ok(()) on success.
+fn cg_discharge_vars(
+    fs: &mut FuncState,
+    line: i32,
+    e: &mut ExprDesc,
+) -> Result<(), LuaError> {
+    match e.k {
+        ExprKind::UpVal => {
+            let inst = lua_code::opcodes::Instruction::abck(
+                lua_code::opcodes::OpCode::GetUpVal,
+                0,
+                e.u.info as u32,
+                0,
+                0,
+            );
+            let pc = emit_inst(fs, line, inst);
+            e.u.info = pc;
+            e.k = ExprKind::Reloc;
+        }
+        ExprKind::IndexUp => {
+            let inst = lua_code::opcodes::Instruction::abck(
+                lua_code::opcodes::OpCode::GetTabUp,
+                0,
+                e.u.ind_t as u32,
+                e.u.ind_idx as u32,
+                0,
+            );
+            let pc = emit_inst(fs, line, inst);
+            e.u.info = pc;
+            e.k = ExprKind::Reloc;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Minimal `luaK_exp2nextreg`: discharge `e` and place it in `fs.freereg`,
+/// incrementing `freereg`. Handles `VReloc`, `VKStr`, `VKInt`, `VKFlt`,
+/// `VNil`, `VTrue`, `VFalse`, `VNonReloc` plus anything `cg_discharge_vars`
+/// produces.
+fn cg_exp_to_next_reg(
+    fs: &mut FuncState,
+    line: i32,
+    e: &mut ExprDesc,
+) -> Result<(), LuaError> {
+    cg_discharge_vars(fs, line, e)?;
+    let reg = reserve_reg(fs);
+    match e.k {
+        ExprKind::Reloc => {
+            let pc = e.u.info as usize;
+            let mut lc = lua_code::opcodes::Instruction(fs.f.code[pc].0);
+            lc.set_arg_a(reg as u32);
+            fs.f.code[pc] = lua_types::opcode::Instruction::new(lc.0);
+        }
+        ExprKind::KStr => {
+            let s = e.u.strval.clone()
+                .ok_or_else(|| LuaError::syntax(format_args!("internal: VKStr with no strval")))?;
+            let k_idx = add_k_string(fs, s);
+            let inst = lua_code::opcodes::Instruction::abx(
+                lua_code::opcodes::OpCode::LoadK,
+                reg as u32,
+                k_idx as u32,
+            );
+            emit_inst(fs, line, inst);
+        }
+        ExprKind::Nil => {
+            let inst = lua_code::opcodes::Instruction::abck(
+                lua_code::opcodes::OpCode::LoadNil, reg as u32, 0, 0, 0,
+            );
+            emit_inst(fs, line, inst);
+        }
+        ExprKind::True => {
+            let inst = lua_code::opcodes::Instruction::abck(
+                lua_code::opcodes::OpCode::LoadTrue, reg as u32, 0, 0, 0,
+            );
+            emit_inst(fs, line, inst);
+        }
+        ExprKind::False => {
+            let inst = lua_code::opcodes::Instruction::abck(
+                lua_code::opcodes::OpCode::LoadFalse, reg as u32, 0, 0, 0,
+            );
+            emit_inst(fs, line, inst);
+        }
+        ExprKind::NonReloc => {
+            if e.u.info as u8 != reg {
+                let inst = lua_code::opcodes::Instruction::abck(
+                    lua_code::opcodes::OpCode::Move,
+                    reg as u32,
+                    e.u.info as u32,
+                    0, 0,
+                );
+                emit_inst(fs, line, inst);
+            }
+        }
+        _ => {
+            return Err(LuaError::syntax(format_args!(
+                "internal: cg_exp_to_next_reg cannot discharge {:?}", e.k
+            )));
+        }
+    }
+    e.u.info = reg as i32;
+    e.k = ExprKind::NonReloc;
+    Ok(())
+}
+
 // ── Free functions ──────────────────────────────────────────────────────────
 
 // C: static void statement(LexState *ls);  -- forward declaration
@@ -1043,18 +1215,22 @@ fn singlevar(ls: &mut LexState, state: &mut LuaState, var: &mut ExprDesc) -> Res
     }
     if var.k == ExprKind::Void {
         // C: global name — env[varname]
-        let mut key = ExprDesc::default();
         let envn = ls.envn.clone();
-        if let Some(env_name) = envn {
+        let env_idx = if let Some(env_name) = envn {
             let fs = ls.fs.as_ref().unwrap();
-            let idx = search_upvalue(fs, &env_name);
-            if idx >= 0 {
-                init_exp(var, ExprKind::UpVal, idx);
-            }
-        }
-        codestring(&mut key, varname);
-        // C: luaK_indexed(fs, var, &key)
-        // TODO(port): lua_code::indexed(ls.fs.as_mut().unwrap(), var, &mut key)?;
+            search_upvalue(fs, &env_name)
+        } else {
+            -1
+        };
+        // C: luaK_indexed(fs, var, &key) — for an upvalue table with a string
+        // key, the result is VINDEXUP { ind_t: upval_idx, ind_idx: k_const_idx }.
+        let fs = ls.fs.as_mut().unwrap();
+        let k_idx = add_k_string(fs, varname);
+        var.f = NO_JUMP;
+        var.t = NO_JUMP;
+        var.k = ExprKind::IndexUp;
+        var.u.ind_t = env_idx.max(0) as u8;
+        var.u.ind_idx = k_idx as i16;
     }
     Ok(())
 }
@@ -1662,10 +1838,16 @@ fn constructor(ls: &mut LexState, state: &mut LuaState, t: &mut ExprDesc) -> Res
 // ── §10 Parameter list and function body ─────────────────────────────────────
 
 /// C: static void setvararg(FuncState *fs, int nparams)
-fn setvararg(fs: &mut FuncState, state: &mut LuaState, nparams: i32) -> Result<(), LuaError> {
+fn setvararg(fs: &mut FuncState, _state: &mut LuaState, nparams: i32) -> Result<(), LuaError> {
     fs.f.is_vararg = true;
     // C: luaK_codeABC(fs, OP_VARARGPREP, nparams, 0, 0)
-    // TODO(port): lua_code::code_abc(fs, OpCode::VarArgPrep, nparams, 0, 0)?;
+    let inst = lua_code::opcodes::Instruction::abck(
+        lua_code::opcodes::OpCode::VarArgPrep,
+        nparams as u32,
+        0, 0, 0,
+    );
+    let line = fs.previousline;
+    emit_inst(fs, line, inst);
     Ok(())
 }
 
@@ -1822,24 +2004,28 @@ fn funcargs(ls: &mut LexState, state: &mut LuaState, f: &mut ExprDesc) -> Result
             return Err(LuaError::syntax(format_args!("function arguments expected")));
         }
     }
-    // TODO(port): debug_assert!(f.k == ExprKind::NonReloc);
-    // Precondition is established by luaK_exp2nextreg / luaK_self calls in
-    // suffixedexp, which are currently TODO(port) stubs. Re-enable when
-    // codegen discharge calls are wired up.
+    debug_assert!(f.k == ExprKind::NonReloc);
     let base = f.u.info;
     let nparams: i32 = if args.k.has_mult_ret() {
+        // TODO(port): luaK_setmultret for VVarArg / VCall args; only single
+        // non-multret args are supported by the bootstrap codegen.
         LUA_MULTRET
     } else {
         if args.k != ExprKind::Void {
-            // TODO(port): lua_code::exp_to_next_reg(ls.fs.as_mut().unwrap(), &mut args)?;
+            cg_exp_to_next_reg(ls.fs.as_mut().unwrap(), line, &mut args)?;
         }
         ls.fs.as_ref().unwrap().freereg as i32 - (base + 1)
     };
     // C: init_exp(f, VCALL, luaK_codeABC(fs, OP_CALL, base, nparams+1, 2))
-    // TODO(port): let call_pc = lua_code::code_abc(ls.fs.as_mut().unwrap(), OpCode::Call, base, nparams+1, 2)?;
-    init_exp(f, ExprKind::Call, 0 /* placeholder for call_pc */);
-    // C: luaK_fixline(fs, line)
-    // TODO(port): lua_code::fix_line(ls.fs.as_mut().unwrap(), line);
+    let call_inst = lua_code::opcodes::Instruction::abck(
+        lua_code::opcodes::OpCode::Call,
+        base as u32,
+        (nparams + 1) as u32,
+        2,
+        0,
+    );
+    let call_pc = emit_inst(ls.fs.as_mut().unwrap(), line, call_inst);
+    init_exp(f, ExprKind::Call, call_pc);
     ls.fs.as_mut().unwrap().freereg = base as u8 + 1;
     Ok(())
 }
@@ -1892,8 +2078,9 @@ fn suffixedexp(ls: &mut LexState, state: &mut LuaState, v: &mut ExprDesc) -> Res
                 funcargs(ls, state, v)?;
             }
             c if c == b'(' as TokenKind || c == TK_STRING || c == b'{' as TokenKind => {
-                // C: luaK_exp2nextreg(fs, v)
-                // TODO(port): lua_code::exp_to_next_reg(ls.fs.as_mut().unwrap(), v)?;
+                // C: luaK_exp2nextreg(fs, v) — places the callee in a fixed register.
+                let line = ls.linenumber;
+                cg_exp_to_next_reg(ls.fs.as_mut().unwrap(), line, v)?;
                 funcargs(ls, state, v)?;
             }
             _ => return Ok(()),
@@ -2619,10 +2806,12 @@ fn exprstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
         if v_assign.v.k != ExprKind::Call {
             return Err(LuaError::syntax(format_args!("syntax error")));
         }
-        // C: SETARG_C(*inst, 1) — call statement uses no results
-        // TODO(port): fix instruction to set C=1 (no results)
+        // C: SETARG_C(*inst, 1) — call statement uses no results.
         let info = v_assign.v.u.info as usize;
-        // TODO(port): ls.fs.as_mut().unwrap().f.code[info].set_arg_c(1);
+        let fs = ls.fs.as_mut().unwrap();
+        let mut lc = lua_code::opcodes::Instruction(fs.f.code[info].0);
+        lc.set_arg_c(1);
+        fs.f.code[info] = lua_types::opcode::Instruction::new(lc.0);
     }
     Ok(())
 }
