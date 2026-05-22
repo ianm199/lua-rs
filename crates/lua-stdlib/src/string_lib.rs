@@ -1556,16 +1556,263 @@ fn addliteral(state: &mut LuaState, buf: &mut Vec<u8>, arg: i32) -> Result<(), L
     Ok(())
 }
 
+/// Parsed printf-style format specifier (flags, width, precision).
+#[derive(Default)]
+struct FmtSpec {
+    left_align: bool,
+    plus_sign: bool,
+    space_sign: bool,
+    alt_form: bool,
+    zero_pad: bool,
+    width: usize,
+    precision: Option<usize>,
+}
+
+fn parse_fmt_spec(spec: &[u8]) -> FmtSpec {
+    let mut s = FmtSpec::default();
+    let mut i = 0;
+    while i < spec.len() {
+        match spec[i] {
+            b'-' => s.left_align = true,
+            b'+' => s.plus_sign = true,
+            b' ' => s.space_sign = true,
+            b'#' => s.alt_form = true,
+            b'0' => s.zero_pad = true,
+            _ => break,
+        }
+        i += 1;
+    }
+    while i < spec.len() && spec[i].is_ascii_digit() {
+        s.width = s.width * 10 + (spec[i] - b'0') as usize;
+        i += 1;
+    }
+    if i < spec.len() && spec[i] == b'.' {
+        i += 1;
+        let mut p = 0usize;
+        while i < spec.len() && spec[i].is_ascii_digit() {
+            p = p * 10 + (spec[i] - b'0') as usize;
+            i += 1;
+        }
+        s.precision = Some(p);
+    }
+    s
+}
+
+fn pad_str(buf: &mut Vec<u8>, body: &[u8], spec: &FmtSpec) {
+    let body = match spec.precision {
+        Some(p) if body.len() > p => &body[..p],
+        _ => body,
+    };
+    if body.len() >= spec.width {
+        buf.extend_from_slice(body);
+        return;
+    }
+    let pad = spec.width - body.len();
+    if spec.left_align {
+        buf.extend_from_slice(body);
+        for _ in 0..pad { buf.push(b' '); }
+    } else {
+        for _ in 0..pad { buf.push(b' '); }
+        buf.extend_from_slice(body);
+    }
+}
+
+fn pad_int(buf: &mut Vec<u8>, sign_prefix: &[u8], digits: &[u8], spec: &FmtSpec) {
+    let min_digits = spec.precision.unwrap_or(0);
+    let zeroes_for_prec = if digits.len() < min_digits { min_digits - digits.len() } else { 0 };
+    let core_len = sign_prefix.len() + zeroes_for_prec + digits.len();
+    if core_len >= spec.width {
+        buf.extend_from_slice(sign_prefix);
+        for _ in 0..zeroes_for_prec { buf.push(b'0'); }
+        buf.extend_from_slice(digits);
+        return;
+    }
+    let pad = spec.width - core_len;
+    let use_zero_pad = spec.zero_pad && !spec.left_align && spec.precision.is_none();
+    if spec.left_align {
+        buf.extend_from_slice(sign_prefix);
+        for _ in 0..zeroes_for_prec { buf.push(b'0'); }
+        buf.extend_from_slice(digits);
+        for _ in 0..pad { buf.push(b' '); }
+    } else if use_zero_pad {
+        buf.extend_from_slice(sign_prefix);
+        for _ in 0..pad { buf.push(b'0'); }
+        for _ in 0..zeroes_for_prec { buf.push(b'0'); }
+        buf.extend_from_slice(digits);
+    } else {
+        for _ in 0..pad { buf.push(b' '); }
+        buf.extend_from_slice(sign_prefix);
+        for _ in 0..zeroes_for_prec { buf.push(b'0'); }
+        buf.extend_from_slice(digits);
+    }
+}
+
+fn signed_int_parts(n: i64, spec: &FmtSpec) -> (Vec<u8>, Vec<u8>) {
+    let (sign, abs_digits) = if n < 0 {
+        (b"-".to_vec(), {
+            let u = (n as i128).unsigned_abs();
+            format!("{}", u).into_bytes()
+        })
+    } else {
+        let s: Vec<u8> = if spec.plus_sign {
+            b"+".to_vec()
+        } else if spec.space_sign {
+            b" ".to_vec()
+        } else {
+            Vec::new()
+        };
+        (s, format!("{}", n).into_bytes())
+    };
+    (sign, abs_digits)
+}
+
+fn unsigned_int_parts(n: u64, base: u32, upper: bool, spec: &FmtSpec) -> (Vec<u8>, Vec<u8>) {
+    let digits = match base {
+        8 => format!("{:o}", n).into_bytes(),
+        16 if upper => format!("{:X}", n).into_bytes(),
+        16 => format!("{:x}", n).into_bytes(),
+        _ => format!("{}", n).into_bytes(),
+    };
+    let prefix: Vec<u8> = if spec.alt_form && n != 0 {
+        match base {
+            8 => b"0".to_vec(),
+            16 if upper => b"0X".to_vec(),
+            16 => b"0x".to_vec(),
+            _ => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+    (prefix, digits)
+}
+
+fn format_float(n: f64, conv: u8, spec: &FmtSpec) -> Vec<u8> {
+    let prec = spec.precision.unwrap_or(6);
+    if n.is_nan() {
+        return if conv.is_ascii_uppercase() { b"NAN".to_vec() } else { b"nan".to_vec() };
+    }
+    if n.is_infinite() {
+        let s: &[u8] = if conv.is_ascii_uppercase() {
+            if n < 0.0 { b"-INF" } else { b"INF" }
+        } else if n < 0.0 { b"-inf" } else { b"inf" };
+        return s.to_vec();
+    }
+    match conv {
+        b'f' | b'F' => format!("{:.*}", prec, n).into_bytes(),
+        b'e' => format_exp(n, prec, false, spec.alt_form),
+        b'E' => {
+            let mut v = format_exp(n, prec, false, spec.alt_form);
+            for b in v.iter_mut() { if *b == b'e' { *b = b'E'; } }
+            v
+        }
+        b'g' | b'G' => {
+            let p = if prec == 0 { 1 } else { prec };
+            let v = format_g(n, p, spec.alt_form);
+            if conv == b'G' {
+                v.into_iter().map(|b| if b == b'e' { b'E' } else { b }).collect()
+            } else { v }
+        }
+        _ => format!("{}", n).into_bytes(),
+    }
+}
+
+fn format_exp(n: f64, prec: usize, _upper: bool, alt: bool) -> Vec<u8> {
+    if n == 0.0 {
+        let mantissa: String = if prec == 0 {
+            if alt { "0.".to_string() } else { "0".to_string() }
+        } else {
+            format!("0.{}", "0".repeat(prec))
+        };
+        return format!("{}e+00", mantissa).into_bytes();
+    }
+    let abs = n.abs();
+    let exp = abs.log10().floor() as i32;
+    let mantissa = n / 10f64.powi(exp);
+    let mantissa_str = format!("{:.*}", prec, mantissa);
+    let (mant_final, exp_final) = if let Some(dot_pos) = mantissa_str.find('.') {
+        let int_part = &mantissa_str[..dot_pos];
+        let abs_int = int_part.trim_start_matches('-');
+        if abs_int.len() > 1 {
+            let new_mant = if prec == 0 {
+                mantissa_str[..mantissa_str.len()-1].to_string()
+            } else {
+                let neg = if int_part.starts_with('-') { "-" } else { "" };
+                let frac = &mantissa_str[dot_pos+1..];
+                format!("{}{}.{}{}", neg, &abs_int[..1], &abs_int[1..], frac)
+            };
+            (new_mant, exp + (abs_int.len() as i32 - 1))
+        } else {
+            (mantissa_str, exp)
+        }
+    } else if mantissa_str.trim_start_matches('-').len() > 1 {
+        let neg = if mantissa_str.starts_with('-') { "-" } else { "" };
+        let body = mantissa_str.trim_start_matches('-');
+        let bumped = format!("{}{}.{}", neg, &body[..1], &body[1..]);
+        (bumped, exp + (body.len() as i32 - 1))
+    } else {
+        (mantissa_str, exp)
+    };
+    let sign = if exp_final < 0 { '-' } else { '+' };
+    let mant_out = if alt && !mant_final.contains('.') {
+        format!("{}.", mant_final)
+    } else { mant_final };
+    format!("{}e{}{:02}", mant_out, sign, exp_final.abs()).into_bytes()
+}
+
+fn format_g(n: f64, prec: usize, alt: bool) -> Vec<u8> {
+    if n == 0.0 {
+        return if alt { format!("0.{}", "0".repeat(prec.saturating_sub(1))).into_bytes() } else { b"0".to_vec() };
+    }
+    let abs = n.abs();
+    let exp = abs.log10().floor() as i32;
+    if exp < -4 || exp >= prec as i32 {
+        let ep = if prec == 0 { 0 } else { prec - 1 };
+        let mut v = format_exp(n, ep, false, alt);
+        if !alt {
+            v = strip_trailing_zeros_exp(&v);
+        }
+        v
+    } else {
+        let dec_places = (prec as i32 - 1 - exp).max(0) as usize;
+        let mut v = format!("{:.*}", dec_places, n).into_bytes();
+        if !alt {
+            v = strip_trailing_zeros_fixed(&v);
+        }
+        v
+    }
+}
+
+fn strip_trailing_zeros_fixed(s: &[u8]) -> Vec<u8> {
+    if !s.contains(&b'.') { return s.to_vec(); }
+    let mut end = s.len();
+    while end > 0 && s[end-1] == b'0' { end -= 1; }
+    if end > 0 && s[end-1] == b'.' { end -= 1; }
+    s[..end].to_vec()
+}
+
+fn strip_trailing_zeros_exp(s: &[u8]) -> Vec<u8> {
+    let e_pos = match s.iter().position(|&b| b == b'e' || b == b'E') {
+        Some(p) => p,
+        None => return s.to_vec(),
+    };
+    let mantissa = &s[..e_pos];
+    let exp_part = &s[e_pos..];
+    if !mantissa.contains(&b'.') {
+        let mut out = mantissa.to_vec();
+        out.extend_from_slice(exp_part);
+        return out;
+    }
+    let mut end = mantissa.len();
+    while end > 0 && mantissa[end-1] == b'0' { end -= 1; }
+    if end > 0 && mantissa[end-1] == b'.' { end -= 1; }
+    let mut out = mantissa[..end].to_vec();
+    out.extend_from_slice(exp_part);
+    out
+}
+
 /// `string.format(fmt, ...)` — C-style string formatting.
 ///
 /// C: `static int str_format(lua_State *L)`
-///
-/// TODO(port): This function uses dynamic sprintf with format strings built
-/// at runtime. The C implementation delegates to snprintf with platform
-/// format specifiers. The Rust port translates each format case manually.
-/// The `%a`/`%A` hex float case uses our `num2straux`; other cases use
-/// Rust formatting. Edge cases involving locale-dependent behavior (e.g.
-/// `lua_getlocaledecpoint`) are approximated.
 pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
     let top = state.get_top();
     let mut arg = 1i32;

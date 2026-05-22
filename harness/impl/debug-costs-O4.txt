@@ -2,3 +2,4 @@
 4 2.331370749999999 reference/lua-c/testes/pm.lua
 3 2.9013825 reference/lua-c/testes/gengc.lua
 1 3.6769862500000006 reference/lua-c/testes/closure.lua
+5 4.3884419999999995 reference/lua-c/testes/strings.lua

@@ -782,3 +782,18 @@
 [2026-05-18T05:22:08Z mega]   [O4.D3] DEBUG dispatch on file: reference/lua-c/testes/gengc.lua [parallel]
 [2026-05-18T05:22:08Z mega]   [O4.D4] DEBUG dispatch on file: reference/lua-c/testes/pm.lua [parallel]
 [2026-05-18T05:24:51Z mega]   [O4.D5] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
+[2026-05-18T05:33:28Z mega]   [O4.D2] DEBUG done. iter cost=$1.343441  total=$14.1996
+[2026-05-18T05:33:28Z mega]   [O4.D4] DEBUG done. iter cost=$2.331370749999999  total=$16.5310
+[2026-05-18T05:33:28Z mega]   [O4.D3] DEBUG done. iter cost=$2.9013825  total=$19.4324
+[2026-05-18T05:33:28Z mega]   [O4.D1] DEBUG done. iter cost=$3.6769862500000006  total=$23.1094
+[2026-05-18T05:33:28Z mega]   [O4.D5] DEBUG done. iter cost=$4.3884419999999995  total=$27.4978
+[2026-05-18T05:33:28Z mega] ─── outer round 5 (spent: $27.4978) ───
+[2026-05-18T05:33:32Z mega]   scan: 64/79 programs pass cleanly
+[2026-05-18T05:33:32Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-18T05:33:32Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-18T05:33:32Z mega]   [O5.D1] DEBUG dispatch on file: reference/lua-c/testes/goto.lua [parallel]
+[2026-05-18T05:33:32Z mega]   [O5.D2] DEBUG dispatch on file: reference/lua-c/testes/closure.lua [parallel]
+[2026-05-18T05:33:32Z mega]   [O5.D3] DEBUG dispatch on file: reference/lua-c/testes/gc.lua [parallel]
+[2026-05-18T05:33:32Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: attempt to call a string value): reference/lua-c/testes/gengc.lua
+[2026-05-18T05:33:32Z mega]   [O5.D4] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
+[2026-05-18T05:33:32Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: 820: assertion failed!): reference/lua-c/testes/math.lua

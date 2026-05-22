@@ -1163,20 +1163,17 @@ impl LuaState {
 
     /// Intern a byte string in the global string pool.
     ///
-    /// Mirrors C's `luaS_newlstr` (lstring.c): short strings (≤ LUAI_MAXSHORTLEN
-    /// = 40 bytes) are interned globally so equal content shares a single
-    /// TString; long strings always allocate a fresh TString. This is what
-    /// lets `string.format("%p", gsub(s, ".", fn))` differ from `%p(s)` even
-    /// when the substituted content is identical — the fresh string carries
-    /// its own GC identity.
+    /// In C, short strings (≤ LUAI_MAXSHORTLEN = 40 bytes) are interned globally
+    /// via `luaS_newlstr`, while long strings allocate a fresh TString each
+    /// call; the parser then deduplicates long-string identifiers through
+    /// `luaX_newstring`'s `ls->h` anchor table. The Rust port collapses both
+    /// layers into this method: every byte sequence maps to a single canonical
+    /// `GcRef<LuaString>`, which is the identity the parser/lexer rely on for
+    /// `GcRef::ptr_eq` comparisons (label/goto matching, upvalue lookup, etc.).
     ///
     /// C: `luaS_newlstr` (and `luaS_new`, which calls `luaS_newlstr`)
     /// macros.tsv: `luaS_new → state.intern_str(s)`
     pub fn intern_str(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> {
-        if bytes.len() > 40 {
-            let _local = crate::string::new(self, bytes)?;
-            return Ok(GcRef::new(LuaString::from_bytes(bytes.to_vec())));
-        }
         if let Some(existing) = self.global().interned_lt.get(bytes) {
             return Ok(existing.clone());
         }

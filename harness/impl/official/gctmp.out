@@ -2,5 +2,7 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing closures
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:193: assertion failed!
+c0=	nil
+c1=	nil
+done
+[ok] execution completed, status=Ok

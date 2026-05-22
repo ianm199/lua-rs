@@ -1,4 +1,0 @@
-4 1.3373040000000003 reference/lua-c/testes/files.lua
-2 1.52049625 reference/lua-c/testes/locals.lua
-3 2.6486095000000005 reference/lua-c/testes/nextvar.lua
-1 5.157033749999999 reference/lua-c/testes/math.lua

@@ -2,4 +2,8 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-[err] pcall_k failed: Runtime: unable to generate a unique filename
+testing functions and calls
++
++
+testing tail calls
+[err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)

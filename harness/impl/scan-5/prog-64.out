@@ -2,6 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing local variables and environments
+testing bitwise operations
 +
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:174: assertion failed!
+testing bitwise library
++
++
+OK
+[ok] execution completed, status=Ok

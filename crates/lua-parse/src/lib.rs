@@ -3839,12 +3839,24 @@ fn repeatstat(ls: &mut LexState, state: &mut LuaState, line: i32) -> Result<(), 
     let condexit = cond(ls, state)?;
 
     let bl2_upval = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().upval;
-    let _bl2_nactvar = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().nactvar;
+    let bl2_nactvar = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().nactvar as i32;
     leave_block(ls, state)?;
 
+    let mut condexit = condexit;
     if bl2_upval {
-        // TODO(port): repeat-until that closes upvalues on each iteration
-        // needs OP_CLOSE codegen wired through; not exercised by current tests.
+        let exit = cg_jump(ls.fs.as_mut().unwrap(), line);
+        cg_patch_to_here(ls.fs.as_mut().unwrap(), condexit)?;
+        let close_level = reg_level(ls, ls.fs.as_ref().unwrap(), bl2_nactvar) as u32;
+        let close_inst = lua_code::opcodes::Instruction::abck(
+            lua_code::opcodes::OpCode::Close,
+            close_level,
+            0,
+            0,
+            0,
+        );
+        emit_inst(ls.fs.as_mut().unwrap(), line, close_inst);
+        condexit = cg_jump(ls.fs.as_mut().unwrap(), line);
+        cg_patch_to_here(ls.fs.as_mut().unwrap(), exit)?;
     }
     cg_patch_list(ls.fs.as_mut().unwrap(), condexit, repeat_init)?;
     leave_block(ls, state)?;
