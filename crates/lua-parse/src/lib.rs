@@ -2585,12 +2585,20 @@ fn cg_self(
             "internal: cg_self expected VKStr key, got {:?}", key.k
         )))?;
     let k_idx = add_k_string(fs, key_str);
+    let (c_arg, k_flag) = if (k_idx as u32) <= lua_code::opcodes::MAXINDEXRK {
+        (k_idx as u32, 1u32)
+    } else {
+        key.k = ExprKind::K;
+        key.u.info = k_idx;
+        cg_exp_to_any_reg(fs, line, key)?;
+        (key.u.info as u32, 0u32)
+    };
     let inst = lua_code::opcodes::Instruction::abck(
         lua_code::opcodes::OpCode::Self_,
         base as u32,
         ereg as u32,
-        k_idx as u32,
-        1,
+        c_arg,
+        k_flag,
     );
     emit_inst(fs, line, inst);
     cg_free_exp(fs, key);

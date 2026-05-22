@@ -36,7 +36,6 @@ end
 local function checkmessage (prog, msg, debug)
   local m = doit(prog)
   if debug then print(m, msg) end
-  if not (m and string.find(m, msg, 1, true)) then print(string.format("CHECKMESSAGE FAIL prog=%s expected=%s got=%s", tostring(prog):sub(1,80), tostring(msg), tostring(m))) end
   assert(string.find(m, msg, 1, true))
 end
 

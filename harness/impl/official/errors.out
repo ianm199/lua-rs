@@ -6,5 +6,5 @@ testing errors
 
  >>> testC not active: skipping tests for messages in C <<<
 
-CHECKMESSAGE FAIL prog=aaa = x1; aaa = x2; aaa = x3; aaa = x4; aaa = x5; aaa = x6; aaa = x7; aaa = x8;  expected=method 'bbb' got=[string "aaa = x1; aaa = x2; aaa = x3; aaa = x4; aaa =..."]:1: attempt to call a nil value (method 'x233')
-lua: pcall_k failed: Runtime: stdin:40: assertion failed!
++
+lua: pcall_k failed: Runtime: stdin:39: assertion failed!
