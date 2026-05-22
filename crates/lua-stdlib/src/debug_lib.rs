@@ -195,7 +195,7 @@ pub(crate) fn set_metatable(state: &mut LuaState) -> Result<usize, LuaError> {
         return Err(LuaError::type_arg_error(2, "nil or table", &got));
     }
     // C: lua_settop(L, 2); lua_setmetatable(L, 1); return 1;
-    state.set_top(2);
+    lua_vm::api::set_top(state, 2)?;
     state.set_metatable(1)?;
     Ok(1)
 }

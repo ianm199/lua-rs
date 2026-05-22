@@ -1953,15 +1953,7 @@ pub fn gc(state: &mut LuaState, args: GcArgs) -> i32 {
                 let mut g = state.global_mut();
                 crate::state::reclaim_dead_long_strings(&mut *g);
             }
-            let g = state.global();
-            eprintln!("[DBG count] totalbytes={} gc_debt={} tracked_strings={}", g.totalbytes, g.gc_debt, g.gc_tracked_long_strings.len());
-            for (i, (w, sz)) in g.gc_tracked_long_strings.iter().enumerate() {
-                if let Some(rc) = w.upgrade() {
-                    let preview: Vec<u8> = rc.as_bytes().iter().take(8).copied().collect();
-                    eprintln!("  [{}] size={} strong={} preview={:?}", i, sz, std::rc::Rc::strong_count(&rc), preview);
-                }
-            }
-            return (g.total_bytes() >> 10) as i32;
+            return (state.global().total_bytes() >> 10) as i32;
         }
         // C: case LUA_GCCOUNTB: res = cast_int(gettotalbytes(g) & 0x3ff);
         GcArgs::CountB => {

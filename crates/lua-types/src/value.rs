@@ -347,6 +347,23 @@ pub fn sweep_weak_tables(tables: &[GcRef<LuaTable>]) {
                 let entries = t.entries.borrow();
                 let mut result = Vec::new();
                 for (i, (k, v)) in entries.iter().enumerate() {
+                    // PORT NOTE: tombstone entries (key present, value Nil)
+                    // are left behind by `raw_set(k, Nil)` so that
+                    // `next(t, k)` can locate the removed key during
+                    // iteration. C-Lua's collector clears them in the
+                    // atomic weak-sweep phase. Without this, a string key
+                    // held only by a tombstone in a weak table would never
+                    // be released (the per-entry `entry_is_weakly_dead`
+                    // check returns false for strings), and the
+                    // `collectgarbage("count") <= m + 1` assert at the end
+                    // of gc.lua's weak-string-keys block would fail. Tables
+                    // not in `weak_tables_registry` are not touched here so
+                    // mid-iteration `for k,v in pairs(t) do t[k] = nil end`
+                    // semantics on non-weak tables are preserved.
+                    if matches!(v, LuaValue::Nil) {
+                        result.push(i);
+                        continue;
+                    }
                     if entry_is_weakly_dead_global(k, v, mode, tables) {
                         result.push(i);
                     }
