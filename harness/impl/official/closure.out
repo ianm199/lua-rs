@@ -1,10 +1,12 @@
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
+DEBUG parse() name=[45, 45, 32, 104, 97, 114, 110, 101, 115, 115, 32, 112, 114, 101, 97, 109, 98, 108, 101, 58, 32, 101, 109, 117, 108, 97, 116, 101, 32, 116, 104, 101, 32, 103, 108, 111, 98, 97, 108, 115] (len=5951)
+DEBUG parse() source_str inner bytes=[45, 45, 32, 104, 97, 114, 110, 101, 115, 115, 32, 112, 114, 101, 97, 109, 98, 108, 101, 58, 32, 101, 109, 117, 108, 97, 116, 101, 32, 116, 104, 101, 32, 103, 108, 111, 98, 97, 108, 115] len=5951
 [4/4] Executing chunk...
 testing closures
 
-thread 'main' (7962475) panicked at crates/lua-vm/src/func.rs:485:9:
+thread 'main' (8213567) panicked at crates/lua-vm/src/func.rs:485:9:
 open upvalue index must be below stack top
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [panic] open upvalue index must be below stack top

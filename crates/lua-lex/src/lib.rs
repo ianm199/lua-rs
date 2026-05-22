@@ -566,7 +566,6 @@ pub fn lex_error(ls: &mut LexState, msg: &[u8], token: i32) -> LuaError {
     // C: msg = luaG_addinfo(ls->L, msg, ls->source, ls->linenumber);
     const LUA_IDSIZE: usize = 60;
     let mut buff = [0u8; LUA_IDSIZE];
-    eprintln!("DEBUG lex_error source: len={} bytes={:?}", ls.source.as_bytes().len(), &ls.source.as_bytes()[..ls.source.as_bytes().len().min(40)]);
     let n = lua_vm::object::chunk_id(&mut buff[..], ls.source.as_bytes());
     let src_part = &buff[..n];
 

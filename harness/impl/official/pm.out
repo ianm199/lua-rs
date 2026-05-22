@@ -1,28 +1,20 @@
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
+DEBUG parse() name=[45, 45, 32, 104, 97, 114, 110, 101, 115, 115, 32, 112, 114, 101, 97, 109, 98, 108, 101, 58, 32, 101, 109, 117, 108, 97, 116, 101, 32, 116, 104, 101, 32, 103, 108, 111, 98, 97, 108, 115] (len=14036)
+DEBUG parse() source_str inner bytes=[45, 45, 32, 104, 97, 114, 110, 101, 115, 115, 32, 112, 114, 101, 97, 109, 98, 108, 101, 58, 32, 101, 109, 117, 108, 97, 116, 101, 32, 116, 104, 101, 32, 103, 108, 111, 98, 97, 108, 115] len=14036
 [4/4] Executing chunk...
 testing pattern matching
 +
 +
 +
 +
-[DBG try_func_tm] about to error on value type: boolean at idx StackIdx(27)
-  [15]: Nil
-  [16]: Nil
-  [17]: Str("abç d")
-  [18]: LuaFn(line220..220)
-  [19]: Str(" assim vai para ALO")
-  [20]: Table
-  [21]: Str("a alo jose  joao")
-  [22]: Str("a alo jose  joao")
-  [23]: LuaFn(line239..241)
-  [24]: Table
-  [25]: LuaFn(line282..284)
-  [26]: Str("abcdef")
-  [27]: Bool(true)
-  [28]: Table
-  [29]: Table
-  CI[0] func_idx=StackIdx(2) val=LuaFn(line0..0)
-  CI[1] func_idx=StackIdx(0) val=nil
+DEBUG parse() name=[] (len=0)
+DEBUG parse() source_str inner bytes=[] len=0
+DEBUG parse() name=[] (len=0)
+DEBUG parse() source_str inner bytes=[] len=0
+DEBUG parse() name=[] (len=0)
+DEBUG parse() source_str inner bytes=[] len=0
+DEBUG parse() name=[] (len=0)
+DEBUG parse() source_str inner bytes=[] len=0
 [err] pcall_k failed: Runtime: attempt to call a boolean value

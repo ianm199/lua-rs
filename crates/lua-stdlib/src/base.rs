@@ -771,9 +771,11 @@ pub(crate) fn load_fn(state: &mut LuaState) -> Result<usize, LuaError> {
         // C: const char *chunkname = luaL_optstring(L, 2, s);
         // C: status = luaL_loadbufferx(L, s, l, chunkname, mode);
         let chunk: Vec<u8> = state.to_lua_string_bytes(1).unwrap_or_default();
-        let chunkname: Vec<u8> = state
-            .opt_arg_string_bytes(2)
-            .unwrap_or_else(|_| chunk.clone());
+        let chunkname: Vec<u8> = if state.is_none_or_nil(2) {
+            chunk.clone()
+        } else {
+            state.check_arg_string(2)?
+        };
         state.load_buffer_ex(&chunk, &chunkname, &mode)?
     } else {
         let chunkname: Vec<u8> = state

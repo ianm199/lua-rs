@@ -617,3 +617,4 @@
 [2026-05-18T00:37:10Z mega]   [O2.D2] DEBUG dispatch on file: reference/lua-c/testes/goto.lua [parallel]
 [2026-05-18T00:37:10Z mega]   [O2.D3] DEBUG dispatch on file: reference/lua-c/testes/sort.lua [parallel]
 [2026-05-18T00:37:10Z mega]   [O2.D4] DEBUG dispatch on file: reference/lua-c/testes/closure.lua [parallel]
+[2026-05-18T00:38:13Z mega]   [O2.D5] DEBUG dispatch on file: reference/lua-c/testes/pm.lua [parallel]

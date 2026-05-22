@@ -4357,9 +4357,7 @@ pub fn parse(
     name: &[u8],
     firstchar: i32,
 ) -> Result<Box<LuaProto>, LuaError> {
-    eprintln!("DEBUG parse() name={:?} (len={})", &name[..name.len().min(40)], name.len());
     let source_str = state.intern_str(name)?;
-    eprintln!("DEBUG parse() source_str inner bytes={:?} len={}", &source_str.0.as_bytes()[..source_str.0.as_bytes().len().min(40)], source_str.0.as_bytes().len());
     let envn_str = state.intern_str(lua_lex::LUA_ENV)?;
 
     let rest_bytes: Vec<u8> = source.iter().skip(1).copied().collect();
