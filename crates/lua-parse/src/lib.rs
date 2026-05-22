@@ -2352,14 +2352,13 @@ fn singlevar(ls: &mut LexState, state: &mut LuaState, var: &mut ExprDesc) -> Res
         ls.fs = fs_box;
         r?;
         debug_assert!(env_var.k != ExprKind::Void, "_ENV must resolve");
-        let env_idx = env_var.u.info;
+        let line = ls.linenumber;
         let fs = ls.fs.as_mut().unwrap();
-        let k_idx = add_k_string(fs, varname);
-        var.f = NO_JUMP;
-        var.t = NO_JUMP;
-        var.k = ExprKind::IndexUp;
-        var.u.ind_t = env_idx.max(0) as u8;
-        var.u.ind_idx = k_idx as i16;
+        cg_exp_to_any_reg_up(fs, line, &mut env_var)?;
+        let mut key = ExprDesc::default();
+        codestring(&mut key, varname);
+        cg_indexed(fs, line, &mut env_var, &mut key)?;
+        *var = env_var;
     }
     Ok(())
 }

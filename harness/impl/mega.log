@@ -677,3 +677,4 @@
 [2026-05-18T02:16:09Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: 234: assertion failed!): reference/lua-c/testes/constructs.lua
 [2026-05-18T02:16:09Z mega]   [O5.D3] DEBUG dispatch on file: reference/lua-c/testes/nextvar.lua [parallel]
 [2026-05-18T02:16:09Z mega]   [O5.D4] DEBUG dispatch on file: reference/lua-c/testes/files.lua [parallel]
+[2026-05-18T02:19:14Z mega]   [O5.D5] DEBUG dispatch on file: reference/lua-c/testes/errors.lua [parallel]

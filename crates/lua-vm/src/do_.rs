@@ -577,18 +577,16 @@ fn try_func_tm(state: &mut LuaState, func_idx: StackIdx) -> Result<StackIdx, Lua
         let offender = state.get_at(func_idx).clone();
         let cur_ci = state.current_ci_idx();
         if let Some(cl) = state.ci_lua_closure(cur_ci) {
-            let p = &cl.proto;
             let pc = state.ci_savedpc(cur_ci) as i32 - 1;
-            let line = if pc >= 0 && (pc as usize) < p.lineinfo.len() {
-                let mut l = p.linedefined;
-                for i in 0..=(pc as usize) {
-                    l += p.lineinfo[i] as i32;
-                }
-                l
-            } else { -1 };
-            let src = p.source.as_ref().map(|s| String::from_utf8_lossy(s.as_bytes()).into_owned()).unwrap_or_default();
-            let short = if src.len() > 40 { format!("...{}", &src[src.len()-40..]) } else { src };
-            eprintln!("DBG call_error: pc={} line={} src={:?} func_idx={:?}", pc, line, short, func_idx);
+            let line = crate::debug::get_func_line(&cl.proto, pc);
+            let prev_pc = (pc as usize).saturating_sub(1);
+            let prev_op = cl.proto.code.get(prev_pc).map(|i| i.opcode_raw()).unwrap_or(255);
+            let prev_a = cl.proto.code.get(prev_pc).map(|i| i.a_raw()).unwrap_or(0);
+            let prev_bx = cl.proto.code.get(prev_pc).map(|i| i.bx_raw()).unwrap_or(0);
+            let prev_k = cl.proto.k.get(prev_bx as usize).cloned();
+            let cur_op = cl.proto.code.get(pc as usize).map(|i| i.opcode_raw()).unwrap_or(255);
+            eprintln!("DBG call_error: pc={} line={} cur_op={} prev_op={} prev_a={} prev_bx={} prev_k={:?}",
+                pc, line, cur_op, prev_op, prev_a, prev_bx, prev_k);
         } else {
             eprintln!("DBG call_error: non-lua ci, func_idx={:?}", func_idx);
         }
