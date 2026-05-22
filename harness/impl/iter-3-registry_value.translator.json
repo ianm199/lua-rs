@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 49633,
+  "duration_api_ms": 49794,
+  "ttft_ms": 1981,
+  "num_turns": 11,
+  "result": "Build is green.\n\n**Report:**\n\n- **File modified:** `crates/lua-vm/src/state.rs:1131`\n- **Implementation:** `registry_value` now returns a clone of `self.global().l_registry`, which is the Rust mirror of C's `&G(L)->l_registry`. The field is already declared at `state.rs:550` and initialized via `init_registry` at line 1635.\n- **Downstream todo!()s the loop will hit next:** Callers of `registry_value` (`api.rs:108`, inside `lua_index2value`) and the sibling `registry_get` (still a stub at line 1132) are next in line. The registry itself is currently initialized as a table but `init_registry` (line 1635) has open TODOs around populating `MAINTHREAD`/`GLOBALS` slots through `Rc<LuaTable>`, so registry_get will likely panic when reached.\n- **cargo build -p lua-cli:** Green (warnings only, no errors).",
+  "stop_reason": "end_turn",
+  "session_id": "936f2d5f-8759-4c78-be8e-e260514a14ea",
+  "total_cost_usd": 0.5117385,
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 33330,
+    "cache_read_input_tokens": 493626,
+    "output_tokens": 2213,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33330,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 325,
+        "cache_read_input_tokens": 51509,
+        "cache_creation_input_tokens": 720,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 720
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1133,
+      "outputTokens": 15,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0012079999999999999,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 16,
+      "outputTokens": 2213,
+      "cacheReadInputTokens": 493626,
+      "cacheCreationInputTokens": 33330,
+      "webSearchRequests": 0,
+      "costUSD": 0.5105305,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "2f18ce8a-c065-4a3f-94a2-bf3b71d5b065"
+}

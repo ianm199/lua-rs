@@ -7,3 +7,6 @@
 {"ts":"2026-05-16T13:50:32Z","action":"dispatch_done","detail":"func=get_field cost=0.6442545000000001","total_cost":0.00}
 {"ts":"2026-05-16T13:50:32Z","action":"panic_detected","detail":"func=registry_value iter=3","total_cost":0.00}
 {"ts":"2026-05-16T13:50:32Z","action":"dispatch_start","detail":"func=registry_value iter=3","total_cost":0.00}
+{"ts":"2026-05-16T13:51:23Z","action":"dispatch_done","detail":"func=registry_value cost=0.5117385","total_cost":0.00}
+{"ts":"2026-05-16T13:51:23Z","action":"panic_detected","detail":"func=table_get_with_tm iter=4","total_cost":0.00}
+{"ts":"2026-05-16T13:51:23Z","action":"dispatch_start","detail":"func=table_get_with_tm iter=4","total_cost":0.00}

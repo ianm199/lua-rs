@@ -1175,7 +1175,17 @@ impl LuaState {
     pub fn fast_tm_table<U, T>(&mut self, _t: U, _tm: T) -> LuaValue { todo!("phase-b: fast_tm_table") }
     pub fn fast_tm_ud<U, T>(&mut self, _u: U, _tm: T) -> LuaValue { todo!("phase-b: fast_tm_ud") }
 
-    pub fn table_get_with_tm(&mut self, _t: &LuaValue, _k: &LuaValue) -> Result<LuaValue, LuaError> { todo!("phase-b: table_get_with_tm") }
+    pub fn table_get_with_tm(&mut self, t: &LuaValue, k: &LuaValue) -> Result<LuaValue, LuaError> {
+        if let Some(v) = self.fast_get(t, k)? {
+            return Ok(v);
+        }
+        let res = self.top_idx();
+        self.push(LuaValue::Nil);
+        crate::vm::finish_get(self, t.clone(), k.clone(), res, true)?;
+        let value = self.get_at(res);
+        self.pop();
+        Ok(value)
+    }
     pub fn table_set_with_tm(&mut self, _t: &LuaValue, _k: LuaValue, _v: LuaValue) -> Result<(), LuaError> { todo!("phase-b: table_set_with_tm") }
     pub fn table_raw_set<T, K>(&mut self, _t: T, _k: K, _v: LuaValue) -> Result<(), LuaError> { todo!("phase-b: table_raw_set") }
     pub fn table_array_set<T>(&mut self, _t: T, _idx: usize, _v: LuaValue) -> Result<(), LuaError> { todo!("phase-b: table_array_set") }

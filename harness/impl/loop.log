@@ -13,3 +13,7 @@
 [2026-05-16T13:50:32Z] ─── iter 3  (spent: $0.00) ───
 [2026-05-16T13:50:32Z]   blocked on: registry_value
 [2026-05-16T13:50:32Z]   dispatching agent for registry_value (budget $10)
+[2026-05-16T13:51:23Z]   agent done. iter cost=$0.5117385  total=$0.00
+[2026-05-16T13:51:23Z] ─── iter 4  (spent: $0.00) ───
+[2026-05-16T13:51:23Z]   blocked on: table_get_with_tm
+[2026-05-16T13:51:23Z]   dispatching agent for table_get_with_tm (budget $10)
