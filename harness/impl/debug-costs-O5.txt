@@ -3,3 +3,4 @@
 3 1.5681727500000002 reference/lua-c/testes/closure.lua
 1 2.343286 reference/lua-c/testes/vararg.lua
 5 2.2999942499999992 reference/lua-c/testes/strings.lua
+8 1.6958407499999997 reference/lua-c/testes/tpack.lua

@@ -448,12 +448,14 @@ pub fn ll_loadlib(state: &mut LuaState) -> Result<usize, LuaError> {
 /// C: `static int readable(const char *filename)`
 ///    — `FILE *f = fopen(filename, "r"); if (f == NULL) return 0;`
 ///
-/// TODO(port): `std::fs::File::open` is banned in `lua-stdlib` (std::fs
-/// restriction from PORTING.md §1). This needs to either move to `lua-cli` or
-/// be injected as a read-capability callback on `LuaState`. Stubbed `false`
-/// here, which means `require` will never find Lua source files on disk.
-fn readable(_filename: &[u8]) -> bool {
-    false
+/// PORT NOTE: `std::fs` is banned in `lua-stdlib`, so the actual file probe is
+/// delegated to the embedder-registered `file_loader_hook` on `GlobalState`.
+/// Without a hook installed, `readable` reports `false` (file system unreachable).
+fn readable(state: &LuaState, filename: &[u8]) -> bool {
+    match state.global().file_loader_hook {
+        Some(hook) => hook(filename).is_ok(),
+        None => false,
+    }
 }
 
 // ── Path-component iterator ───────────────────────────────────────────────────
@@ -557,7 +559,7 @@ fn searchpath(
     // C: while ((filename = getnextfilename(&pathname, endpathname)) != NULL)
     for filename in PathComponents::new(&pathname) {
         // C: if (readable(filename)) return lua_pushstring(L, filename);
-        if readable(filename) {
+        if readable(state, filename) {
             let s = state.intern_str(filename)?;
             state.push(LuaValue::Str(s));
             return Ok(Some(filename.to_vec()));
@@ -671,10 +673,8 @@ fn checkload(state: &mut LuaState, stat: bool, filename: &[u8]) -> Result<usize,
 fn searcher_lua(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: const char *name = luaL_checkstring(L, 1);
     let name = state.check_arg_string(1)?.to_vec();
-    eprintln!("DBG searcher_lua name={:?} LUA_PATH={:?}", String::from_utf8_lossy(&name), std::env::var("LUA_PATH"));
     // C: filename = findfile(L, name, "path", LUA_LSUBSEP);
     let filename = findfile(state, &name, b"path", LUA_LSUBSEP)?;
-    eprintln!("DBG searcher_lua filename={:?}", filename.as_ref().map(|f| String::from_utf8_lossy(f).into_owned()));
     if filename.is_none() {
         // C: if (filename == NULL) return 1;  -- error message on stack
         return Ok(1);
