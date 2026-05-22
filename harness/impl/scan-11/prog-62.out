@@ -2,15 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing pack/unpack
-platform:
-	short 2, int 4, long 8, size_t 8, float 4, double 8,
-	lua Integer 8, lua Number 8
-	little endian
-	alignment: 8
-testing invalid formats
-[err] pcall_k failed: Runtime: _soft = true
-_port = true
-_nomsg = true
-_U = false
-arg = ar:49: assertion failed!
+testing pattern matching
++
++
++
++
+OK
+[ok] execution completed, status=Ok

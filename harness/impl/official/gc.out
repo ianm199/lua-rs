@@ -5,16 +5,9 @@
 testing incremental garbage collection
 creating many objects
 functions with errors
-DBG find_set_reg ENTER lastpc=4 reg=0
-DBG   change at pc=0 op=VarArgPrep → setreg=0
-DBG   change at pc=1 op=GetTabUp → setreg=1
-DBG find_set_reg EXIT setreg=1 effective_lastpc=4
-DBG find_set_reg ENTER lastpc=4 reg=0
-DBG   change at pc=0 op=VarArgPrep → setreg=0
-DBG   change at pc=1 op=GetTabUp → setreg=1
-DBG find_set_reg EXIT setreg=1 effective_lastpc=4
 long strings
 steps
 steps (2)
 clearing tables
 weak tables
+[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:329: assertion failed!

@@ -2,8 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-
-thread 'main' (7713529) panicked at crates/lua-stdlib/src/io_lib.rs:342:5:
-not yet implemented: TODO(port): cast raw userdata bytes to &mut LStream
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: TODO(port): cast raw userdata bytes to &mut LStream
+testing functions and calls
++
++
+testing tail calls
++
++
+[err] pcall_k failed: Runtime: [string "_soft = true..."]:340: assertion failed!

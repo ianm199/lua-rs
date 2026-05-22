@@ -3,8 +3,6 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing closures
-
-thread 'main' (7713451) panicked at crates/lua-vm/src/func.rs:485:9:
-open upvalue index must be below stack top
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] open upvalue index must be below stack top
++
+OK
+[ok] execution completed, status=Ok

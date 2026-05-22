@@ -1872,7 +1872,23 @@ impl LuaState {
         // array+hash impl in crates/lua-vm/src/table.rs lights up in Phase D.
         Ok(())
     }
-    pub fn table_getn(&self, _t: &GcRef<LuaTable>) -> i64 { todo!("phase-b: table_getn") }
+    pub fn table_getn(&self, t: &GcRef<LuaTable>) -> i64 {
+        // PORT NOTE: C's `luaH_getn` returns a boundary i such that t[i] is
+        // present and t[i+1] is absent (or 0 if t[1] is absent), exploiting the
+        // hybrid array+hash layout. Phase B's LuaTable (lua-types/src/value.rs)
+        // is a flat Vec<(K,V)> with no array part, so we linearly probe integer
+        // keys starting at 1. The rich array+hash impl in
+        // crates/lua-vm/src/table.rs lights up in Phase D.
+        // PERF(port): O(n) linear scan with O(n) lookups → O(n²); Phase D fixes.
+        let mut i: i64 = 1;
+        loop {
+            let v = t.get_int(i);
+            if matches!(v, LuaValue::Nil) {
+                return i - 1;
+            }
+            i += 1;
+        }
+    }
 
     pub fn try_bin_tm(&mut self, p1: &LuaValue, p1_idx: Option<StackIdx>, p2: &LuaValue, p2_idx: Option<StackIdx>, res: StackIdx, tm: lua_types::tagmethod::TagMethod) -> Result<(), LuaError> {
         let event = crate::tagmethods::TagMethod::from_u8(tm as u8);

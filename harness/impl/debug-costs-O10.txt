@@ -1,1 +1,4 @@
 2 4.8167012499999995 reference/lua-c/testes/calls.lua
+3 4.928016749999998 reference/lua-c/testes/events.lua
+1 [2026-05-18T07:00:14Z mega]   → committed 64e74d7 (debug/reference/lua-c/testes/gc.lua )
+10.048651249999999 reference/lua-c/testes/gc.lua

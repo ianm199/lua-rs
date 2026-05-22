@@ -1,1 +1,1 @@
-load_with_reader	crates/lua-stdlib/src/state_stub.rs:184:112
+table_getn	crates/lua-vm/src/state.rs:1875:61

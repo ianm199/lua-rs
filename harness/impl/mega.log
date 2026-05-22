@@ -891,3 +891,13 @@
 [2026-05-18T06:40:43Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: 38: assertion failed!): reference/lua-c/testes/errors.lua
 [2026-05-18T06:40:43Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: 426: assertion failed!): reference/lua-c/testes/attrib.lua
 [2026-05-18T06:40:43Z mega]   [O10.D3] DEBUG dispatch on file: reference/lua-c/testes/events.lua [parallel]
+[2026-05-18T07:00:14Z mega]   → committed 64e74d7 (debug/reference/lua-c/testes/gc.lua )
+[2026-05-18T07:00:14Z mega]   [O10.D2] DEBUG done. iter cost=$4.8167012499999995  total=$67.4086
+[2026-05-18T07:00:14Z mega]   [O10.D3] DEBUG done. iter cost=$4.928016749999998  total=$72.3366
+[2026-05-18T07:00:14Z mega]   [O10.D1] DEBUG done. iter cost=$[2026-05-18T07:00:14Z  total=$72.3366
+[2026-05-18T07:00:14Z mega]   [O10.D10.048651249999999] DEBUG done. iter cost=$reference/lua-c/testes/gc.lua  total=$72.3366
+[2026-05-18T07:00:14Z mega] ─── outer round 11 (spent: $72.3366) ───
+[2026-05-18T07:00:18Z mega]   scan: 66/79 programs pass cleanly
+[2026-05-18T07:00:19Z mega]   surface scan returned 1 unique stub blockers
+[2026-05-18T07:00:19Z mega]   grouped into 1 disjoint-file agents (parallel cap 4)
+[2026-05-18T07:00:19Z mega]   [O11.1] dispatch on 'table_getn' @ crates/lua-vm/src/state.rs:1875:61 (budget $10) [parallel]
