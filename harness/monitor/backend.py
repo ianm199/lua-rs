@@ -239,13 +239,19 @@ class LiveBackend:
                 entry.syntax_ok = None if sx is None else bool(sx)
                 hp = rec.get("hooks_pass")
                 entry.hooks_pass = None if hp is None else bool(hp)
+            elif target_path.exists() and self._is_real_port(target_path):
+                if (transcript.exists()
+                        and transcript.stat().st_mtime
+                        > target_path.stat().st_mtime + 30):
+                    entry.status = "work"
+                    entry.last_event = self._last_event_summary(cfile)
+                    entry.started_at = transcript.stat().st_mtime
+                else:
+                    entry.status = "done"
             elif transcript.exists():
                 entry.status = "work"
                 entry.last_event = self._last_event_summary(cfile)
                 entry.started_at = transcript.stat().st_mtime
-            elif target_path.exists() and self._is_real_port(target_path):
-                # Real port already on disk but no JSONL entry yet (e.g. pilot output)
-                entry.status = "done"
             out.append(entry)
         return out
 

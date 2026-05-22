@@ -129,7 +129,7 @@ fi
 RESULTS_DIR="harness/oracle/results"
 mkdir -p "$RESULTS_DIR"
 JSONL="$RESULTS_DIR/pilot.jsonl"
-: > "$JSONL"
+touch "$JSONL"
 
 translate_one() {
     local cfile="$1"
