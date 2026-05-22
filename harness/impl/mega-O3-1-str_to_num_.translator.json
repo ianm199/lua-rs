@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 220783,
+  "duration_api_ms": 220247,
+  "ttft_ms": 2697,
+  "num_turns": 35,
+  "result": "Build is green. \n\n## Report\n\n- **Target**: `crates/lua-vm/src/state.rs:1576` — `pub fn str_to_num(&mut self, s: &[u8]) -> Option<(LuaValue, usize)>`\n- **What it does**: Parses a Lua numeral byte-slice into an `Int` or `Float` `LuaValue` by delegating to the already-ported `crate::object::str2num`. Returns `Some((value, sz))` where `sz` follows C-Lua's `consumed_bytes + 1` convention used by `lua_stringtonumber`, or `None` on parse failure.\n\n### Family members also implemented (string ↔ number coercion family)\n\n- `LuaValueExt::to_number_with_strconv` (state.rs:363) — Number fast-path; on `Str`, parses via `object::str2num` and returns the value as `f64`.\n- `LuaValueExt::to_integer_with_strconv` (state.rs:374) — Integer fast-path; on `Str`, parses then routes through `to_integer_no_strconv` (handles `Int` direct and `Float` with-integer-representation).\n- `LuaState::obj_to_string` (state.rs:1563) — Translates `luaO_tostring`: resolves the lua-API index to a `StackIdx`, returns the string as-is or converts `Int`/`Float` via `object::num_to_string`, writes the interned string back into the stack slot, and returns the `GcRef<LuaString>`. Type-errors on non-numeric, non-string values.\n\n### Surfaced todos NOT implemented (different family or out-of-scope)\n\n- `arith_op` (1520), `fast_tm_ud` (1600), `table_getn` (1680) — different families.\n- `obj_type_name` (1737) — meta-name lookup family; signature mismatch with the real `tagmethods::obj_type_name` (`&self → &'static [u8]` vs `&mut self → Vec<u8>`) needs a separate ticket.\n- `CallInfo::*`, `get_proto_instr`, `dump_proto`, hook/trace stubs — ci_* and debug families.\n\n### Build status\n\n`cargo build -p lua-cli` — **green** (warnings only, no errors).",
+  "stop_reason": "end_turn",
+  "session_id": "7f06d077-89ff-4431-a9e8-8876ab16b09f",
+  "total_cost_usd": 2.0554252499999994,
+  "usage": {
+    "input_tokens": 40,
+    "cache_creation_input_tokens": 74915,
+    "cache_read_input_tokens": 2521351,
+    "output_tokens": 12996,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 74915,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 747,
+        "cache_read_input_tokens": 92544,
+        "cache_creation_input_tokens": 1270,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 1270
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1321,
+      "outputTokens": 22,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001431,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 40,
+      "outputTokens": 12996,
+      "cacheReadInputTokens": 2521351,
+      "cacheCreationInputTokens": 74915,
+      "webSearchRequests": 0,
+      "costUSD": 2.0539942499999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "13052d41-0e0c-4dfc-af4a-1fe93d7f8759"
+}

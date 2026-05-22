@@ -1009,6 +1009,38 @@ impl LuaStateStubExt for LuaState {
         };
         Ok(lua_vm::api::gc(self, args))
     }
+
+    fn get_meta_field(&mut self, idx: i32, name: &[u8]) -> Result<bool, LuaError> {
+        Ok(crate::auxlib::get_metafield(self, idx, name)? != LuaType::Nil)
+    }
+
+    fn to_display_string(&mut self, idx: i32) -> Result<Vec<u8>, LuaError> {
+        crate::auxlib::to_lua_string(self, idx)
+    }
+
+    fn get_subtable_registry(&mut self, name: &[u8]) -> Result<bool, LuaError> {
+        crate::auxlib::get_subtable(self, STUB_LUA_REGISTRYINDEX, name)
+    }
+
+    fn new_metatable(&mut self, name: &[u8]) -> Result<bool, LuaError> {
+        crate::auxlib::new_metatable(self, name)
+    }
+
+    fn set_metatable_by_name(&mut self, name: &[u8]) -> Result<(), LuaError> {
+        crate::auxlib::set_metatable(self, name)
+    }
+
+    fn check_arg_userdata(&mut self, arg: i32, name: &[u8]) -> Result<GcRef<LuaUserData>, LuaError> {
+        crate::auxlib::check_udata(self, arg, name)
+    }
+
+    fn test_arg_userdata(&mut self, arg: i32, name: &[u8]) -> Option<GcRef<LuaUserData>> {
+        crate::auxlib::test_udata(self, arg, name).ok().flatten()
+    }
+
+    fn get_table(&mut self, idx: i32) -> Result<LuaType, LuaError> {
+        lua_vm::api::get_table(self, idx)
+    }
 }
 
 const STUB_LUA_REGISTRYINDEX: i32 = -(1_000_000) - 1000;
@@ -1035,7 +1067,7 @@ impl<'a> std::fmt::Display for StubBStr<'a> {
 //   target_crate:  lua-stdlib
 //   confidence:    high
 //   todos:         0
-//   port_notes:    1
+//   port_notes:    2
 //   unsafe_blocks: 0
 //   notes:         Re-exports lua_vm::state::LuaState (canonical owner per
 //                  harness/type-vocabulary.tsv); the LuaStateStubExt trait
