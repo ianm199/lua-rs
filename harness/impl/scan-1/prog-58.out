@@ -8,4 +8,9 @@ functions with errors
 long strings
 steps
 steps (2)
-lua: pcall_k failed: Runtime: stdin:202: assertion failed!
+clearing tables
+weak tables
++
+
+ >>> testC not active: skipping userdata GC tests <<<
+

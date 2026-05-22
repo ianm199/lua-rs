@@ -14,3 +14,4 @@ weak tables
 
  >>> testC not active: skipping userdata GC tests <<<
 
+lua: pcall_k failed: Runtime: stdin:474: assertion failed!

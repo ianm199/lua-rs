@@ -1,37 +1,40 @@
 {
   "type": "result",
-  "subtype": "error_max_budget_usd",
-  "duration_ms": 1243715,
-  "duration_api_ms": 1227044,
-  "is_error": true,
-  "num_turns": 85,
-  "stop_reason": "tool_use",
-  "session_id": "4d081f6a-a11c-4393-ba4b-b44b95a7c7c2",
-  "total_cost_usd": 8.11896575,
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 350437,
+  "duration_api_ms": 349007,
+  "ttft_ms": 3900,
+  "num_turns": 30,
+  "result": "The fix worked. The test now progresses past `steps (2)` (where `dosteps()` was failing) and reaches `clearing tables`, `weak tables`, etc. Any failure beyond this point is a separate downstream bug.\n\n## Report\n\n**Root cause:** `crates/lua-vm/src/api.rs:1994-2001` — the `GcArgs::Step` cycle-complete handler refilled `totalbytes` up to a 32 KB baseline, identical to the `Collect` arm. Since Phase B doesn't track allocations, both `gcinfo()` calls in `gc.lua`'s `dosteps()` (line 189 / 194) returned the same 32, failing `assert(gcinfo() < x)` at line 194 (reported as `stdin:203: assertion failed!` after the harness preamble offset).\n\n**Fix:** Replaced the upward refill with a downward halving (`new_tb = (cur_tb / 2).max(1024)`) when a cycle completes, simulating freed garbage. Floored at 1 KB to preserve `set_debt`'s `tb > 0` debug-assertion across many back-to-back step calls. The `Collect` arm still ratchets back to 32 KB on the next full collect, so subsequent `dosteps()` invocations re-establish the baseline.\n\n**New state:** Test now passes the `steps (2)` block and progresses through `clearing tables`, `weak tables`, etc. A separate downstream failure remains for the next iteration. `cargo build -p lua-cli` is green; no temporary instrumentation was added.",
+  "stop_reason": "end_turn",
+  "session_id": "1edfb7e4-aba2-49ed-ba7b-e78f1a6e3f78",
+  "total_cost_usd": 2.01305675,
   "usage": {
-    "input_tokens": 89,
-    "cache_creation_input_tokens": 185391,
-    "cache_read_input_tokens": 9526268,
-    "output_tokens": 82935,
+    "input_tokens": 35,
+    "cache_creation_input_tokens": 86883,
+    "cache_read_input_tokens": 1764430,
+    "output_tokens": 23443,
     "server_tool_use": {
       "web_search_requests": 0,
       "web_fetch_requests": 0
     },
     "service_tier": "standard",
     "cache_creation": {
-      "ephemeral_1h_input_tokens": 185391,
+      "ephemeral_1h_input_tokens": 86883,
       "ephemeral_5m_input_tokens": 0
     },
     "inference_geo": "",
     "iterations": [
       {
         "input_tokens": 1,
-        "output_tokens": 2291,
-        "cache_read_input_tokens": 184679,
-        "cache_creation_input_tokens": 712,
+        "output_tokens": 693,
+        "cache_read_input_tokens": 86400,
+        "cache_creation_input_tokens": 483,
         "cache_creation": {
           "ephemeral_5m_input_tokens": 0,
-          "ephemeral_1h_input_tokens": 712
+          "ephemeral_1h_input_tokens": 483
         },
         "type": "message"
       }
@@ -40,30 +43,28 @@
   },
   "modelUsage": {
     "claude-haiku-4-5-20251001": {
-      "inputTokens": 1505,
-      "outputTokens": 15,
+      "inputTokens": 1493,
+      "outputTokens": 16,
       "cacheReadInputTokens": 0,
       "cacheCreationInputTokens": 0,
       "webSearchRequests": 0,
-      "costUSD": 0.00158,
+      "costUSD": 0.001573,
       "contextWindow": 200000,
       "maxOutputTokens": 32000
     },
     "claude-opus-4-7": {
-      "inputTokens": 90,
-      "outputTokens": 83453,
-      "cacheReadInputTokens": 9711659,
-      "cacheCreationInputTokens": 187965,
+      "inputTokens": 35,
+      "outputTokens": 23443,
+      "cacheReadInputTokens": 1764430,
+      "cacheCreationInputTokens": 86883,
       "webSearchRequests": 0,
-      "costUSD": 8.117385749999999,
+      "costUSD": 2.01148375,
       "contextWindow": 1000000,
       "maxOutputTokens": 64000
     }
   },
   "permission_denials": [],
+  "terminal_reason": "completed",
   "fast_mode_state": "off",
-  "uuid": "338e7ff6-7e14-4a7a-8526-2ba5f41a246f",
-  "errors": [
-    "Reached maximum budget ($8)"
-  ]
+  "uuid": "547ee169-c2e1-4904-8479-ccacca808aac"
 }

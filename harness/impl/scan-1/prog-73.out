@@ -4,4 +4,4 @@
 [4/4] Executing chunk...
 testing i/o
 +
-lua: pcall_k failed: Runtime: TODO(port): borrow split needed for f_read
+lua: pcall_k failed: Runtime: ...w/ff2wn1wn34z0rz8lrg9w0sjc0000gp/T/lua_18b0d880a55be330_0:3: attempt to perform arithmetic on a nil value (local 'y')

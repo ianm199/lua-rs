@@ -2475,21 +2475,6 @@ impl<'a> GcHandle<'a> {
                         break;
                     }
                 }
-                for t in &weak_tables_snapshot {
-                    let id = t.identity();
-                    if marker.is_visited(id) {
-                        t.prune_weak_dead(&|id| marker.is_visited(id));
-                        alive_ids.borrow_mut().insert(id);
-                    }
-                }
-                // Pending-finalizer detection. Any entry not yet visited is
-                // reachable ONLY through `pending_finalizers` (which we are
-                // not tracing this cycle), so the user has dropped every
-                // strong reference and the table is a candidate for `__gc`.
-                // `marker.mark` (not `trace_obj`) is what flips the heap
-                // header to Gray so the sweep keeps the box alive; draining
-                // the gray queue then propagates the mark to the metatable
-                // and entries the finalizer will read.
                 for pf in &pending_snapshot {
                     if !marker.is_visited(pf.identity()) {
                         marker.mark(pf.0);
@@ -2497,6 +2482,32 @@ impl<'a> GcHandle<'a> {
                     }
                 }
                 marker.drain_gray_queue();
+                loop {
+                    let visited_before = marker.visited_count();
+                    for t in &weak_tables_snapshot {
+                        let t_id = t.identity();
+                        if !marker.is_visited(t_id) {
+                            continue;
+                        }
+                        let to_mark = t.ephemeron_values_to_mark(
+                            &|id| marker.is_visited(id),
+                        );
+                        for v in &to_mark {
+                            v.trace(marker);
+                        }
+                    }
+                    marker.drain_gray_queue();
+                    if marker.visited_count() == visited_before {
+                        break;
+                    }
+                }
+                for t in &weak_tables_snapshot {
+                    let id = t.identity();
+                    if marker.is_visited(id) {
+                        t.prune_weak_dead(&|id| marker.is_visited(id));
+                        alive_ids.borrow_mut().insert(id);
+                    }
+                }
             };
             if force {
                 global.heap.full_collect_with_post_mark(&roots, hook);
@@ -2595,13 +2606,6 @@ impl<'a> GcHandle<'a> {
                         break;
                     }
                 }
-                for t in &weak_tables_snapshot {
-                    let id = t.identity();
-                    if marker.is_visited(id) {
-                        t.prune_weak_dead(&|id| marker.is_visited(id));
-                        alive_ids.borrow_mut().insert(id);
-                    }
-                }
                 for pf in &pending_snapshot {
                     if !marker.is_visited(pf.identity()) {
                         marker.mark(pf.0);
@@ -2609,6 +2613,32 @@ impl<'a> GcHandle<'a> {
                     }
                 }
                 marker.drain_gray_queue();
+                loop {
+                    let visited_before = marker.visited_count();
+                    for t in &weak_tables_snapshot {
+                        let t_id = t.identity();
+                        if !marker.is_visited(t_id) {
+                            continue;
+                        }
+                        let to_mark = t.ephemeron_values_to_mark(
+                            &|id| marker.is_visited(id),
+                        );
+                        for v in &to_mark {
+                            v.trace(marker);
+                        }
+                    }
+                    marker.drain_gray_queue();
+                    if marker.visited_count() == visited_before {
+                        break;
+                    }
+                }
+                for t in &weak_tables_snapshot {
+                    let id = t.identity();
+                    if marker.is_visited(id) {
+                        t.prune_weak_dead(&|id| marker.is_visited(id));
+                        alive_ids.borrow_mut().insert(id);
+                    }
+                }
             };
             let budget = StepBudget::from_work(work_units);
             global.heap.incremental_step_with_post_mark(&roots, budget, hook)

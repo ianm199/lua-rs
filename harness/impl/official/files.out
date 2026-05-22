@@ -4,4 +4,9 @@
 [4/4] Executing chunk...
 testing i/o
 +
-lua: pcall_k failed: Runtime: stdin:125: os.rename: not implemented in lua-stdlib
+[DEBUG-CORO] aux_wrap called with top=1
+[DEBUG-CORO] co_yield buffering batch of size 1
+[DEBUG-CORO] co_yield buffering batch of size 1
+[DEBUG-CORO] aux_wrap called with top=2
+[DEBUG-CORO] aux_wrap called with top=1
+lua: pcall_k failed: Runtime: ...w/ff2wn1wn34z0rz8lrg9w0sjc0000gp/T/lua_18b0d8c741b1aa80_0:3: attempt to perform arithmetic on a nil value (local 'y')

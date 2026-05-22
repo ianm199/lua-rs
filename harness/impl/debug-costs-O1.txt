@@ -1,2 +1,4 @@
-3 [2026-05-19T02:52:30Z mega]   → committed 4d7316c (debug/reference/lua-c/testes/files.lua )
-2.47568375 reference/lua-c/testes/files.lua [opus]
+2 [2026-05-19T03:10:24Z mega]   → committed 6bfdf41 (debug/reference/lua-c/testes/locals.lua )
+0 reference/lua-c/testes/locals.lua [sonnet]
+4 [2026-05-19T03:11:56Z mega]   → committed fdabc96 (debug/reference/lua-c/testes/errors.lua )
+3.3729327500000013 reference/lua-c/testes/errors.lua [sonnet]
