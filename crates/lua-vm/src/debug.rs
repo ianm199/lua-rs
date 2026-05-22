@@ -841,6 +841,7 @@ fn filter_pc(pc: i32, jmptarget: i32) -> i32 {
 ///
 /// C: `static int findsetreg(const Proto *p, int lastpc, int reg)`
 fn find_set_reg(p: &LuaProto, lastpc: i32, reg: i32) -> i32 {
+    eprintln!("DBG find_set_reg ENTER lastpc={} reg={}", lastpc, reg);
     // C: int setreg = -1; int jmptarget = 0;
     let mut setreg: i32 = -1;
     let mut jmptarget: i32 = 0;
@@ -890,8 +891,10 @@ fn find_set_reg(p: &LuaProto, lastpc: i32, reg: i32) -> i32 {
 
         if change {
             setreg = filter_pc(pc, jmptarget);
+            eprintln!("DBG   change at pc={} op={:?} → setreg={}", pc, op, setreg);
         }
     }
+    eprintln!("DBG find_set_reg EXIT setreg={} effective_lastpc={}", setreg, effective_lastpc);
     setreg
 }
 
@@ -1314,6 +1317,10 @@ fn var_info(state: &LuaState, val_idx: StackIdx) -> Vec<u8> {
                 let proto = ci_lua_proto(&ci, state);
                 let mut nref: &[u8] = b"?";
                 let pc = current_pc(&ci);
+                eprintln!("DBG   proto.code (len={}):", proto.code.len());
+                for (j, ins) in proto.code.iter().enumerate() {
+                    eprintln!("DBG     [{}] op={:?} A={} B={} C={}", j, ins.opcode(), ins.arg_a(), ins.arg_b(), ins.arg_c());
+                }
                 let k = get_obj_name(&proto, pc, reg, &mut nref);
                 eprintln!("DBG   get_obj_name pc={} reg={} kind={:?} name={:?}",
                           pc, reg, k, String::from_utf8_lossy(nref));
