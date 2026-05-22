@@ -1,0 +1,1 @@
+4 1.8690434999999999 reference/lua-c/testes/locals.lua

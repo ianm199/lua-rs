@@ -657,3 +657,4 @@
 [2026-05-18T02:03:52Z mega]   [O4.D3] DEBUG dispatch on file: reference/lua-c/testes/math.lua [parallel]
 [2026-05-18T02:03:52Z mega]   skip stuck prog (same sig 2 rounds: [err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)): reference/lua-c/testes/literals.lua
 [2026-05-18T02:03:52Z mega]   [O4.D4] DEBUG dispatch on file: reference/lua-c/testes/locals.lua [parallel]
+[2026-05-18T02:07:46Z mega]   [O4.D5] DEBUG dispatch on file: reference/lua-c/testes/calls.lua [parallel]
