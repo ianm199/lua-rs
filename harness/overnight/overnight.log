@@ -27,3 +27,5 @@ fanout: mode=files  files=12  workers=6  dry_run=0
   [lutf8lib.c] → crates/lua-stdlib/src/utf8_lib.rs
     status=ok  cost=$1.07914575  duration=634s  hooks=true  syntax=true (residual=0)
   [ldblib.c] → crates/lua-stdlib/src/debug_lib.rs
+    status=ok  cost=$1.445318  duration=868s  hooks=true  syntax=true (residual=0)
+  [lcorolib.c] → crates/lua-stdlib/src/coro_lib.rs
