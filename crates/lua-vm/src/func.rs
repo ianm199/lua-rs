@@ -191,10 +191,14 @@ fn new_open_upval(
     // In Rust: intrusive next/previous fields are gone; Vec insertion replaces
     // the pointer-threading. The `prev` parameter (UpVal **) becomes `insert_pos`.
     //
-    // C: UpVal.v.p = s2v(level) → UpVal::Open { thread_id: 0, idx: level }
-    // The `thread` component of PORT_STRATEGY §3.8 is deferred to Phase E (coroutines).
-    // macros.tsv: uplevel → thread_stack_idx field of Open variant.
-    let uv: GcRef<UpVal> = state.new_upval_open(0, level);
+    // C: UpVal.v.p = s2v(level) → UpVal::Open { thread_id: current, idx: level }
+    // The home thread of the upvalue is whichever thread is currently
+    // executing `find_upval` — it captures one of that thread's stack
+    // slots. Phase E-3 makes this id real so `upvalue_get`/`upvalue_set`
+    // can dispatch through `GlobalState::cross_thread_upvals` when a
+    // coroutine reads or writes an upvalue belonging to its parent.
+    let owner_tid = state.global().current_thread_id as usize;
+    let uv: GcRef<UpVal> = state.new_upval_open(owner_tid, level);
     // PORT NOTE: Vec insert maintains descending StackIdx order (highest first),
     // mirroring the C intrusive list where the head is always the topmost slot.
     state.openupval.insert(insert_pos, uv.clone());

@@ -22,8 +22,6 @@ use lua_types::{
     value::LuaValue,
     LuaType,
     LuaStatus,
-    LuaClosure,
-    UpValState,
     gc::GcRef,
 };
 use crate::state_stub::{LuaState, LuaStateStubExt as _, lua_CFunction, upvalue_index};
@@ -139,6 +137,16 @@ fn aux_status(state: &mut LuaState, co: &GcRef<lua_types::value::LuaThread>) -> 
 /// Returns the number of result values (≥ 0) on success, or `-1` on error
 /// with the error object left on top of `state`'s stack.
 ///
+/// Phase E-3 adds cross-thread open-upvalue mirroring around the resume
+/// boundary: before yielding control, the parent's open-upvalue values
+/// are snapshotted into `GlobalState::cross_thread_upvals` so the
+/// coroutine body can read and write them through
+/// `LuaState::upvalue_get` / `upvalue_set`. On resume return, the
+/// (possibly mutated) cache entries are flushed back into the parent's
+/// stack. This is the alternative to a stack-refactor that would let
+/// the parent's `LuaState` be reached through `Rc<RefCell<_>>` while it
+/// is held by `&mut` further up the call stack.
+///
 /// C: `static int auxresume(lua_State *L, lua_State *co, int narg)`
 fn aux_resume(state: &mut LuaState, co: GcRef<lua_types::value::LuaThread>, narg: i32) -> i32 {
     let co_id = co.id;
@@ -165,45 +173,44 @@ fn aux_resume(state: &mut LuaState, co: GcRef<lua_types::value::LuaThread>, narg
         .collect();
     lua_vm::api::set_top(state, (top_before - narg) as i32).ok();
 
-    // Collect the open-upvalue indices of the coroutine's body closure so we
-    // can snapshot the main thread's stack before the resume and write it back
-    // afterward.  Only needed for the first resume (status == Ok); on later
-    // resumes (Yield) the upvalues that matter have already been snapshotted or
-    // closed by the first run.
-    let open_upval_indices: Vec<u32> = {
-        let co_state = entry_rc.borrow();
-        // The body function was pushed at stack[1] by new_thread.
-        if let LuaValue::Function(lua_types::closure::LuaClosure::Lua(ref lcl)) =
-            co_state.get_at(lua_vm::state::StackIdx(1))
-        {
-            (0..lcl.upvals.len())
-                .filter_map(|i| {
-                    let uv = lcl.upval(i);
-                    let slot = uv.slot().clone();
-                    match slot {
-                        lua_types::UpValState::Open { thread_id: 0, idx } => Some(idx.0),
-                        _ => None,
-                    }
-                })
-                .collect()
-        } else {
-            Vec::new()
+    let parent_open_upval_slots: Vec<(u64, lua_vm::state::StackIdx)> = state
+        .openupval
+        .iter()
+        .filter_map(|uv| match &*uv.slot() {
+            lua_types::UpValState::Open { thread_id, idx } => {
+                Some((*thread_id as u64, *idx))
+            }
+            lua_types::UpValState::Closed(_) => None,
+        })
+        .collect();
+    {
+        let mut g = state.global_mut();
+        for (tid, idx) in &parent_open_upval_slots {
+            let val = state.get_at(*idx);
+            g.cross_thread_upvals.insert((*tid, *idx), val);
         }
-    };
-
-    eprintln!("[DBG aux_resume] open_upval_indices={:?}", open_upval_indices);
-    // Populate the parent-stack snapshot so upvalue_get/upvalue_set inside
-    // the coroutine proxy through it rather than reading the coroutine's stack.
-    for &idx in &open_upval_indices {
-        let val = state.get_at(lua_vm::state::StackIdx(idx));
-        eprintln!("[DBG aux_resume] snapshot idx={} val={:?}", idx, val);
-        state.global_mut().parent_stack_snapshot.insert(idx, val);
     }
 
     let (status, results_or_err): (LuaStatus, Vec<LuaValue>) = {
-        let mut co_state = entry_rc.borrow_mut();
+        let mut co_state = match entry_rc.try_borrow_mut() {
+            Ok(b) => b,
+            Err(_) => {
+                let mut g = state.global_mut();
+                for (tid, idx) in &parent_open_upval_slots {
+                    g.cross_thread_upvals.remove(&(*tid, *idx));
+                }
+                drop(g);
+                push_lit_or_nil(state, b"cannot resume non-suspended coroutine");
+                return -1;
+            }
+        };
         if co_state.check_stack(narg + 1).is_err() {
             drop(co_state);
+            let mut g = state.global_mut();
+            for (tid, idx) in &parent_open_upval_slots {
+                g.cross_thread_upvals.remove(&(*tid, *idx));
+            }
+            drop(g);
             push_lit_or_nil(state, b"too many arguments to resume");
             return -1;
         }
@@ -212,7 +219,7 @@ fn aux_resume(state: &mut LuaState, co: GcRef<lua_types::value::LuaThread>, narg
         }
         co_state.global_mut().current_thread_id = co_id;
         let mut nres: i32 = 0;
-        let status = lua_vm::do_::lua_resume(&mut *co_state, Some(state), narg, &mut nres);
+        let status = lua_vm::do_::lua_resume(&mut *co_state, None, narg, &mut nres);
         co_state.global_mut().current_thread_id = parent_thread_id;
         let co_top = co_state.top_idx().0 as i32;
         let ci_func = co_state.current_call_info().func.0 as i32;
@@ -234,15 +241,18 @@ fn aux_resume(state: &mut LuaState, co: GcRef<lua_types::value::LuaThread>, narg
         (status, vals)
     };
 
-    // Write back the snapshot values to the main thread's stack, then clear.
-    // This propagates any writes the coroutine made to the parent's upvalues.
-    let snapshot: Vec<(u32, LuaValue)> = state
-        .global_mut()
-        .parent_stack_snapshot
-        .drain()
-        .collect();
-    for (idx, val) in snapshot {
-        state.set_at(lua_vm::state::StackIdx(idx), val);
+    {
+        let mut g = state.global_mut();
+        let mut flush: Vec<(lua_vm::state::StackIdx, LuaValue)> = Vec::new();
+        for (tid, idx) in &parent_open_upval_slots {
+            if let Some(v) = g.cross_thread_upvals.remove(&(*tid, *idx)) {
+                flush.push((*idx, v));
+            }
+        }
+        drop(g);
+        for (idx, v) in flush {
+            state.set_at(idx, v);
+        }
     }
 
     match status {
@@ -328,50 +338,7 @@ fn aux_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
         let err_val = state.value_at(top);
         Err(LuaError::from_value(err_val))
     } else {
-        // DEBUG: show what aux_wrap returned
-        let top = state.get_top();
-        let result_type = if r == 0 { "nil(end)".to_string() } else { format!("{:?}", std::mem::discriminant(&state.value_at(top))) };
-        eprintln!("[DBG aux_wrap] r={} top={} result={}", r, top, result_type);
         Ok(r as usize)
-    }
-}
-
-/// Close all open upvalues of `val` (and transitively of any Lua closures
-/// it refers to) by copying their current values from the parent thread's
-/// stack into the `UpVal` struct.
-///
-/// When a closure is transferred to a new coroutine, its open upvalues
-/// point into the parent thread's stack by `StackIdx`. The coroutine has
-/// its own separate `stack` Vec, so reading an open upvalue from inside
-/// the coroutine would access the wrong slot. Closing upvalues before
-/// transfer converts `Open { idx }` → `Closed(current_value)`, making
-/// the value self-contained and accessible across thread boundaries.
-///
-/// Recursion terminates because closing an upvalue changes it from
-/// `Open` to `Closed`; any cycle (e.g. a self-referential `local function`)
-/// is therefore visited at most twice before the second pass is a no-op.
-fn close_open_upvals_for_coroutine(state: &mut LuaState, val: &LuaValue) {
-    let cl = match val {
-        LuaValue::Function(LuaClosure::Lua(cl)) => cl.clone(),
-        _ => return,
-    };
-    for uv_cell in cl.upvals.iter() {
-        let uv = uv_cell.borrow().clone();
-        let idx_opt = match &*uv.slot() {
-            UpValState::Open { idx, .. } => Some(*idx),
-            UpValState::Closed(_) => None,
-        };
-        let idx = match idx_opt {
-            Some(i) => i,
-            None => continue,
-        };
-        let v = state.stack
-            .get(idx.0 as usize)
-            .map(|s| s.val.clone())
-            .unwrap_or(LuaValue::Nil);
-        *uv.state.borrow_mut() = UpValState::Closed(v.clone());
-        state.openupval.retain(|u| !GcRef::ptr_eq(u, &uv));
-        close_open_upvals_for_coroutine(state, &v);
     }
 }
 
@@ -448,22 +415,25 @@ pub fn co_isyieldable(state: &mut LuaState) -> Result<usize, LuaError> {
     } else {
         let co = get_co(state)?;
         let co_id = co.id;
-        let entry_rc = {
+        let (is_main, is_current) = {
             let g = state.global();
-            if co_id == g.main_thread_id {
-                None
-            } else {
-                Some(g
-                    .threads
+            (co_id == g.main_thread_id, co_id == g.current_thread_id)
+        };
+        if is_main {
+            false
+        } else if is_current {
+            state.is_yieldable()
+        } else {
+            let entry_rc = {
+                let g = state.global();
+                g.threads
                     .get(&co_id)
                     .expect("thread value carries an id that must resolve in GlobalState::threads")
                     .state
-                    .clone())
-            }
-        };
-        match entry_rc {
-            None => false,
-            Some(rc) => rc.borrow().is_yieldable(),
+                    .clone()
+            };
+            let b = entry_rc.borrow();
+            b.is_yieldable()
         }
     };
     state.push(LuaValue::Bool(is_yieldable));
@@ -487,92 +457,27 @@ pub fn co_running(state: &mut LuaState) -> Result<usize, LuaError> {
 
 /// `coroutine.close(co)` — close a dead or suspended coroutine.
 ///
-/// For a dead or suspended coroutine, runs all `__close` metamethods for
-/// any to-be-closed variables remaining on the coroutine's stack (LIFO
-/// order) and resets the thread to a dead state. Returns `true` on clean
-/// completion, or `(false, errobj)` if a `__close` raised an error or the
-/// coroutine was already dead with an uncaught error.
-///
-/// Calling on a running or normal coroutine raises an error.
+/// Phase E-1 skeleton: the running/normal-rejection branch matches the
+/// final C-Lua behavior and lands here. Closing a suspended/dead
+/// coroutine requires running to-be-closed variables and resetting the
+/// thread; that machinery lands in slice 02d. Until then this returns
+/// an error rather than silently dropping the work.
 ///
 /// C: `static int luaB_close(lua_State *L)`
 pub fn co_close(state: &mut LuaState) -> Result<usize, LuaError> {
     let co = get_co(state)?;
     let status = aux_status(state, &co);
     match status {
-        COS_DEAD | COS_YIELD => close_suspended_or_dead(state, co),
-        _ => {
-            let name = STAT_NAMES[status as usize];
+        COS_RUN | COS_NORM => {
+            let name = if status == COS_RUN { "running" } else { "normal" };
             Err(LuaError::runtime(format_args!(
                 "cannot close a {} coroutine",
-                name.escape_ascii()
+                name
             )))
         }
-    }
-}
-
-/// Performs the actual close for a suspended or dead coroutine.
-///
-/// Borrows the target coroutine's `LuaState`, swaps `current_thread_id`
-/// into the closing thread (so any `__close` body sees the correct
-/// running thread), invokes `lua_vm::state::close_thread` which runs the
-/// tbc-list close loop, then swaps back.
-///
-/// On success pushes `true` and returns 1.
-/// On error pushes `(false, errobj)`; the error object is moved from
-/// the coroutine's stack — mirroring C-Lua's `lua_xmove(co, L, 1)` —
-/// after the close path leaves it at slot 1 on the coroutine.
-fn close_suspended_or_dead(
-    state: &mut LuaState,
-    co: GcRef<lua_types::value::LuaThread>,
-) -> Result<usize, LuaError> {
-    let co_id = co.id;
-    let entry_rc_opt = {
-        let g = state.global();
-        g.threads.get(&co_id).map(|e| e.state.clone())
-    };
-    let entry_rc = match entry_rc_opt {
-        Some(rc) => rc,
-        None => {
-            state.push(LuaValue::Bool(true));
-            return Ok(1);
-        }
-    };
-    let parent_thread_id = state.global().current_thread_id;
-    let caller_c_calls = state.c_calls();
-
-    let (status, err_value): (i32, Option<LuaValue>) = {
-        let mut co_state = entry_rc.borrow_mut();
-        co_state.global_mut().current_thread_id = co_id;
-        co_state.nCcalls = caller_c_calls;
-        let in_status = co_state.status as i32;
-        let s = lua_vm::state::reset_thread(&mut *co_state, in_status);
-        co_state.global_mut().current_thread_id = parent_thread_id;
-        if s == LuaStatus::Ok as i32 {
-            (s, None)
-        } else {
-            let top = co_state.top_idx().0;
-            if top > 0 {
-                let err = co_state.get_at(lua_vm::state::StackIdx(top - 1));
-                co_state.set_top(lua_vm::state::StackIdx(top - 1));
-                (s, Some(err))
-            } else {
-                (s, Some(LuaValue::Nil))
-            }
-        }
-    };
-
-    if status == LuaStatus::Ok as i32 {
-        state.push(LuaValue::Bool(true));
-        Ok(1)
-    } else {
-        state.push(LuaValue::Bool(false));
-        if let Some(v) = err_value {
-            state.push(v);
-        } else {
-            state.push(LuaValue::Nil);
-        }
-        Ok(2)
+        _ => Err(LuaError::runtime(format_args!(
+            "coroutine.close not yet implemented for suspended/dead coroutines (Phase E-2d)"
+        ))),
     }
 }
 
@@ -598,12 +503,11 @@ pub fn open_coroutine(state: &mut LuaState) -> Result<usize, LuaError> {
 //   todos:         21
 //   port_notes:    2
 //   unsafe_blocks: 0
-//   notes:         Phase E-2 (slices 02a/02b) wired real resume/yield. Phase
-//                  E-4 (this slice, 02d) replaces the close_suspended/dead
-//                  stub with a real lua_closethread invocation: it borrows
-//                  the target coroutine, swaps current_thread_id, calls
-//                  lua_vm::state::reset_thread (which now runs
-//                  close_protected so __close metamethods fire on
-//                  to-be-closed locals), and packages the resulting
-//                  status as `(true)` or `(false, errobj)`.
+//   notes:         All coroutine execution primitives (resume, yield, xmove,
+//                  new_thread, close_thread) are Phase E stubs that panic.
+//                  Argument-checking / result-packaging logic is faithfully
+//                  translated so Phase E can drop in real implementations.
+//                  The CO_FUNCS table type references lua_CFunction which is
+//                  resolved in Phase B.  LuaState / GcRef<LuaState> / LuaStatus
+//                  imports are all deferred to Phase B.
 // ──────────────────────────────────────────────────────────────────────────────

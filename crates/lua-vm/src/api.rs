@@ -178,14 +178,42 @@ pub fn check_stack(state: &mut LuaState, n: i32) -> bool {
     res
 }
 
-// C: LUA_API void lua_xmove (lua_State *from, lua_State *to, int n)
-// TODO(port): lua_xmove requires two &mut LuaState simultaneously which
-// violates Rust's aliasing rules; this can only work if from != to and they
-// share a GlobalState via Rc<RefCell<GlobalState>>. Stubbed for Phase A.
-pub fn xmove(_from: &mut LuaState, _to: &mut LuaState, _n: i32) {
-    // TODO(port): moving values between independent LuaState instances requires
-    // split-borrow or Arc/Mutex approach.  Defer to Phase B.
-    todo!("lua_xmove: cross-thread stack transfer not yet implemented")
+/// Move the top `n` values from `from`'s stack onto `to`'s stack.
+///
+/// Both threads must share the same `GlobalState` (i.e. one is a
+/// coroutine the other created via `coroutine.create`). Calling with
+/// `from` == `to` is a no-op. Equivalent to:
+///
+/// ```text
+/// args = from.stack[top-n..top].clone();
+/// from.set_top(top - n);
+/// for v in args { to.push(v); }
+/// ```
+///
+/// C: `LUA_API void lua_xmove (lua_State *from, lua_State *to, int n)`
+///
+/// Phase E-3: implemented for the same-`GlobalState` case (the only one
+/// `lua-stdlib` uses today). `lua-vm` callers should prefer this helper
+/// over hand-rolling the snapshot/push dance.
+pub fn xmove(from: &mut LuaState, to: &mut LuaState, n: i32) {
+    if n <= 0 {
+        return;
+    }
+    if std::ptr::eq(from as *const LuaState, to as *const LuaState) {
+        return;
+    }
+    let abs_top = from.top_idx().0 as i32;
+    debug_assert!(abs_top >= n, "lua_xmove: from stack underflow");
+    let first_abs = abs_top - n;
+    let mut buf: Vec<lua_types::LuaValue> = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let idx = StackIdx((first_abs + i) as u32);
+        buf.push(from.get_at(idx));
+    }
+    from.set_top(StackIdx(first_abs as u32));
+    for v in buf {
+        to.push(v);
+    }
 }
 
 // C: LUA_API lua_CFunction lua_atpanic (lua_State *L, lua_CFunction panicf)

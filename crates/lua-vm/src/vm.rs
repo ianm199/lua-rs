@@ -954,6 +954,7 @@ pub(crate) fn equal_obj(
             let result = state.call_tm_res_bool(tm, t1, t2)?;
             Ok(result)
         }
+        (LuaValue::Thread(a), LuaValue::Thread(b)) => Ok(GcRef::ptr_eq(a, b)),
         // C: default: return gcvalue(t1) == gcvalue(t2)
         _ => Ok(std::ptr::eq(t1 as *const _, t2 as *const _)),
     }

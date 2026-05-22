@@ -943,13 +943,6 @@ pub struct GlobalState {
     /// at `1` because `0` is reserved for the main thread.
     pub next_thread_id: u64,
 
-    /// Snapshot of the parent (main) thread's stack slots for open upvalues,
-    /// keyed by absolute stack index.  Set by `aux_resume` before resuming a
-    /// coroutine so that the coroutine can read upvalues that point to the
-    /// main thread's stack; written back to the main thread after the resume.
-    /// Empty when no coroutine is running.
-    pub parent_stack_snapshot: std::collections::HashMap<u32, LuaValue>,
-
     // C: TString *memerrmsg — preallocated OOM error message
     // types.tsv: global_State.memerrmsg → GcRef<LuaString>
     pub memerrmsg: GcRef<LuaString>,
@@ -991,6 +984,20 @@ pub struct GlobalState {
     /// state initialization, at which point `step` runs during VM dispatch.
     pub heap: lua_gc::Heap,
 
+    /// Phase E-3 cross-thread open-upvalue mirror. Maps `(thread_id, stack_idx)`
+    /// to the live value of an open upvalue whose home thread is currently
+    /// suspended while another thread runs. `coroutine.resume` snapshots the
+    /// parent's open upvalues into this map before yielding control to the
+    /// child, and reads the (possibly mutated) values back into the parent's
+    /// stack when the child suspends or returns. From the running thread's
+    /// perspective, `upvalue_get` / `upvalue_set` consult the mirror whenever
+    /// an open upvalue's `thread_id` does not match `current_thread_id`.
+    ///
+    /// This avoids a stack refactor: the parent's `LuaState` is held by a
+    /// `&mut` reference up the call stack during resume, so its stack cannot
+    /// be reached directly through any `Rc<RefCell<_>>`. The mirror is the
+    /// shared scratchpad that bridges the gap for the duration of a resume.
+    pub cross_thread_upvals: std::collections::HashMap<(u64, StackIdx), LuaValue>,
 }
 
 impl GlobalState {
@@ -1837,46 +1844,53 @@ impl LuaState {
         crate::func::new_tbc_upval(self, idx)
     }
 
+    /// Read an open or closed upvalue.
+    ///
+    /// Closed upvalues own their value and read trivially. Open upvalues
+    /// point at a stack slot on the home thread that captured them. When
+    /// that home thread is the currently running thread, the value lives
+    /// in `self.stack`. When a coroutine resumes while the home thread
+    /// is suspended (Phase E-3), the value lives in
+    /// `GlobalState::cross_thread_upvals`, which `aux_resume` mirrors to
+    /// and from the home thread's stack across the resume boundary.
     pub fn upvalue_get(&self, cl: &GcRef<LuaClosureLua>, n: usize) -> LuaValue {
         let uv = cl.upval(n);
         let slot = uv.slot().clone();
         match slot {
             lua_types::UpValState::Closed(v) => v,
-            lua_types::UpValState::Open { thread_id: 0, idx } => {
-                // Upvalue belongs to the main thread (id 0). If we are currently on a
-                // coroutine thread, read from the parent stack snapshot that aux_resume
-                // populated before the resume; otherwise read from our own stack.
+            lua_types::UpValState::Open { thread_id, idx } => {
                 let current = self.global().current_thread_id;
-                if current != 0 {
-                    self.global()
-                        .parent_stack_snapshot
-                        .get(&idx.0)
+                if thread_id as u64 == current {
+                    self.stack[idx.0 as usize].val.clone()
+                } else {
+                    let g = self.global();
+                    g.cross_thread_upvals
+                        .get(&(thread_id as u64, idx))
                         .cloned()
                         .unwrap_or(LuaValue::Nil)
-                } else {
-                    self.stack[idx.0 as usize].val.clone()
                 }
-            }
-            lua_types::UpValState::Open { thread_id: _, idx } => {
-                self.stack[idx.0 as usize].val.clone()
             }
         }
     }
+    /// Write an open or closed upvalue.
+    ///
+    /// Mirrors [`upvalue_get`]: open upvalues whose home thread is the
+    /// currently running thread go to `self.stack`; cross-thread open
+    /// upvalues go through `GlobalState::cross_thread_upvals`.
     pub fn upvalue_set(&mut self, cl: &GcRef<LuaClosureLua>, n: usize, val: LuaValue) -> Result<(), LuaError> {
         let uv = cl.upval(n);
-        let (slot_idx, is_main_thread_upval) = match &*uv.slot() {
-            lua_types::UpValState::Open { thread_id: 0, idx } => (Some(*idx), true),
-            lua_types::UpValState::Open { idx, .. } => (Some(*idx), false),
-            lua_types::UpValState::Closed(_) => (None, false),
+        let open_slot = match &*uv.slot() {
+            lua_types::UpValState::Open { thread_id, idx } => Some((*thread_id as u64, *idx)),
+            lua_types::UpValState::Closed(_) => None,
         };
-        match slot_idx {
-            Some(idx) => {
+        match open_slot {
+            Some((tid, idx)) => {
                 let current = self.global().current_thread_id;
-                if is_main_thread_upval && current != 0 {
-                    // Write to the parent stack snapshot so aux_resume can sync it back.
-                    self.global_mut().parent_stack_snapshot.insert(idx.0, val);
-                } else {
+                if tid == current {
                     self.set_at(idx, val);
+                } else {
+                    let mut g = self.global_mut();
+                    g.cross_thread_upvals.insert((tid, idx), val);
                 }
             }
             None => {
@@ -3295,33 +3309,6 @@ pub fn new_thread(state: &mut LuaState, initial_body: Option<LuaValue>) -> Resul
     stack_init(&mut new_thread);
 
     if let Some(body) = initial_body {
-        // Close any open upvalues that the body closure captured from this thread's
-        // stack.  In C, open upvalues are pointers that remain valid across threads
-        // because the creating thread is still alive.  In Rust we cannot share a raw
-        // stack pointer, so we materialise the value into the upvalue object now so
-        // the coroutine never needs to reach back into this thread's stack.
-        if let LuaValue::Function(LuaClosure::Lua(ref lcl)) = body {
-            let n = lcl.upvals.len();
-            for i in 0..n {
-                let uv = lcl.upval(i);
-                let idx = match &*uv.slot() {
-                    lua_types::UpValState::Open { idx, .. } => *idx,
-                    lua_types::UpValState::Closed(_) => continue,
-                };
-                let val = state.stack.get(idx.0 as usize)
-                    .map(|s| s.val.clone())
-                    .unwrap_or(LuaValue::Nil);
-                // Remove from the creating thread's openupval list first, so that
-                // a later close_upval call does not encounter a Closed entry there.
-                state.openupval.retain(|open_uv| {
-                    match &*open_uv.slot() {
-                        lua_types::UpValState::Open { idx: i2, .. } => *i2 != idx,
-                        lua_types::UpValState::Closed(_) => true,
-                    }
-                });
-                uv.close_with(val);
-            }
-        }
         new_thread.push(body);
     }
 
@@ -3401,7 +3388,7 @@ pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
 /// //   return status;
 /// // }
 /// ```
-pub fn reset_thread(state: &mut LuaState, status: i32) -> i32 {
+pub(crate) fn reset_thread(state: &mut LuaState, status: i32) -> i32 {
     // C: CallInfo *ci = L->ci = &L->base_ci;
     state.ci = CallInfoIdx(0);
     let ci_idx = 0usize;
@@ -3428,16 +3415,13 @@ pub fn reset_thread(state: &mut LuaState, status: i32) -> i32 {
     state.status = LuaStatus::Ok as u8;
 
     // C: status = luaD_closeprotected(L, 1, status);
-    let final_status = crate::do_::close_protected(
-        state,
-        StackIdx(1),
-        LuaStatus::from_raw(status),
-    );
-    status = final_status as i32;
+    // TODO(port): crate::do_::close_protected(state, StackIdx(1), status) — ldo.c → do_.rs
+    // For Phase A, skip the actual close (upvalue closing requires ldo.c).
 
     // C: if (status != LUA_OK) luaD_seterrorobj(L, status, L->stack.p + 1);
     if status != LuaStatus::Ok as i32 {
-        crate::do_::set_error_obj(state, LuaStatus::from_raw(status), StackIdx(1));
+        // C: luaD_seterrorobj(L, status, L->stack.p + 1);
+        // TODO(port): crate::do_::set_error_obj(state, status, StackIdx(1)) — ldo.c → do_.rs
     } else {
         // C: else L->top.p = L->stack.p + 1;
         state.top = StackIdx(1);
@@ -3448,6 +3432,8 @@ pub fn reset_thread(state: &mut LuaState, status: i32) -> i32 {
     state.call_info[ci_idx].top = new_ci_top;
 
     // C: luaD_reallocstack(L, cast_int(ci->top.p - L->stack.p), 0);
+    // TODO(port): crate::do_::realloc_stack(state, new_ci_top.0 as i32, 0) — ldo.c → do_.rs
+    // For Phase A, grow the stack if needed to at least new_ci_top slots.
     let needed = new_ci_top.0 as usize;
     if state.stack.len() < needed {
         state.stack.resize(needed, StackValue::default());
@@ -3616,7 +3602,6 @@ pub fn new_state() -> Option<LuaState> {
         current_thread_id: 0,
         main_thread_id: 0,
         next_thread_id: 1,
-        parent_stack_snapshot: std::collections::HashMap::new(),
         memerrmsg: placeholder_str.clone(),
         tmname: Vec::new(),
         // C: for (i=0; i < LUA_NUMTAGS; i++) g->mt[i] = NULL;
@@ -3628,6 +3613,7 @@ pub fn new_state() -> Option<LuaState> {
         warnf: None,
         c_functions: Vec::new(),
         heap: lua_gc::Heap::new(),
+        cross_thread_upvals: std::collections::HashMap::new(),
     };
 
     let global_rc = Rc::new(RefCell::new(global));
@@ -3816,6 +3802,7 @@ pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
 //                  (6) make_seed: ASLR pointer entropy requires unsafe; time-only for Phase A.
 //                  Key TODOs: luaT_init and luaX_init cross-crate calls (Phase B);
 //                  init_registry table mutations through Rc (needs RefCell<LuaTable>);
+//                  luaD_closeprotected/seterrorobj/reallocstack in reset_thread (ldo.c);
 //                  GcRef<LuaState> self-reference for mainthread (Phase D);
 //                  LuaString::placeholder() helper needed for GlobalState init;
 //                  LuaValue and LuaTable should move to object.rs once that lands.
