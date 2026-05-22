@@ -379,3 +379,7 @@
 [2026-05-17T18:54:33Z mega]   [O2.D3] DEBUG dispatch on file: reference/lua-c/testes/sort.lua [parallel]
 [2026-05-17T18:54:33Z mega]   [O2.D4] DEBUG dispatch on file: reference/lua-c/testes/closure.lua [parallel]
 [2026-05-17T18:57:32Z mega]   → committed 1d9f732 (debug/reference/lua-c/testes/closure.lua )
+[2026-05-17T19:03:47Z mega]   [O2.D5] DEBUG dispatch on file: reference/lua-c/testes/pm.lua [parallel]
+[2026-05-17T19:03:47Z mega]   [O2.D6] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
+[2026-05-17T19:03:47Z mega]   [O2.D7] DEBUG dispatch on file: reference/lua-c/testes/bitwise.lua [parallel]
+[2026-05-17T19:03:47Z mega]   [O2.D8] DEBUG dispatch on file: reference/lua-c/testes/math.lua [parallel]

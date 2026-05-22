@@ -935,7 +935,7 @@ fn lmemfind(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     while s <= limit {
         if let Some(pos) = haystack[s..].iter().position(|&b| b == first) {
             let pos = s + pos;
-            if pos + rest.len() <= haystack.len()
+            if pos + 1 + rest.len() <= haystack.len()
                 && &haystack[pos + 1..pos + 1 + rest.len()] == rest
             {
                 return Some(pos);

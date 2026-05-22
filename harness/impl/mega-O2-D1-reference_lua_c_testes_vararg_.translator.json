@@ -1,0 +1,78 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": true,
+  "api_error_status": 429,
+  "duration_ms": 182739,
+  "duration_api_ms": 178345,
+  "num_turns": 22,
+  "result": "You've hit your org's monthly usage limit",
+  "stop_reason": "stop_sequence",
+  "session_id": "76c27d1c-686a-4029-93e7-af245769aec0",
+  "total_cost_usd": 1.20335825,
+  "usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 58657,
+    "cache_read_input_tokens": 1181078,
+    "output_tokens": 9778,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 22537,
+      "ephemeral_5m_input_tokens": 36120
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 922,
+        "cache_read_input_tokens": 75602,
+        "cache_creation_input_tokens": 1954,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 1954,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1548,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001643,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 24,
+      "outputTokens": 9778,
+      "cacheReadInputTokens": 1181078,
+      "cacheCreationInputTokens": 58657,
+      "webSearchRequests": 0,
+      "costUSD": 1.20171525,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01ErAXuHwnxJS5qdXMrt5oHG",
+      "tool_input": {
+        "command": "RUST_BACKTRACE=1 target/debug/lua-rs \"$(cat harness/impl/official/vararg.combined.lua)\" 2>&1 | tail -60",
+        "description": "Run with backtrace"
+      }
+    }
+  ],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "48816593-f092-404d-86f9-07d47a6b79d0"
+}
