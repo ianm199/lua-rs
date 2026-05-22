@@ -1553,6 +1553,40 @@ impl LuaState {
     }
 
     pub fn new_string(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> { self.intern_or_create_str(bytes) }
+
+    // ── Phase D-1a: state-owned allocation API ──────────────────────────────
+    // These methods are the canonical allocation surface. They wrap
+    // `GcRef::new` today; at D-1e they route through `state.global.heap.allocate`.
+    // Callers must reach them through `&mut LuaState`, which mirrors C-Lua's
+    // requirement that every allocation passes `lua_State *L`.
+
+    /// Allocate a new Lua function prototype.
+    ///
+    /// Caller mutates the returned proto in place (it's behind GcRef, which is
+    /// Rc during Phase D-1; mutable access via `Rc::get_mut` only works while
+    /// no other GcRefs alias it — true at construction).
+    pub fn new_proto(&mut self) -> GcRef<LuaProto> {
+        GcRef::new(LuaProto::placeholder())
+    }
+
+    /// Allocate a Lua-side closure (compiled function + upvalue slots).
+    pub fn new_lclosure(&mut self, proto: GcRef<LuaProto>, nupvals: usize) -> GcRef<LuaClosureLua> {
+        let mut upvals = Vec::with_capacity(nupvals);
+        for _ in 0..nupvals {
+            upvals.push(std::cell::RefCell::new(self.new_upval_closed(LuaValue::Nil)));
+        }
+        GcRef::new(LuaClosureLua { proto, upvals })
+    }
+
+    /// Allocate a closed upvalue holding the given value.
+    pub fn new_upval_closed(&mut self, v: LuaValue) -> GcRef<UpVal> {
+        GcRef::new(UpVal::closed(v))
+    }
+
+    /// Allocate an open upvalue referring to a thread's stack slot.
+    pub fn new_upval_open(&mut self, thread_id: usize, level: StackIdx) -> GcRef<UpVal> {
+        GcRef::new(UpVal::open(thread_id, level))
+    }
     /// Mirrors `luaS_newlstr`: short strings are interned globally so equal
     /// content shares a single TString; long strings (> LUAI_MAXSHORTLEN = 40)
     /// always create a fresh TString without interning. This is what lets
