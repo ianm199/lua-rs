@@ -1950,11 +1950,13 @@ pub fn new_userdata_uv(
 // ── upvalue access ────────────────────────────────────────────────────────────
 
 // C: static const char *aux_upvalue (TValue *fi, int n, TValue **val, GCObject **owner)
-// PORT NOTE: Returns (name, value) instead of mutating output pointers.
+// PORT NOTE: Returns (name, value) instead of mutating output pointers. The name
+// is returned as an owned Vec<u8> because Lua upvalue names live in the proto's
+// LuaString table (GC heap), not in static storage.
 fn aux_upvalue(
     fi: &LuaValue,
     n: i32,
-) -> Option<(&'static [u8], LuaValue)> {
+) -> Option<(Vec<u8>, LuaValue)> {
     match fi {
         // C: case LUA_VCCL:
         LuaValue::Function(LuaClosure::C(ccl)) => {
@@ -1964,7 +1966,7 @@ fn aux_upvalue(
                 return None;
             }
             // C: *val = &f->upvalue[n-1]; return "";
-            Some((b"", ccl.upvalues[(n - 1) as usize].clone()))
+            Some((Vec::new(), ccl.upvalues[(n - 1) as usize].clone()))
         }
         // C: case LUA_VLCL:
         LuaValue::Function(LuaClosure::Lua(lcl)) => {
@@ -1982,17 +1984,25 @@ fn aux_upvalue(
                 }
             };
             // C: name = p->upvalues[n-1].name;
-            // TODO(port): upvalue name from Proto.upvalues[n-1].name is a
-            // GcRef<LuaString>; we can't return &'static [u8] for it.
-            // For Phase A, returning a placeholder name.
-            Some((b"(upvalue)", val))
+            // The proto records the static name of each upvalue (e.g. "_ENV"
+            // for the main chunk's environment upvalue). Fall back to an
+            // empty byte-string when the slot exists but has no recorded name
+            // (matches C-Lua's behaviour for anonymous upvalues).
+            let name: Vec<u8> = lcl
+                .proto
+                .upvalues
+                .get((n - 1) as usize)
+                .and_then(|ud| ud.name.as_ref())
+                .map(|s| s.as_bytes().to_vec())
+                .unwrap_or_default();
+            Some((name, val))
         }
         _ => None,
     }
 }
 
 // C: LUA_API const char *lua_getupvalue (lua_State *L, int funcindex, int n)
-pub fn get_upvalue(state: &mut LuaState, funcindex: i32, n: i32) -> Option<&'static [u8]> {
+pub fn get_upvalue(state: &mut LuaState, funcindex: i32, n: i32) -> Option<Vec<u8>> {
     // C: name = aux_upvalue(index2value(L, funcindex), n, &val, NULL);
     let fi = index_to_value(state, funcindex);
     if let Some((name, val)) = aux_upvalue(&fi, n) {
@@ -2005,7 +2015,7 @@ pub fn get_upvalue(state: &mut LuaState, funcindex: i32, n: i32) -> Option<&'sta
 }
 
 // C: LUA_API const char *lua_setupvalue (lua_State *L, int funcindex, int n)
-pub fn setup_value(state: &mut LuaState, funcindex: i32, n: i32) -> Option<&'static [u8]> {
+pub fn setup_value(state: &mut LuaState, funcindex: i32, n: i32) -> Option<Vec<u8>> {
     // C: fi = index2value(L, funcindex); api_checknelems(L, 1);
     let fi = index_to_value(state, funcindex);
     // C: name = aux_upvalue(fi, n, &val, &owner);
