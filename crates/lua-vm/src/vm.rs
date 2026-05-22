@@ -1109,19 +1109,25 @@ pub(crate) fn tagmethod_from_index(i: usize) -> TagMethod {
     }
 }
 
-/// Phase-B stub for integer floor-mod.
-pub(crate) fn int_floor_mod(_state: &mut LuaState, _a: i64, _b: i64) -> Result<i64, LuaError> {
-    todo!("phase-b: int_floor_mod")
+/// C: `lua_Integer luaV_mod(lua_State *L, lua_Integer m, lua_Integer n)`
+/// Integer floor-mod: Lua's `%` operator on integers. Result has the same sign
+/// as the divisor. Raises on `n == 0`.
+pub(crate) fn int_floor_mod(_state: &mut LuaState, a: i64, b: i64) -> Result<i64, LuaError> {
+    imod(a, b)
 }
 
-/// Phase-B stub for integer floor-div.
-pub(crate) fn int_floor_div(_state: &mut LuaState, _a: i64, _b: i64) -> Result<i64, LuaError> {
-    todo!("phase-b: int_floor_div")
+/// C: `lua_Integer luaV_idiv(lua_State *L, lua_Integer m, lua_Integer n)`
+/// Integer floor-div: Lua's `//` operator on integers. Truncates toward
+/// negative infinity. Raises on `n == 0`.
+pub(crate) fn int_floor_div(_state: &mut LuaState, a: i64, b: i64) -> Result<i64, LuaError> {
+    idiv(a, b)
 }
 
-/// Phase-B stub for float floor-mod.
-pub(crate) fn float_floor_mod(_state: &mut LuaState, _a: f64, _b: f64) -> Result<f64, LuaError> {
-    todo!("phase-b: float_floor_mod")
+/// C: `lua_Number luaV_modf(lua_State *L, lua_Number m, lua_Number n)`
+/// Float floor-mod: Lua's `%` operator on floats. Result has the same sign as
+/// the divisor.  NaN / division-by-zero behavior mirrors C `fmod`.
+pub(crate) fn float_floor_mod(_state: &mut LuaState, a: f64, b: f64) -> Result<f64, LuaError> {
+    Ok(fmodf(a, b))
 }
 
 /// C: `lua_Integer luaV_shiftl(lua_Integer x, lua_Integer y)`
