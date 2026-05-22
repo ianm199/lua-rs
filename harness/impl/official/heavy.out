@@ -3,7 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 (1.00000000000000e0 M)
-memory: 	2081.0
+memory: 	2410.0
 expected error: 	not enough memory
 size:	1048576
 OK

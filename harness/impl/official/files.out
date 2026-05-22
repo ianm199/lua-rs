@@ -4,8 +4,12 @@
 [4/4] Executing chunk...
 testing i/o
 +
-
-thread 'main' (23618728) panicked at crates/lua-stdlib/src/io_lib.rs:1563:5:
-g_read should return at least one value
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] g_read should return at least one value
++
++
++
++
++
+testing date/time
+test done on 20/05/2026, at 01:54:18
+Lua 5.4
+[ok] execution completed, status=Ok

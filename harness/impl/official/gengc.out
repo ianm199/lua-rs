@@ -4,4 +4,4 @@
 [4/4] Executing chunk...
 testing generational garbage collection
 +
-lua: pcall_k failed: Runtime: stdin:130: assertion failed!
+lua: pcall_k failed: Runtime: ...nts/lua-rs-port/harness/impl/official/gengc.combined.lua:130: assertion failed!

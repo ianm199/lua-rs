@@ -7,4 +7,13 @@ testing tables, next, and for
  >>> testC not active: skipping tests for table sizes <<<
 
 +
-lua: pcall_k failed: Runtime: stdin:16: assertion failed!
++
++
+testing next x GC of deleted keys
+
+ >>> testC not active: skipping tests for table library on non-tables <<<
+
++
+testing floats in numeric for
+OK
+[ok] execution completed, status=Ok

@@ -13,4 +13,10 @@ final count: 	99
 testing limits in coroutines inside deep calls
 final count: 	196
 chain of 'coroutine.close'
-........................................................................................................................................lua: pcall_k failed: Runtime: stdin:108: assertion failed!
+.....final count: 	197
+nesting of resuming yielded coroutines
+final count: 	195
+nesting coroutines running after recoverable errors
+final count: 	197
+OK
+[ok] execution completed, status=Ok

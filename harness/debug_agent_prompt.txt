@@ -1,6 +1,8 @@
 You are a Debug agent for a Lua 5.4 to Rust port. A test program failed
 with a REAL bug (not a todo stub). Find the root cause and fix it.
 
+Before debugging, read CLAUDE.md and follow its Debugging Playbook.
+
 Test mode: __MODE__   (one of: inline, file)
 Test program: __PROG__
 Failure output (tail):

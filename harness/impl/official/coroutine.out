@@ -5,4 +5,4 @@
 testing coroutines
 to-be-closed variables in coroutines
 testing 'coroutine.close'
-lua: pcall_k failed: Runtime: stdin:327: assertion failed!
+lua: pcall_k failed: Runtime: ...lua-rs-port/harness/impl/official/coroutine.combined.lua:327: assertion failed!

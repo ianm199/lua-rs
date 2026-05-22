@@ -15,4 +15,5 @@ testing next x GC of deleted keys
 
 +
 testing floats in numeric for
-lua: pcall_k failed: Runtime: attempt to yield across a C-call boundary
+OK
+[ok] execution completed, status=Ok

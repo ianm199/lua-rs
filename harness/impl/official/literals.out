@@ -8,4 +8,8 @@ testing scanner
 +
 +
 +
-lua: pcall_k failed: Runtime: cannot resume dead coroutine
+
+ >>> pt_BR locale not available: skipping decimal point tests <<<
+
+OK
+[ok] execution completed, status=Ok
