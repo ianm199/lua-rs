@@ -3,3 +3,4 @@
 4 5.559691249999998 reference/lua-c/testes/closure.lua
 5 [2026-05-18T00:53:08Z mega]   → committed 551bf60 (debug/reference/lua-c/testes/pm.lua )
 8.018682749999998 reference/lua-c/testes/pm.lua
+3  reference/lua-c/testes/sort.lua

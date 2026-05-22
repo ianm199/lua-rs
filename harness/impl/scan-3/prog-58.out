@@ -3,8 +3,9 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing pattern matching
-[err] pcall_k failed: Runtime: _soft = true
-_port = true
-_nomsg = true
-_U = false
-arg = ar:19: assertion failed!
++
++
++
++
+DEBUG try_func_tm: call_error func_idx=StackIdx(27) offender=Bool(true)
+[err] pcall_k failed: Runtime: attempt to call a boolean value

@@ -4,8 +4,9 @@
 [4/4] Executing chunk...
 testing numbers and math lib
 64-bit integers, 53-bit (mantissa) floats
-
-thread 'main' (7414180) panicked at crates/lua-vm/src/state.rs:1576:76:
-not yet implemented: phase-b: str_to_num
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b: str_to_num
+testing order (floats cannot represent all integers)
+DBG: end of fmax block (line 240)
+DBG: after checkcompt block (line 295)
+DBG: after f2i block (line 327)
+DBG: line 331-pre
+[err] pcall_k failed: Runtime: attempt to perform arithmetic on a function value

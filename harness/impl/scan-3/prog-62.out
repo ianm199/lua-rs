@@ -3,4 +3,14 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing pack/unpack
-[err] pcall_k failed: Runtime: invalid format option '6'
+platform:
+	short 2, int 4, long 8, size_t 8, float 4, double 8,
+	lua Integer 8, lua Number 8
+	little endian
+	alignment: 8
+testing invalid formats
+testing pack/unpack of floating-point numbers
+testing pack/unpack of strings
+testing alignment
+OK
+[ok] execution completed, status=Ok

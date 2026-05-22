@@ -4,3 +4,8 @@
 [4/4] Executing chunk...
 testing (parts of) table library
 testing unpack
+
+thread 'main' (8311603) panicked at crates/lua-types/src/lib.rs:49:47:
+attempt to add with overflow
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[panic] attempt to add with overflow

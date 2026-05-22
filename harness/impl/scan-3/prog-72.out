@@ -3,4 +3,9 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing require
-[err] pcall_k failed: Runtime: module 'string' not found:
+package config: /|;|?|!|-|
+testing 'require' message
++
+testing assignments, logical operators, and constructors
++
+[err] pcall_k failed: Runtime: [string "_soft = true..."]:426: assertion failed!

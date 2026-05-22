@@ -619,3 +619,10 @@
 [2026-05-18T00:37:10Z mega]   [O2.D4] DEBUG dispatch on file: reference/lua-c/testes/closure.lua [parallel]
 [2026-05-18T00:38:13Z mega]   [O2.D5] DEBUG dispatch on file: reference/lua-c/testes/pm.lua [parallel]
 [2026-05-18T00:53:08Z mega]   → committed 551bf60 (debug/reference/lua-c/testes/pm.lua )
+[2026-05-18T01:41:41Z mega]   [O2.D1] DEBUG done. iter cost=$0.41294775  total=$2.7253
+[2026-05-18T01:41:41Z mega]   [O2.D2] DEBUG done. iter cost=$2.2194084999999997  total=$4.9447
+[2026-05-18T01:41:41Z mega]   [O2.D4] DEBUG done. iter cost=$5.559691249999998  total=$10.5044
+[2026-05-18T01:41:41Z mega]   [O2.D5] DEBUG done. iter cost=$[2026-05-18T00:53:08Z  total=$10.5044
+[2026-05-18T01:41:41Z mega]   [O2.D8.018682749999998] DEBUG done. iter cost=$reference/lua-c/testes/pm.lua  total=$10.5044
+[2026-05-18T01:41:41Z mega]   [O2.D3] DEBUG done. iter cost=$reference/lua-c/testes/sort.lua  total=$10.5044
+[2026-05-18T01:41:41Z mega] ─── outer round 3 (spent: $10.5044) ───

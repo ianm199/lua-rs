@@ -7,9 +7,4 @@ testing vararg
 +
 +
 OK
-[close_upval] uv_idx=20 level=3 top=20 openupval.len=4
-
-thread 'main' (7414129) panicked at crates/lua-vm/src/func.rs:491:9:
-open upvalue index must be below stack top
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] open upvalue index must be below stack top
+[ok] execution completed, status=Ok

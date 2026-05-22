@@ -3,4 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing errors
-[err] pcall_k failed: Runtime: module 'debug' not found:
+
+ >>> testC not active: skipping tests for messages in C <<<
+
+[err] pcall_k failed: Runtime: [string "_soft = true..."]:38: assertion failed!

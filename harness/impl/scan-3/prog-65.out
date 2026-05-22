@@ -3,4 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing functions and calls
-[err] pcall_k failed: Runtime: module 'debug' not found:
++
++
+testing tail calls
+[err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)
