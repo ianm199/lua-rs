@@ -2295,7 +2295,7 @@ fn add_prototype(ls: &mut LexState, state: &mut LuaState) -> Result<Box<LuaProto
 fn codeclosure(ls: &mut LexState, _state: &mut LuaState, v: &mut ExprDesc) -> Result<(), LuaError> {
     let line = ls.linenumber;
     let mut child = ls.fs.take().expect("codeclosure: no current FuncState");
-    let pc = {
+    let result = (|| -> Result<(), LuaError> {
         let parent = child.prev.as_mut().expect(
             "codeclosure: child FuncState has no parent (called outside body()?)",
         );
@@ -2305,11 +2305,12 @@ fn codeclosure(ls: &mut LexState, _state: &mut LuaState, v: &mut ExprDesc) -> Re
             0,
             bx,
         );
-        emit_inst(parent, line, inst)
-    };
+        let pc = emit_inst(parent, line, inst);
+        init_exp(v, ExprKind::Reloc, pc);
+        cg_exp_to_next_reg(parent, line, v)
+    })();
     ls.fs = Some(child);
-    init_exp(v, ExprKind::Reloc, pc);
-    Ok(())
+    result
 }
 
 /// C: static void open_func(LexState *ls, FuncState *fs, BlockCnt *bl)

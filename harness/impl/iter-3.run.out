@@ -1,9 +1,12 @@
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
-[4/4] Executing chunk...
 
-thread 'main' (5686495) panicked at crates/lua-vm/src/state.rs:1452:108:
-not yet implemented: phase-b: table_resize
+thread 'main' (5749966) panicked at crates/lua-parse/src/lib.rs:3704:5:
+assertion failed: ls.fs.as_ref().unwrap().f.maxstacksize >= ls.fs.as_ref().unwrap().freereg &&
+    ls.fs.as_ref().unwrap().freereg as i32 >=
+        nvarstack(ls, ls.fs.as_ref().unwrap())
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b: table_resize
+[panic] assertion failed: ls.fs.as_ref().unwrap().f.maxstacksize >= ls.fs.as_ref().unwrap().freereg &&
+    ls.fs.as_ref().unwrap().freereg as i32 >=
+        nvarstack(ls, ls.fs.as_ref().unwrap())
