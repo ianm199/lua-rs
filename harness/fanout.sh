@@ -7,10 +7,11 @@
 #   ./harness/fanout.sh --files lctype.c lzio.c # an explicit list
 #   ./harness/fanout.sh --workers 4 --pilot     # parallel; default is sequential
 #
-# Auth: this script DELIBERATELY unsets ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN
-# so `claude -p` falls back to the subscription. The preflight aborts if
-# either is still set in the environment after unsetting (defensive against
-# read-only/exported-from-elsewhere shells).
+# Auth: this script DELIBERATELY uses the PERSONAL Claude Code account
+# (`~/.claude-personal`) by exporting CLAUDE_CONFIG_DIR. It also unsets
+# ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN so `claude -p` falls back to
+# the subscription credentials in that config dir, not API credits.
+# The preflight aborts if either env var is still set after unsetting.
 #
 # Output:
 #   harness/oracle/results/pilot.jsonl — one JSON line per file with
@@ -26,6 +27,17 @@ cd "$ROOT"
 # ──────────────────────────────────────────────────────────────────────────
 # Preflight: subscription auth, tools available, clean workspace
 # ──────────────────────────────────────────────────────────────────────────
+
+# Route to the PERSONAL Claude Code account (NOT the work account).
+# The `claude-personal` alias does this in interactive shells; scripts
+# don't inherit aliases, so we set the underlying env var explicitly.
+export CLAUDE_CONFIG_DIR="$HOME/.claude-personal"
+
+if [ ! -d "$CLAUDE_CONFIG_DIR" ]; then
+    echo "FATAL: $CLAUDE_CONFIG_DIR does not exist." >&2
+    echo "       The personal Claude Code account isn't installed where expected." >&2
+    exit 2
+fi
 
 unset ANTHROPIC_API_KEY
 unset ANTHROPIC_AUTH_TOKEN
@@ -206,7 +218,8 @@ Use the Translator subagent (.claude/agents/translator.md). When done, stop — 
 # ──────────────────────────────────────────────────────────────────────────
 
 echo "fanout: mode=$MODE  files=${#FILES[@]}  workers=$WORKERS  dry_run=$DRY_RUN"
-echo "         auth=subscription (ANTHROPIC_API_KEY explicitly unset)"
+echo "         auth=personal subscription (CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR)"
+echo "                                   (ANTHROPIC_API_KEY explicitly unset)"
 echo
 
 if [ "$WORKERS" = "1" ]; then

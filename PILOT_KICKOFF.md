@@ -18,24 +18,36 @@ Total: ~720 C LoC. Expected Rust output: ~600 LoC. Expected total cost in token-
 
 ## Before you fire it
 
-### Step 1 — Verify you're on subscription auth, not API credits
+### Step 1 — Verify you're on the PERSONAL subscription, not the work account or API credits
+
+You have two Claude installations on this machine:
+
+| Alias | Config dir | Used for |
+|---|---|---|
+| `claude` | `~/.claude` | Work account |
+| `claude-personal` | `~/.claude-personal` | Personal account ← **this project** |
+
+`claude-personal` is a shell alias (`CLAUDE_CONFIG_DIR=~/.claude-personal claude`). Shell aliases don't propagate to scripts, so `fanout.sh` sets `CLAUDE_CONFIG_DIR` itself.
 
 ```bash
-# Should print "(unset — using subscription)" or nothing:
-echo "${ANTHROPIC_API_KEY:-(unset — using subscription)}"
-echo "${ANTHROPIC_AUTH_TOKEN:-(unset — using subscription)}"
+# Verify the personal config dir exists and is authenticated:
+ls -la ~/.claude-personal/
 
-# Confirm via the CLI:
-claude /status   # this opens interactively; look for "Auth: subscription"
+# Check personal account's auth status (interactive — Ctrl-C after you see the line):
+claude-personal /status
+
+# Check both API-key env vars are unset:
+echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-(unset — good)}"
+echo "ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-(unset — good)}"
 ```
 
-If `ANTHROPIC_API_KEY` is set in your shell, find where (usually `~/.zshrc` or `~/.bashrc`) and comment it out for this terminal:
+If `ANTHROPIC_API_KEY` is set in your shell, find where (usually `~/.zshrc` or `~/.bashrc`) and unset it for this terminal:
 
 ```bash
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 ```
 
-The fanout script *also* unsets these defensively, but checking up front saves a surprise. As of May 2026 (today), `claude -p` on subscription draws from the same pool as interactive use. The June 15 split into a separate "Agent SDK credit" bucket is ~1 month out — plenty of runway.
+The fanout script *also* unsets these and sets `CLAUDE_CONFIG_DIR=~/.claude-personal` defensively, but checking up front saves a surprise. As of May 2026 (today), `claude -p` on subscription draws from the same pool as interactive use. The June 15 split into a separate "Agent SDK credit" bucket is ~1 month out — plenty of runway.
 
 ### Step 2 — Confirm the workspace is clean
 
@@ -133,7 +145,7 @@ Each ends with a `PORT STATUS` trailer with `confidence: high|medium|low`. Files
 
 Check `harness/oracle/results/<file>.translator.json` for the error payload. Common:
 
-- **Auth failure:** the preflight should have caught this, but if not, re-check `claude /status`.
+- **Auth failure:** the preflight should have caught this, but if not, re-check `claude-personal /status`. Also verify `CLAUDE_CONFIG_DIR` is pointing at `~/.claude-personal` inside the script's environment (the script exports it; double-check it isn't being overridden by a parent shell).
 - **`max-budget-usd` exceeded:** raise the cap to $3.00 in `fanout.sh` for the affected file and retry.
 - **`max-turns` exceeded:** the file is more complex than expected. Bump `--max-turns` to 20 and retry, or split the file into smaller per-function tasks.
 
@@ -155,8 +167,10 @@ Once both look good: scale to all of Phase A via `./harness/fanout.sh --phase A`
 ```bash
 cd /Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port \
   && unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN \
+  && export CLAUDE_CONFIG_DIR="$HOME/.claude-personal" \
+  && ls "$CLAUDE_CONFIG_DIR" >/dev/null \
   && ./harness/fanout.sh --pilot --dry-run \
-  && echo "Dry run OK. Hit enter to fire the real pilot." \
+  && echo "Dry run OK. Hit enter to fire the real pilot against personal account." \
   && read -r \
   && ./harness/fanout.sh --pilot
 ```
