@@ -1140,6 +1140,41 @@ fn cg_exp_to_next_reg(
     Ok(())
 }
 
+/// C: `luaK_setreturns` — patch the call/vararg instruction at `e.u.info` so
+/// it produces `nresults` values (or LUA_MULTRET when `nresults == -1`).
+fn cg_set_returns(fs: &mut FuncState, e: &mut ExprDesc, nresults: i32) {
+    let pc_idx = e.u.info as usize;
+    let mut lc = lua_code::opcodes::Instruction(fs.f.code[pc_idx].0);
+    if e.k == ExprKind::Call {
+        lc.set_arg_c((nresults + 1) as u32);
+    } else {
+        debug_assert_eq!(e.k, ExprKind::VarArg);
+        lc.set_arg_c((nresults + 1) as u32);
+        lc.set_arg_a(fs.freereg as u32);
+        fs.freereg += 1;
+    }
+    fs.f.code[pc_idx] = lua_types::opcode::Instruction::new(lc.0);
+}
+
+/// C: `luaK_ret` — emit the appropriate OP_RETURN / OP_RETURN0 / OP_RETURN1
+/// based on `nret`. `first` is the first result register; `nret` is the
+/// number of values to return (`LUA_MULTRET` for "all values on top").
+fn cg_emit_return(fs: &mut FuncState, line: i32, first: i32, nret: i32) {
+    let op = match nret {
+        0 => lua_code::opcodes::OpCode::Return0,
+        1 => lua_code::opcodes::OpCode::Return1,
+        _ => lua_code::opcodes::OpCode::Return,
+    };
+    let inst = lua_code::opcodes::Instruction::abck(
+        op,
+        first as u32,
+        (nret + 1) as u32,
+        0,
+        0,
+    );
+    emit_inst(fs, line, inst);
+}
+
 // ── Free functions ──────────────────────────────────────────────────────────
 
 // C: static void statement(LexState *ls);  -- forward declaration
@@ -2339,7 +2374,7 @@ fn parlist(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
     }
     // C: luaK_reserveregs(fs, fs->nactvar)
     let nactvar = ls.fs.as_ref().unwrap().nactvar as i32;
-    // TODO(port): lua_code::reserve_regs(ls.fs.as_mut().unwrap(), nactvar)?;
+    reserve_regs(ls.fs.as_mut().unwrap(), nactvar)?;
     Ok(())
 }
 
@@ -3292,11 +3327,11 @@ fn exprstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
 
 /// C: static void retstat(LexState *ls)
 fn retstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
-    let first = {
+    let mut first = {
         let fs = ls.fs.as_ref().unwrap();
         nvarstack(ls, fs)
     };
-    let nret: i32;
+    let mut nret: i32;
     if block_follow(ls, true) || ls.t.token == b';' as TokenKind {
         nret = 0;
     } else {
@@ -3304,28 +3339,34 @@ fn retstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
         nret = explist(ls, state, &mut e)?;
         if e.k.has_mult_ret() {
             // C: luaK_setmultret(fs, &e)
-            // TODO(port): lua_code::set_returns(ls.fs.as_mut().unwrap(), &mut e, LUA_MULTRET)?;
+            cg_set_returns(ls.fs.as_mut().unwrap(), &mut e, LUA_MULTRET);
             if e.k == ExprKind::Call && nret == 1 {
                 // C: tail call check — !fs->bl->insidetbc
                 let insidetbc = ls.fs.as_ref().unwrap().bl.as_ref().map_or(false, |b| b.insidetbc);
                 if !insidetbc {
                     // C: SET_OPCODE(getinstruction(fs, &e), OP_TAILCALL)
+                    let fs = ls.fs.as_mut().unwrap();
                     let info = e.u.info as usize;
-                    // TODO(port): ls.fs.as_mut().unwrap().f.code[info].set_opcode(OpCode::TailCall);
+                    let mut lc = lua_code::opcodes::Instruction(fs.f.code[info].0);
+                    lc.set_opcode(lua_code::opcodes::OpCode::TailCall);
+                    fs.f.code[info] = lua_types::opcode::Instruction::new(lc.0);
                 }
             }
-            // nret = LUA_MULTRET handled by set_returns
+            nret = LUA_MULTRET;
         } else {
+            let line = ls.linenumber;
             if nret == 1 {
                 // C: first = luaK_exp2anyreg(fs, &e)
-                // TODO(port): let first = lua_code::exp_to_any_reg(ls.fs.as_mut().unwrap(), &mut e)?;
+                first = cg_exp_to_any_reg(ls.fs.as_mut().unwrap(), line, &mut e)? as i32;
             } else {
-                // TODO(port): lua_code::exp_to_next_reg(ls.fs.as_mut().unwrap(), &mut e)?;
+                // C: values must go to the top of the stack
+                cg_exp_to_next_reg(ls.fs.as_mut().unwrap(), line, &mut e)?;
             }
         }
     }
     // C: luaK_ret(fs, first, nret)
-    // TODO(port): lua_code::emit_return(ls.fs.as_mut().unwrap(), first, nret)?;
+    let line = ls.linenumber;
+    cg_emit_return(ls.fs.as_mut().unwrap(), line, first, nret);
     // C: testnext(ls, ';')
     test_next(ls, state, b';' as TokenKind)?;
     Ok(())

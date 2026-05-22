@@ -156,9 +156,9 @@ warning: variable does not need to be mutable
     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
 
 warning: variable does not need to be mutable
-    --> crates/lua-vm/src/state.rs:2177:9
+    --> crates/lua-vm/src/state.rs:2206:9
      |
-2177 |     let mut status = if status == LuaStatus::Yield as i32 {
+2206 |     let mut status = if status == LuaStatus::Yield as i32 {
      |         ----^^^^^^
      |         |
      |         help: remove this `mut`
@@ -674,18 +674,6 @@ warning: function `new_lua_closure` is never used
 111 | pub(crate) fn new_lua_closure(
     |               ^^^^^^^^^^^^^^^
 
-warning: function `new_open_upval` is never used
-   --> crates/lua-vm/src/func.rs:178:4
-    |
-178 | fn new_open_upval(
-    |    ^^^^^^^^^^^^^^
-
-warning: function `find_upval` is never used
-   --> crates/lua-vm/src/func.rs:225:15
-    |
-225 | pub(crate) fn find_upval(state: &mut LuaState, level: StackIdx) -> GcRef<UpVal> {
-    |               ^^^^^^^^^^
-
 warning: function `check_close_mth` is never used
    --> crates/lua-vm/src/func.rs:315:4
     |
@@ -727,12 +715,6 @@ warning: constant `DUMMY_C_FUNCTION_IDX` is never used
     |
 698 | const DUMMY_C_FUNCTION_IDX: crate::state::LuaCFnPtr = usize::MAX;
     |       ^^^^^^^^^^^^^^^^^^^^
-
-warning: function `state_in_twups` is never used
-   --> crates/lua-vm/src/func.rs:709:4
-    |
-709 | fn state_in_twups(state: &LuaState) -> bool {
-    |    ^^^^^^^^^^^^^^
 
 warning: methods `current_ci` and `debug_find_local` are never used
    --> crates/lua-vm/src/func.rs:737:19
@@ -801,27 +783,27 @@ warning: constant `LUA_EXTRASPACE` is never used
     |       ^^^^^^^^^^^^^^
 
 warning: function `set_debt` is never used
-    --> crates/lua-vm/src/state.rs:1551:15
+    --> crates/lua-vm/src/state.rs:1580:15
      |
-1551 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
+1580 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
      |               ^^^^^^^^
 
 warning: function `inc_c_stack` is never used
-    --> crates/lua-vm/src/state.rs:1769:15
+    --> crates/lua-vm/src/state.rs:1798:15
      |
-1769 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
+1798 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
      |               ^^^^^^^^^^^
 
 warning: function `free_thread` is never used
-    --> crates/lua-vm/src/state.rs:2117:15
+    --> crates/lua-vm/src/state.rs:2146:15
      |
-2117 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
+2146 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
      |               ^^^^^^^^^^^
 
 warning: function `warn_error` is never used
-    --> crates/lua-vm/src/state.rs:2520:15
+    --> crates/lua-vm/src/state.rs:2549:15
      |
-2520 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
+2549 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
      |               ^^^^^^^^^^
 
 warning: type alias `LocalGcRef` is never used
@@ -1030,6 +1012,28 @@ help: use `let _ = ...` to ignore the resulting value
      |
 1405 |                         let _ = state.upvalue_set(&cl, b, v.clone());
      |                         +++++++
+
+warning: unused variable: `ls`
+   --> crates/lua-lex/src/lib.rs:842:5
+    |
+842 |     ls: &mut LexState,
+    |     ^^ help: if this is intentional, prefix it with an underscore: `_ls`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `syntax_error` is never used
+   --> crates/lua-lex/src/lib.rs:591:15
+    |
+591 | pub(crate) fn syntax_error(ls: &mut LexState, msg: &[u8]) -> LuaError {
+    |               ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `token2str` is never used
+   --> crates/lua-lex/src/lib.rs:670:15
+    |
+670 | pub(crate) fn token2str(_ls: &LexState, token: i32) -> Vec<u8> {
+    |               ^^^^^^^^^
 
 warning: unused import: `OpMode`
   --> crates/lua-code/src/codegen.rs:23:26
@@ -1808,28 +1812,6 @@ warning: function `finish` is never used
      |
 2357 | pub(crate) fn finish(
      |               ^^^^^^
-
-warning: unused variable: `ls`
-   --> crates/lua-lex/src/lib.rs:842:5
-    |
-842 |     ls: &mut LexState,
-    |     ^^ help: if this is intentional, prefix it with an underscore: `_ls`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-
-warning: function `syntax_error` is never used
-   --> crates/lua-lex/src/lib.rs:591:15
-    |
-591 | pub(crate) fn syntax_error(ls: &mut LexState, msg: &[u8]) -> LuaError {
-    |               ^^^^^^^^^^^^
-    |
-    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
-
-warning: function `token2str` is never used
-   --> crates/lua-lex/src/lib.rs:670:15
-    |
-670 | pub(crate) fn token2str(_ls: &LexState, token: i32) -> Vec<u8> {
-    |               ^^^^^^^^^
 
 warning: unused imports: `LuaStatus`, `arith::ArithOp`, `closure::LuaClosure`, and `gc::GcRef`
   --> crates/lua-stdlib/src/base.rs:8:5
@@ -3250,47 +3232,47 @@ help: use `let _ = ...` to ignore the resulting value
     |                 +++++++
 
 warning: unused variable: `ls`
-    --> crates/lua-parse/src/lib.rs:1245:5
+    --> crates/lua-parse/src/lib.rs:1257:5
      |
-1245 |     ls: &mut LexState,
+1257 |     ls: &mut LexState,
      |     ^^ help: if this is intentional, prefix it with an underscore: `_ls`
      |
      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1246:5
+    --> crates/lua-parse/src/lib.rs:1258:5
      |
-1246 |     state: &mut LuaState,
+1258 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1274:5
+    --> crates/lua-parse/src/lib.rs:1286:5
      |
-1274 |     state: &mut LuaState,
+1286 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1351:38
+    --> crates/lua-parse/src/lib.rs:1363:38
      |
-1351 | fn check_readonly(ls: &mut LexState, state: &mut LuaState, e: &ExprDesc) -> Result<(), LuaError> {
+1363 | fn check_readonly(ls: &mut LexState, state: &mut LuaState, e: &ExprDesc) -> Result<(), LuaError> {
      |                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `vname`
-    --> crates/lua-parse/src/lib.rs:1379:17
+    --> crates/lua-parse/src/lib.rs:1391:17
      |
-1379 |     if let Some(vname) = varname {
+1391 |     if let Some(vname) = varname {
      |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_vname`
 
 warning: unused variable: `ls`
-    --> crates/lua-parse/src/lib.rs:1488:5
+    --> crates/lua-parse/src/lib.rs:1500:5
      |
-1488 |     ls: &LexState,
+1500 |     ls: &LexState,
      |     ^^ help: if this is intentional, prefix it with an underscore: `_ls`
 
 warning: variable does not need to be mutable
-    --> crates/lua-parse/src/lib.rs:1543:9
+    --> crates/lua-parse/src/lib.rs:1555:9
      |
-1543 |     let mut bl = fs.bl.as_mut();
+1555 |     let mut bl = fs.bl.as_mut();
      |         ----^^
      |         |
      |         help: remove this `mut`
@@ -3298,364 +3280,322 @@ warning: variable does not need to be mutable
      = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1655:5
+    --> crates/lua-parse/src/lib.rs:1667:5
      |
-1655 |     state: &mut LuaState,
+1667 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1719:5
+    --> crates/lua-parse/src/lib.rs:1731:5
      |
-1719 |     state: &mut LuaState,
+1731 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `label_pc`
-    --> crates/lua-parse/src/lib.rs:1721:5
+    --> crates/lua-parse/src/lib.rs:1733:5
      |
-1721 |     label_pc: i32,
+1733 |     label_pc: i32,
      |     ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_label_pc`
 
 warning: unused variable: `gt_pc`
-    --> crates/lua-parse/src/lib.rs:1728:9
+    --> crates/lua-parse/src/lib.rs:1740:9
      |
-1728 |     let gt_pc = ls.dyd.gt[g].pc;
+1740 |     let gt_pc = ls.dyd.gt[g].pc;
      |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_gt_pc`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1753:5
+    --> crates/lua-parse/src/lib.rs:1765:5
      |
-1753 |     state: &mut LuaState,
+1765 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `n_gt`
-    --> crates/lua-parse/src/lib.rs:1838:9
+    --> crates/lua-parse/src/lib.rs:1850:9
      |
-1838 |     let n_gt = ls.dyd.gt.len();
+1850 |     let n_gt = ls.dyd.gt.len();
      |         ^^^^ help: if this is intentional, prefix it with an underscore: `_n_gt`
 
 warning: unused variable: `gt_nactvar`
-    --> crates/lua-parse/src/lib.rs:1842:13
+    --> crates/lua-parse/src/lib.rs:1854:13
      |
-1842 |         let gt_nactvar = ls.dyd.gt[i].nactvar;
+1854 |         let gt_nactvar = ls.dyd.gt[i].nactvar;
      |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_gt_nactvar`
 
 warning: unused variable: `n`
-    --> crates/lua-parse/src/lib.rs:1884:20
+    --> crates/lua-parse/src/lib.rs:1896:20
      |
-1884 |         .and_then(|n| {
+1896 |         .and_then(|n| {
      |                    ^ help: if this is intentional, prefix it with an underscore: `_n`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1898:35
+    --> crates/lua-parse/src/lib.rs:1910:35
      |
-1898 | fn leave_block(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
+1910 | fn leave_block(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
      |                                   ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1950:37
+    --> crates/lua-parse/src/lib.rs:1962:37
      |
-1950 | fn add_prototype(ls: &mut LexState, state: &mut LuaState) -> Result<Box<LuaProto>, LuaError> {
+1962 | fn add_prototype(ls: &mut LexState, state: &mut LuaState) -> Result<Box<LuaProto>, LuaError> {
      |                                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
-warning: unused variable: `ls`
-    --> crates/lua-parse/src/lib.rs:1968:16
-     |
-1968 | fn codeclosure(ls: &mut LexState, state: &mut LuaState, v: &mut ExprDesc) -> Result<(), LuaError> {
-     |                ^^ help: if this is intentional, prefix it with an underscore: `_ls`
-
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1968:35
+    --> crates/lua-parse/src/lib.rs:2005:33
      |
-1968 | fn codeclosure(ls: &mut LexState, state: &mut LuaState, v: &mut ExprDesc) -> Result<(), LuaError> {
-     |                                   ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
-
-warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:1982:33
-     |
-1982 | fn open_func(ls: &mut LexState, state: &mut LuaState, mut new_fs: FuncState) -> Result<(), LuaError> {
+2005 | fn open_func(ls: &mut LexState, state: &mut LuaState, mut new_fs: FuncState) -> Result<(), LuaError> {
      |                                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `v`
-    --> crates/lua-parse/src/lib.rs:2109:54
+    --> crates/lua-parse/src/lib.rs:2132:54
      |
-2109 | fn fieldsel(ls: &mut LexState, state: &mut LuaState, v: &mut ExprDesc) -> Result<(), LuaError> {
+2132 | fn fieldsel(ls: &mut LexState, state: &mut LuaState, v: &mut ExprDesc) -> Result<(), LuaError> {
      |                                                      ^ help: if this is intentional, prefix it with an underscore: `_v`
 
 warning: variable does not need to be mutable
-    --> crates/lua-parse/src/lib.rs:2148:9
+    --> crates/lua-parse/src/lib.rs:2171:9
      |
-2148 |     let mut tab = cc.t.clone();
+2171 |     let mut tab = cc.t.clone();
      |         ----^^^
      |         |
      |         help: remove this `mut`
 
 warning: unused variable: `tab`
-    --> crates/lua-parse/src/lib.rs:2148:9
+    --> crates/lua-parse/src/lib.rs:2171:9
      |
-2148 |     let mut tab = cc.t.clone();
+2171 |     let mut tab = cc.t.clone();
      |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_tab`
 
 warning: unused variable: `ls`
-    --> crates/lua-parse/src/lib.rs:2158:19
+    --> crates/lua-parse/src/lib.rs:2181:19
      |
-2158 | fn closelistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
+2181 | fn closelistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
      |                   ^^ help: if this is intentional, prefix it with an underscore: `_ls`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:2158:38
+    --> crates/lua-parse/src/lib.rs:2181:38
      |
-2158 | fn closelistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
+2181 | fn closelistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
      |                                      ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `t_info`
-    --> crates/lua-parse/src/lib.rs:2166:13
+    --> crates/lua-parse/src/lib.rs:2189:13
      |
-2166 |         let t_info = cc.t.u.info;
+2189 |         let t_info = cc.t.u.info;
      |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_t_info`
 
 warning: unused variable: `ls`
-    --> crates/lua-parse/src/lib.rs:2175:18
+    --> crates/lua-parse/src/lib.rs:2198:18
      |
-2175 | fn lastlistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
+2198 | fn lastlistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
      |                  ^^ help: if this is intentional, prefix it with an underscore: `_ls`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:2175:37
+    --> crates/lua-parse/src/lib.rs:2198:37
      |
-2175 | fn lastlistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
+2198 | fn lastlistfield(ls: &mut LexState, state: &mut LuaState, cc: &mut ConsControl) -> Result<(), LuaError> {
      |                                     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `t_info`
-    --> crates/lua-parse/src/lib.rs:2179:9
+    --> crates/lua-parse/src/lib.rs:2202:9
      |
-2179 |     let t_info = cc.t.u.info;
+2202 |     let t_info = cc.t.u.info;
      |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_t_info`
 
 warning: unused variable: `pc`
-    --> crates/lua-parse/src/lib.rs:2229:9
+    --> crates/lua-parse/src/lib.rs:2252:9
      |
-2229 |     let pc = ls.fs.as_ref().unwrap().pc; // placeholder
+2252 |     let pc = ls.fs.as_ref().unwrap().pc; // placeholder
      |         ^^ help: if this is intentional, prefix it with an underscore: `_pc`
 
 warning: unused variable: `t_info`
-    --> crates/lua-parse/src/lib.rs:2265:9
+    --> crates/lua-parse/src/lib.rs:2288:9
      |
-2265 |     let t_info = t.u.info;
+2288 |     let t_info = t.u.info;
      |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_t_info`
 
 warning: unused variable: `nactvar`
-    --> crates/lua-parse/src/lib.rs:2318:9
+    --> crates/lua-parse/src/lib.rs:2341:9
      |
-2318 |     let nactvar = ls.fs.as_ref().unwrap().nactvar as i32;
+2341 |     let nactvar = ls.fs.as_ref().unwrap().nactvar as i32;
      |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_nactvar`
 
 warning: unused variable: `line`
-    --> crates/lua-parse/src/lib.rs:2633:13
+    --> crates/lua-parse/src/lib.rs:2662:13
      |
-2633 |         let line = ls.linenumber;
+2662 |         let line = ls.linenumber;
      |             ^^^^ help: if this is intentional, prefix it with an underscore: `_line`
 
 warning: variable does not need to be mutable
-    --> crates/lua-parse/src/lib.rs:2685:9
+    --> crates/lua-parse/src/lib.rs:2714:9
      |
-2685 |     let mut conflict = false;
+2714 |     let mut conflict = false;
      |         ----^^^^^^^^
      |         |
      |         help: remove this `mut`
 
 warning: variable does not need to be mutable
-    --> crates/lua-parse/src/lib.rs:2687:9
+    --> crates/lua-parse/src/lib.rs:2716:9
      |
-2687 |     let mut current = Some(lh as *mut LhsAssign);
+2716 |     let mut current = Some(lh as *mut LhsAssign);
      |         ----^^^^^^^
      |         |
      |         help: remove this `mut`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:2680:5
+    --> crates/lua-parse/src/lib.rs:2709:5
      |
-2680 |     state: &mut LuaState,
+2709 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `extra`
-    --> crates/lua-parse/src/lib.rs:2684:9
+    --> crates/lua-parse/src/lib.rs:2713:9
      |
-2684 |     let extra = ls.fs.as_ref().unwrap().freereg as i32;
+2713 |     let extra = ls.fs.as_ref().unwrap().freereg as i32;
      |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_extra`
 
 warning: unused variable: `current`
-    --> crates/lua-parse/src/lib.rs:2687:9
+    --> crates/lua-parse/src/lib.rs:2716:9
      |
-2687 |     let mut current = Some(lh as *mut LhsAssign);
+2716 |     let mut current = Some(lh as *mut LhsAssign);
      |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_current`
 
 warning: unused variable: `lb_pc`
-    --> crates/lua-parse/src/lib.rs:2779:13
+    --> crates/lua-parse/src/lib.rs:2808:13
      |
-2779 |         let lb_pc = ls.dyd.label[lb_idx].pc;
+2808 |         let lb_pc = ls.dyd.label[lb_idx].pc;
      |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_lb_pc`
 
 warning: unused variable: `line`
-    --> crates/lua-parse/src/lib.rs:2800:9
+    --> crates/lua-parse/src/lib.rs:2829:9
      |
-2800 |     let line = ls.linenumber;
+2829 |     let line = ls.linenumber;
      |         ^^^^ help: if this is intentional, prefix it with an underscore: `_line`
 
 warning: unused variable: `whileinit`
-    --> crates/lua-parse/src/lib.rs:2844:9
+    --> crates/lua-parse/src/lib.rs:2873:9
      |
-2844 |     let whileinit = ls.fs.as_ref().unwrap().pc; // placeholder
+2873 |     let whileinit = ls.fs.as_ref().unwrap().pc; // placeholder
      |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_whileinit`
 
 warning: unused variable: `condexit`
-    --> crates/lua-parse/src/lib.rs:2845:9
+    --> crates/lua-parse/src/lib.rs:2874:9
      |
-2845 |     let condexit = cond(ls, state)?;
+2874 |     let condexit = cond(ls, state)?;
      |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_condexit`
 
 warning: unused variable: `repeat_init`
-    --> crates/lua-parse/src/lib.rs:2861:9
+    --> crates/lua-parse/src/lib.rs:2890:9
      |
-2861 |     let repeat_init = ls.fs.as_ref().unwrap().pc; // placeholder
+2890 |     let repeat_init = ls.fs.as_ref().unwrap().pc; // placeholder
      |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_repeat_init`
 
 warning: unused variable: `condexit`
-    --> crates/lua-parse/src/lib.rs:2869:9
+    --> crates/lua-parse/src/lib.rs:2898:9
      |
-2869 |     let condexit = cond(ls, state)?;
+2898 |     let condexit = cond(ls, state)?;
      |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_condexit`
 
 warning: unused variable: `bl2_nactvar`
-    --> crates/lua-parse/src/lib.rs:2873:9
+    --> crates/lua-parse/src/lib.rs:2902:9
      |
-2873 |     let bl2_nactvar = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().nactvar;
+2902 |     let bl2_nactvar = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().nactvar;
      |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_bl2_nactvar`
 
-warning: unused variable: `fs`
-    --> crates/lua-parse/src/lib.rs:2902:15
-     |
-2902 | fn fixforjump(fs: &mut FuncState, pc: i32, dest: i32, back: bool) -> Result<(), LuaError> {
-     |               ^^ help: if this is intentional, prefix it with an underscore: `_fs`
-
-warning: unused variable: `base`
-    --> crates/lua-parse/src/lib.rs:2920:5
-     |
-2920 |     base: i32,
-     |     ^^^^ help: if this is intentional, prefix it with an underscore: `_base`
-
-warning: unused variable: `line`
-    --> crates/lua-parse/src/lib.rs:2921:5
-     |
-2921 |     line: i32,
-     |     ^^^^ help: if this is intentional, prefix it with an underscore: `_line`
-
-warning: unused variable: `prep_op`
-    --> crates/lua-parse/src/lib.rs:2929:9
-     |
-2929 |     let prep_op = if isgen { OpCode::TForPrep } else { OpCode::ForPrep };
-     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_prep_op`
-
-warning: unused variable: `loop_op`
-    --> crates/lua-parse/src/lib.rs:2950:9
-     |
-2950 |     let loop_op = if isgen { OpCode::TForLoop } else { OpCode::ForLoop };
-     |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_loop_op`
-
 warning: unused variable: `fvar`
-    --> crates/lua-parse/src/lib.rs:3111:9
+    --> crates/lua-parse/src/lib.rs:3146:9
      |
-3111 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;
+3146 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;
      |         ^^^^ help: if this is intentional, prefix it with an underscore: `_fvar`
 
 warning: unused variable: `pc`
-    --> crates/lua-parse/src/lib.rs:3118:9
+    --> crates/lua-parse/src/lib.rs:3153:9
      |
-3118 |     let pc = ls.fs.as_ref().unwrap().pc;
+3153 |     let pc = ls.fs.as_ref().unwrap().pc;
      |         ^^ help: if this is intentional, prefix it with an underscore: `_pc`
 
 warning: unused variable: `attr_name`
-    --> crates/lua-parse/src/lib.rs:3127:13
+    --> crates/lua-parse/src/lib.rs:3162:13
      |
-3127 |         let attr_name = str_check_name(ls, state)?;
+3162 |         let attr_name = str_check_name(ls, state)?;
      |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_attr_name`
 
 warning: unused variable: `state`
-    --> crates/lua-parse/src/lib.rs:3141:36
+    --> crates/lua-parse/src/lib.rs:3176:36
      |
-3141 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {
+3176 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {
      |                                    ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `rl`
-    --> crates/lua-parse/src/lib.rs:3145:13
+    --> crates/lua-parse/src/lib.rs:3180:13
      |
-3145 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);
+3180 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);
      |             ^^ help: if this is intentional, prefix it with an underscore: `_rl`
 
 warning: value assigned to `vidx` is never read
-    --> crates/lua-parse/src/lib.rs:3155:20
+    --> crates/lua-parse/src/lib.rs:3190:20
      |
-3155 |     let mut vidx = 0i32;
+3190 |     let mut vidx = 0i32;
      |                    ^^^^
      |
      = help: maybe it is overwritten before being read?
      = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
 
 warning: unused variable: `first`
-    --> crates/lua-parse/src/lib.rs:3260:9
+    --> crates/lua-parse/src/lib.rs:3295:9
      |
-3260 |     let first = {
+3295 |     let first = {
      |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_first`
 
 warning: unused variable: `info`
-    --> crates/lua-parse/src/lib.rs:3278:25
+    --> crates/lua-parse/src/lib.rs:3313:25
      |
-3278 |                     let info = e.u.info as usize;
+3313 |                     let info = e.u.info as usize;
      |                         ^^^^ help: if this is intentional, prefix it with an underscore: `_info`
 
 warning: value assigned to `nret` is never read
-    --> crates/lua-parse/src/lib.rs:3266:9
+    --> crates/lua-parse/src/lib.rs:3301:9
      |
-3266 |         nret = 0;
+3301 |         nret = 0;
      |         ^^^^^^^^
      |
      = help: maybe it is overwritten before being read?
 
 warning: function `cg_free_exp` is never used
-   --> crates/lua-parse/src/lib.rs:626:4
+   --> crates/lua-parse/src/lib.rs:638:4
     |
-626 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {
+638 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {
     |    ^^^^^^^^^^^
     |
     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
 warning: function `local_debug_info` is never used
-    --> crates/lua-parse/src/lib.rs:1329:4
+    --> crates/lua-parse/src/lib.rs:1341:4
      |
-1329 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {
+1341 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {
      |    ^^^^^^^^^^^^^^^^
 
 warning: function `new_upvalue` is never used
-    --> crates/lua-parse/src/lib.rs:1487:4
+    --> crates/lua-parse/src/lib.rs:1499:4
      |
-1487 | fn new_upvalue(
+1499 | fn new_upvalue(
      |    ^^^^^^^^^^^
 
 warning: function `markupval` is never used
-    --> crates/lua-parse/src/lib.rs:1541:4
+    --> crates/lua-parse/src/lib.rs:1553:4
      |
-1541 | fn markupval(fs: &mut FuncState, level: i32) {
+1553 | fn markupval(fs: &mut FuncState, level: i32) {
      |    ^^^^^^^^^
 
 warning: function `singlevaraux` is never used
-    --> crates/lua-parse/src/lib.rs:1570:4
+    --> crates/lua-parse/src/lib.rs:1582:4
      |
-1570 | fn singlevaraux(
+1582 | fn singlevaraux(
      |    ^^^^^^^^^^^^
 
 warning: calls to `std::mem::drop` with a reference instead of an owned value does nothing
-    --> crates/lua-parse/src/lib.rs:1839:5
+    --> crates/lua-parse/src/lib.rs:1851:5
      |
-1839 |     drop(fs); // release borrow before iterating
+1851 |     drop(fs); // release borrow before iterating
      |     ^^^^^--^
      |          |
      |          argument has type `&Box<FuncState>`
@@ -3663,7 +3603,7 @@ warning: calls to `std::mem::drop` with a reference instead of an owned value do
      = note: `#[warn(dropping_references)]` on by default
 help: use `let _ = ...` to ignore the expression or result
      |
-1839 -     drop(fs); // release borrow before iterating
-1839 +     let _ = fs; // release borrow before iterating
+1851 -     drop(fs); // release borrow before iterating
+1851 +     let _ = fs; // release borrow before iterating
      |
 
