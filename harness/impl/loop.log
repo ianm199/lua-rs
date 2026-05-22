@@ -364,3 +364,7 @@ help: use `let _ = ...` to ignore the resulting value
 [2026-05-16T18:57:58Z] ─── iter 16  (spent: $0.00) ───
 [2026-05-16T18:57:58Z]   real-error blocker at step 2/4 Opening standard library: open_libs failed: Runtime: attempt to index a string value
 [2026-05-16T18:57:58Z]   dispatching DEBUG agent for real-error (budget $15)
+[2026-05-16T19:05:04Z]   agent done. iter cost=$4.318149749999999  total=$0.00
+[2026-05-16T19:05:04Z] ─── iter 17  (spent: $0.00) ───
+[2026-05-16T19:05:04Z]   real-error blocker at step 4/4 Executing chunk: pcall_k failed: Runtime: attempt to call a nil value
+[2026-05-16T19:05:04Z]   dispatching DEBUG agent for real-error (budget $15)

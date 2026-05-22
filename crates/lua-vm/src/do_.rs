@@ -1595,25 +1595,34 @@ fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
 
     // C: if (c == LUA_SIGNATURE[0])
     // LUA_SIGNATURE → const LUA_SIGNATURE: &[u8] = b"\x1bLua"  (macros.tsv)
-    if c == b'\x1b' as i32 {
+    let cl = if c == b'\x1b' as i32 {
         // C: checkmode(L, p->mode, "binary")
         check_mode(state, p.mode.as_deref(), b"binary")?;
         // C: cl = luaU_undump(L, p->z, p->name)
         // TODO(port): undump returns a LClosure; the Rust API isn't finalised.
-        let cl = crate::undump::undump(state, &mut p.z, &p.name)?;
-        // C: lua_assert(cl->nupvalues == cl->p->sizeupvalues)
-        debug_assert!(cl.upvals.len() == cl.proto.upvalues.len());
-        // C: luaF_initupvals(L, cl)
-        func::init_upvals(state, &cl)?;
+        crate::undump::undump(state, &mut p.z, &p.name)?
     } else {
         // C: checkmode(L, p->mode, "text")
         check_mode(state, p.mode.as_deref(), b"text")?;
         // C: cl = luaY_parser(L, p->z, &p->buff, &p->dyd, p->name, c)
         // TODO(port): parser API not yet finalised; returns a LClosure.
-        let cl = parse_stub(state, &mut p.z, &mut p.buff, &mut p.dyd, &p.name, c)?;
-        debug_assert!(cl.upvals.len() == cl.proto.upvalues.len());
-        func::init_upvals(state, &cl)?;
-    }
+        parse_stub(state, &mut p.z, &mut p.buff, &mut p.dyd, &p.name, c)?
+    };
+
+    // C: lua_assert(cl->nupvalues == cl->p->sizeupvalues)
+    debug_assert!(cl.upvals.len() == cl.proto.upvalues.len());
+    // C: luaF_initupvals(L, cl)
+    func::init_upvals(state, &cl)?;
+
+    // PORT NOTE: In C-Lua, `luaY_parser` / `luaU_undump` themselves push the
+    // closure onto the stack before returning (see lparser.c `luaY_parser`:
+    // `setclLvalue2s(L, L->top.p, cl); luaD_inctop(L);`). In the Rust port
+    // they return the closure by value, so `f_parser` must push it here.
+    // Without this, the caller (`api::load`) sees stale Nil at top-1 and any
+    // subsequent `pcall_k(state, 0, ...)` fails with "attempt to call a nil
+    // value".
+    state.check_stack(1)?;
+    state.push(LuaValue::Function(LuaClosure::Lua(cl)));
 
     Ok(())
 }

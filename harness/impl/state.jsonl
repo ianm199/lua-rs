@@ -206,3 +206,6 @@
 {"ts":"2026-05-16T18:57:58Z","action":"dispatch_done","detail":"type=implement func=register_lib cost=0.71183975","total_cost":0.00}
 {"ts":"2026-05-16T18:57:58Z","action":"real_error","detail":"err=open_libs failed: Runtime: attempt to index a string value step=2/4 Opening standard library iter=16","total_cost":0.00}
 {"ts":"2026-05-16T18:57:58Z","action":"dispatch_start","detail":"type=debug err=open_libs failed: Runtime: attempt to index a string value iter=16","total_cost":0.00}
+{"ts":"2026-05-16T19:05:04Z","action":"dispatch_done","detail":"type=debug err=open_libs failed: Runtime: attempt to index a string value cost=4.318149749999999","total_cost":0.00}
+{"ts":"2026-05-16T19:05:04Z","action":"real_error","detail":"err=pcall_k failed: Runtime: attempt to call a nil value step=4/4 Executing chunk iter=17","total_cost":0.00}
+{"ts":"2026-05-16T19:05:04Z","action":"dispatch_start","detail":"type=debug err=pcall_k failed: Runtime: attempt to call a nil value iter=17","total_cost":0.00}
