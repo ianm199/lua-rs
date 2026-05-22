@@ -181,17 +181,51 @@ Use the Translator subagent (.claude/agents/translator.md). When done, stop — 
     #   --bare, the CLI auto-discovers .claude/{settings.json,agents/} from cwd.
     # - --max-turns doesn't exist in this CLI version; --max-budget-usd is the
     #   effective bound on how long a single invocation can run.
-    local porting_md
+    # - --output-format stream-json emits newline-delimited events as they
+    #   happen, so we can show live progress. The full transcript goes to
+    #   <basename>.transcript.jsonl; a one-line summary goes to <basename>
+    #   .translator.json for status extraction.
+    local porting_md transcript
     porting_md="$(cat PORTING.md)"
+    transcript="$RESULTS_DIR/$basename.transcript.jsonl"
+
     claude -p \
         --agent translator \
         --append-system-prompt "$porting_md" \
         --allowedTools "Read,Write,Edit,Glob,Grep,Bash(cargo check*)" \
         --permission-mode dontAsk \
-        --output-format json \
+        --output-format stream-json \
+        --include-partial-messages \
+        --verbose \
         --max-budget-usd 2.00 \
         "$prompt" \
-        > "$out_json" 2>&1 || true
+        2>>"$RESULTS_DIR/$basename.stderr" \
+        | tee "$transcript" \
+        | jq -rj --unbuffered '
+            if .type == "system" and .subtype == "init" then
+                "      [init] tools=\(.tools | length) model=\(.model // "?")\n"
+            elif .type == "assistant" then
+                ( .message.content // [] ) as $c |
+                if ($c | length) > 0 and $c[0].type == "text" then
+                    "      [text] \( ($c[0].text // "") | gsub("\n"; " ") | .[0:100] )...\n"
+                elif ($c | length) > 0 and $c[0].type == "tool_use" then
+                    "      [tool] \($c[0].name)(\( ($c[0].input | tostring) | .[0:80] ))\n"
+                else empty
+                end
+            elif .type == "user" then
+                ( .message.content // [] ) as $c |
+                if ($c | length) > 0 and $c[0].type == "tool_result" then
+                    "      [<-  ] \( ($c[0].content | tostring) | gsub("\n"; " ") | .[0:80] )\n"
+                else empty
+                end
+            elif .type == "result" then
+                "      [done] cost=$\(.total_cost_usd) turns=\(.num_turns) err=\(.is_error) reason=\(.stop_reason // "?")\n"
+            else empty
+            end
+          ' 2>/dev/null >&2 || true
+
+    # Build a single-blob JSON summary from the transcript's final "result" event
+    jq -s 'map(select(.type == "result")) | .[-1] // {}' "$transcript" > "$out_json" 2>/dev/null || echo '{}' > "$out_json"
 
     local cost
     cost=$(jq -r '.total_cost_usd // 0' "$out_json" 2>/dev/null || echo 0)
