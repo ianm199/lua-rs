@@ -1,1 +1,1 @@
-set_hook_full	crates/lua-stdlib/src/state_stub.rs:279:108
+set_hook	crates/lua-vm/src/state.rs:1583:44

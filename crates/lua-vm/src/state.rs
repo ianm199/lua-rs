@@ -1062,8 +1062,7 @@ pub struct LuaState {
 
     // C: volatile lua_Hook hook
     // types.tsv: lua_State.hook → Option<Box<dyn FnMut(&mut LuaState, &LuaDebug)>>
-    // TODO(port): LuaDebug defined in ldebug.c → debug.rs (Phase E)
-    pub hook: Option<Box<dyn Fn()>>,
+    pub hook: Option<Box<dyn FnMut(&mut LuaState, &crate::debug::LuaDebug)>>,
 
     // C: volatile l_signalT hookmask
     // types.tsv: lua_State.hookmask → u8
@@ -1571,8 +1570,10 @@ impl LuaState {
     pub fn old_pc(&mut self) -> u32 { self.oldpc }
     pub fn set_old_pc(&mut self, pc: u32) { self.oldpc = pc; }
     pub fn set_oldpc(&mut self, pc: u32) { self.oldpc = pc; }
-    pub fn _hook_call_noargs(&mut self) { todo!("phase-b: hook_call_noargs") }
-    pub fn hook(&self) -> Option<&dyn Fn()> { todo!("phase-b: hook") }
+    pub fn _hook_call_noargs(&mut self) {}
+    pub fn hook(&self) -> Option<&Box<dyn FnMut(&mut LuaState, &crate::debug::LuaDebug)>> {
+        self.hook.as_ref()
+    }
     pub fn has_hook(&mut self) -> bool { self.hook.is_some() }
     pub fn hook_count(&mut self) -> i32 { self.hookcount }
     pub fn set_hook_count(&mut self, n: i32) { self.hookcount = n; }
@@ -1580,8 +1581,12 @@ impl LuaState {
     pub fn set_hook_mask(&mut self, m: u8) { self.hookmask = m; }
     pub fn base_hook_count(&self) -> i32 { self.basehookcount }
     pub fn set_base_hook_count(&mut self, n: i32) { self.basehookcount = n; }
-    pub fn set_hook<T>(&mut self, _h: T) { todo!("phase-b: set_hook") }
-    pub fn call_hook_event(&mut self, _event: i32, _line: i32) -> Result<(), LuaError> { todo!("phase-b: call_hook_event") }
+    pub fn set_hook(&mut self, h: Option<Box<dyn FnMut(&mut LuaState, &crate::debug::LuaDebug)>>) {
+        self.hook = h;
+    }
+    pub fn call_hook_event(&mut self, event: i32, line: i32) -> Result<(), LuaError> {
+        crate::do_::hook(self, event, line, 0, 0)
+    }
 
     pub fn registry_value(&self) -> LuaValue { self.global().l_registry.clone() }
     pub fn registry_get(&self, key: usize) -> LuaValue {
@@ -2077,7 +2082,9 @@ impl LuaState {
 
     pub fn trace_call(&mut self, _idx: CallInfoIdx) -> Result<bool, LuaError> { todo!("phase-b: trace_call") }
     pub fn trace_exec(&mut self, _idx: CallInfoIdx, _pc: u32) -> Result<bool, LuaError> { todo!("phase-b: trace_exec") }
-    pub fn hook_call(&mut self, _idx: CallInfoIdx) -> Result<(), LuaError> { todo!("phase-b: hook_call_idx") }
+    pub fn hook_call(&mut self, idx: CallInfoIdx) -> Result<(), LuaError> {
+        crate::do_::hookcall(self, idx)
+    }
     pub fn gc_check_step(&mut self) {
         // Phase-B: drive the __gc finalizer queue from common allocation
         // sites so loops like `repeat u = {} until finish` make progress

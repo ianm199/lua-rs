@@ -6,4 +6,5 @@ testing errors
 
  >>> testC not active: skipping tests for messages in C <<<
 
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:38: assertion failed!
++
+lua: pcall_k failed: Runtime: stdin:38: assertion failed!

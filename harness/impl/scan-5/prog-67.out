@@ -8,4 +8,4 @@ testing scanner
 +
 +
 +
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:233: assertion failed!
+lua: pcall_k failed: Runtime: attempt to yield from outside a coroutine

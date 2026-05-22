@@ -3,4 +3,10 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing metatables
-[err] pcall_k failed: Runtime: attempt to add a 'no value' with a 'no value'
+
+ >>> testC not active: skipping tests for userdata <<<
+
++
++
+OK
+[ok] execution completed, status=Ok

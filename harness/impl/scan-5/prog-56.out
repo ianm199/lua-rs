@@ -6,9 +6,9 @@ testing (parts of) table library
 testing unpack
 testing pack
 testing sort
-sorting 5000 random elements in 0 msec.
-re-sorting 5000 sorted elements in 0 msec.
-Invert-sorting other 5000 elements in 0 msec., with 63097 comparisons
-sorting 5000 equal elements in 0 msec.
+sorting 5000 random elements in 0.00 msec.
+re-sorting 5000 sorted elements in 0.00 msec.
+Invert-sorting other 5000 elements in 0.00 msec., with 64759 comparisons
+sorting 5000 equal elements in 0.00 msec.
 OK
 [ok] execution completed, status=Ok

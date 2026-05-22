@@ -8,4 +8,9 @@ functions with errors
 long strings
 steps
 steps (2)
-[err] pcall_k failed: Runtime: attempt to perform arithmetic on a nil value
+clearing tables
+weak tables
++
+
+ >>> testC not active: skipping userdata GC tests <<<
+

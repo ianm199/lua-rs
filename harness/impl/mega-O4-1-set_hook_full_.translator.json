@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 214431,
+  "duration_api_ms": 214091,
+  "ttft_ms": 2622,
+  "num_turns": 24,
+  "result": "Build is green. Done.\n\n## Report\n\n- **File / line of `set_hook_full`**: `crates/lua-stdlib/src/state_stub.rs:279` (trait default, panicking `todo!`). New override added inside the existing `impl LuaStateStubExt for LuaState` block.\n- **What `set_hook_full` does**: Installs/clears the debug hook on this thread. Wraps the stub's `lua_CFunction`-shaped hook in a closure that calls it with `state` and ignores both the activation record and `Result<usize, LuaError>` (C-Lua discards a hook's return), then forwards to `lua_vm::debug::set_hook(state, hook, mask as i32, count)`.\n- **Family members also implemented** (all overrides in the same `impl LuaStateStubExt for LuaState` block, delegating to canonical inherent methods via UFCS to avoid trait recursion):\n  - `write_output(msg)` — UFCS to `LuaState::write_output`; stdout write (`lua_writestring`).\n  - `table_set_i(idx, n)` — UFCS to `LuaState::table_set_i`; `lua_seti` with `__newindex`.\n  - `new_userdata_typed(name, size, nuvalue)` — UFCS to `LuaState::new_userdata_typed`; `lua_newuserdatauv` + advisory `name`.\n- **Surfaced-but-skipped todos** (still `todo!` in trait defaults; intentionally NOT implemented):\n  - `set_warn_fn(Option<lua_CFunction>, Option<LuaValue>)` — trait shape disagrees with canonical `lua_vm::api::set_warn_f(Option<Box<dyn FnMut(&[u8], bool)>>)`; bridging needs an unsafe-free trampoline that does not exist yet.\n  - `new_lib`/`new_lib_table`/`register_funcs`/`register_lib`/`set_funcs_with_upvalues` — trait methods are generic over `F: Copy`; canonical inherent versions require concrete `LuaCFunction`. Direct call sites already hit the inherent methods via inherent-first resolution; only dynamic trait dispatch would panic, and no caller uses that path.\n- **`cargo build -p lua-cli`**: green (warnings only; pre-existing `unused Result` lints).",
+  "stop_reason": "end_turn",
+  "session_id": "023047a0-4530-4459-aa74-9d110f5b7be8",
+  "total_cost_usd": 1.942113,
+  "usage": {
+    "input_tokens": 29,
+    "cache_creation_input_tokens": 102572,
+    "cache_read_input_tokens": 1867522,
+    "output_tokens": 14628,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 102572,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 794,
+        "cache_read_input_tokens": 101720,
+        "cache_creation_input_tokens": 852,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 852
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1322,
+      "outputTokens": 22,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0014320000000000001,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 29,
+      "outputTokens": 14628,
+      "cacheReadInputTokens": 1867522,
+      "cacheCreationInputTokens": 102572,
+      "webSearchRequests": 0,
+      "costUSD": 1.940681,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "9bd525f5-b81d-41c2-a0a7-6d943e5c4fd7"
+}

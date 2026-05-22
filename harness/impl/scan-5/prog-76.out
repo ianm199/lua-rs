@@ -8,4 +8,5 @@ testing 'require' message
 +
 testing assignments, logical operators, and constructors
 +
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:426: assertion failed!
+OK
+[ok] execution completed, status=Ok
