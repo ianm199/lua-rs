@@ -1329,3 +1329,156 @@
 {"ts":"2026-05-16T23:21:17Z","action":"dispatch_done","detail":"type=debug err=pcall_k failed: Runtime: attempt to call a table value cost=3.2037305","total_cost":0.00}
 {"ts":"2026-05-16T23:21:17Z","action":"real_error","detail":"err=execution completed with status=Ok but program output did NOT match SUCCESS_MARKER='^10$'. Actual recent output lines (comma-joined): 2898 |     let condexit = cond(ls, state)?;,2902 |     let bl2_nactvar = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().nactvar;,3146 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;,3153 |     let pc = ls.fs.as_ref().unwrap().pc;,3162 |         let attr_name = str_check_name(ls, state)?;,3176 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {,3180 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);,3190 |     let mut vidx = 0i32;,3295 |     let first = {,3313 |                     let info = e.u.info as usize;,3301 |         nret = 0;,638 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {,1341 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {,1499 | fn new_upvalue(,1553 | fn markupval(fs: &mut FuncState, level: i32) {,1582 | fn singlevaraux(,1851 |     drop(fs); // release borrow before iterating,1851 -     drop(fs); // release borrow before iterating,1851 +     let _ = fs; // release borrow before iterating,nil,. Likely causes: (1) codegen emits incomplete bytecode for an expression — e.g. ARITH ops (OP_ADD/OP_ADDI/OP_ADDK) not wired, or (2) a VM dispatch arm uses todo!() that's being masked. Investigate by reading the proto.code for the test program — if missing OP_ADD or similar, the bug is in lua-parse/codegen; if the bytecode is correct but execution gives wrong result, the bug is in lua-vm/vm.rs dispatch. step=4/4 Executing chunk iter=3","total_cost":0.00}
 {"ts":"2026-05-16T23:21:17Z","action":"dispatch_start","detail":"type=debug err=execution completed with status=Ok but program output did NOT match SUCCESS_MARKER='^10$'. Actual recent output lines (comma-joined): 2898 |     let condexit = cond(ls, state)?;,2902 |     let bl2_nactvar = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().nactvar;,3146 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;,3153 |     let pc = ls.fs.as_ref().unwrap().pc;,3162 |         let attr_name = str_check_name(ls, state)?;,3176 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {,3180 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);,3190 |     let mut vidx = 0i32;,3295 |     let first = {,3313 |                     let info = e.u.info as usize;,3301 |         nret = 0;,638 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {,1341 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {,1499 | fn new_upvalue(,1553 | fn markupval(fs: &mut FuncState, level: i32) {,1582 | fn singlevaraux(,1851 |     drop(fs); // release borrow before iterating,1851 -     drop(fs); // release borrow before iterating,1851 +     let _ = fs; // release borrow before iterating,nil,. Likely causes: (1) codegen emits incomplete bytecode for an expression — e.g. ARITH ops (OP_ADD/OP_ADDI/OP_ADDK) not wired, or (2) a VM dispatch arm uses todo!() that's being masked. Investigate by reading the proto.code for the test program — if missing OP_ADD or similar, the bug is in lua-parse/codegen; if the bytecode is correct but execution gives wrong result, the bug is in lua-vm/vm.rs dispatch. iter=3","total_cost":0.00}
+{"ts":"2026-05-16T23:32:08Z","action":"dispatch_done","detail":"type=debug err=execution completed with status=Ok but program output did NOT match SUCCESS_MARKER='^10$'. Actual recent output lines (comma-joined): 2898 |     let condexit = cond(ls, state)?;,2902 |     let bl2_nactvar = ls.fs.as_ref().unwrap().bl.as_ref().unwrap().nactvar;,3146 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;,3153 |     let pc = ls.fs.as_ref().unwrap().pc;,3162 |         let attr_name = str_check_name(ls, state)?;,3176 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {,3180 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);,3190 |     let mut vidx = 0i32;,3295 |     let first = {,3313 |                     let info = e.u.info as usize;,3301 |         nret = 0;,638 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {,1341 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {,1499 | fn new_upvalue(,1553 | fn markupval(fs: &mut FuncState, level: i32) {,1582 | fn singlevaraux(,1851 |     drop(fs); // release borrow before iterating,1851 -     drop(fs); // release borrow before iterating,1851 +     let _ = fs; // release borrow before iterating,nil,. Likely causes: (1) codegen emits incomplete bytecode for an expression — e.g. ARITH ops (OP_ADD/OP_ADDI/OP_ADDK) not wired, or (2) a VM dispatch arm uses todo!() that's being masked. Investigate by reading the proto.code for the test program — if missing OP_ADD or similar, the bug is in lua-parse/codegen; if the bytecode is correct but execution gives wrong result, the bug is in lua-vm/vm.rs dispatch. cost=5.73806325","total_cost":0.00}
+{"ts":"2026-05-16T23:32:09Z","action":"success","detail":"iter=4","total_cost":0.00}
+{"ts":"2026-05-16T23:32:09Z","action":"run_end","detail":"iterations=3 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:14Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:14Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:14Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:20Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:20Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:20Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:25Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:25Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:25Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:30Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:31Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:31Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:36Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:36Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:36Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:41Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:42Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:42Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:47Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:47Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:47Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:52Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:53Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:53Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:32:58Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:32:58Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:32:58Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:03Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:04Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:04Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:09Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:09Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:09Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:14Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:15Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:15Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:20Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:20Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:20Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:25Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:25Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:25Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:31Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:31Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:31Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:36Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:36Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:36Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:42Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:42Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:42Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:47Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:47Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:47Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:53Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:53Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:53Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:33:58Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:33:58Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:33:58Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:04Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:04Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:04Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:09Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:09Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:09Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:15Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:15Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:15Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:20Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:20Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:20Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:25Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:26Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:26Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:31Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:31Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:31Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:36Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:37Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:37Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:42Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:42Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:42Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:47Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:48Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:48Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:53Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:53Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:53Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:34:58Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:34:59Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:34:59Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:04Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:04Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:04Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:09Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:10Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:10Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:15Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:15Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:15Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:20Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:21Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:21Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:26Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:26Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:26Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:31Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:32Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:32Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:37Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:37Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:37Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:42Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:43Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:43Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:48Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:48Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:48Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:53Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:54Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:54Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:35:59Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:35:59Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:35:59Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:36:04Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:36:04Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:36:04Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:36:10Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:36:10Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:36:10Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:36:15Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:36:15Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:36:15Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:36:21Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:36:21Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:36:21Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:36:26Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:36:26Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:36:26Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:36:32Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:36:32Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:36:32Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:36:37Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T23:36:37Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:36:37Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T23:37:24Z","action":"run_start","detail":"print(\"hi \" .. \"there\")","total_cost":0.00}
+{"ts":"2026-05-16T23:37:24Z","action":"panic_detected","detail":"func=cg_posfix_fold non-foldable binop Concat (KStr KStr) iter=1","total_cost":0.00}
+{"ts":"2026-05-16T23:37:24Z","action":"dispatch_start","detail":"type=implement func=cg_posfix_fold non-foldable binop Concat (KStr KStr) iter=1","total_cost":0.00}

@@ -663,9 +663,10 @@ fn cg_free_exps(fs: &mut FuncState, e1: &ExprDesc, e2: &ExprDesc) {
 /// numerals, the result is computed at compile time and stored back into
 /// `e1`. Non-foldable arithmetic / bitwise binops fall through to the
 /// two-register emit path (`OP_ADD` ... `OP_SHR`) plus an `OP_MMBIN`
-/// metamethod-dispatch instruction. Concat, logical, and comparison
-/// operators still hit `todo!()` so they surface as later iterations'
-/// blockers.
+/// metamethod-dispatch instruction. `Concat` is delegated to
+/// `cg_emit_concat`; `Lt` to `cg_emit_order`; remaining logical and
+/// comparison operators still hit `todo!()` so they surface as later
+/// iterations' blockers.
 fn cg_posfix_fold(
     fs: &mut FuncState,
     op: BinOpr,
@@ -721,6 +722,10 @@ fn cg_posfix_fold(
 
     if matches!(op, BinOpr::Lt) {
         return cg_emit_order(fs, op, e1, e2, line);
+    }
+
+    if matches!(op, BinOpr::Concat) {
+        return cg_emit_concat(fs, e1, e2, line);
     }
 
     let (opcode, event) = match op {
@@ -809,6 +814,61 @@ fn cg_emit_order(
     let jmp_pc = emit_inst(fs, line, jmp);
     e1.u.info = jmp_pc;
     e1.k = ExprKind::Jmp;
+    Ok(())
+}
+
+/// Mirrors C's `previousinstruction` from `lcode.c`: returns the index of the
+/// last emitted instruction, but only when `pc` is past `lasttarget` (i.e. the
+/// previous instruction is reachable without crossing a jump label). Used by
+/// peephole merges such as the `OP_CONCAT` chain fold.
+fn previous_instruction_idx(fs: &FuncState) -> Option<usize> {
+    if fs.pc > fs.lasttarget {
+        Some((fs.pc - 1) as usize)
+    } else {
+        None
+    }
+}
+
+/// Mirrors C's `codeconcat` from `lcode.c`, prefixed by the `luaK_infix`
+/// `OP_CONCAT` arm that pushes both operands onto consecutive registers. The
+/// infix step is inlined here because the parser still skips
+/// `lua_code::infix` while the lua-parse / lua-code reconciliation is in
+/// flight. When the previous instruction is itself an `OP_CONCAT` whose `A`
+/// register is exactly `e1.u.info + 1`, the chain is merged by widening that
+/// instruction's `B` field; otherwise a fresh `OP_CONCAT A=e1.u.info, B=2`
+/// is emitted. In both branches the temporary register holding `e2` is freed.
+fn cg_emit_concat(
+    fs: &mut FuncState,
+    e1: &mut ExprDesc,
+    e2: &mut ExprDesc,
+    line: i32,
+) -> Result<(), LuaError> {
+    cg_exp_to_next_reg(fs, line, e1)?;
+    cg_exp_to_next_reg(fs, line, e2)?;
+
+    if let Some(prev_idx) = previous_instruction_idx(fs) {
+        let prev = lua_code::opcodes::Instruction(fs.f.code[prev_idx].0);
+        if prev.opcode() == Some(lua_code::opcodes::OpCode::Concat) {
+            let n = prev.arg_b();
+            debug_assert_eq!(e1.u.info + 1, prev.arg_a() as i32);
+            cg_free_exp(fs, e2);
+            let mut updated = prev;
+            updated.set_arg_a(e1.u.info as u32);
+            updated.set_arg_b(n + 1);
+            fs.f.code[prev_idx] = lua_types::opcode::Instruction::new(updated.0);
+            return Ok(());
+        }
+    }
+
+    let inst = lua_code::opcodes::Instruction::abck(
+        lua_code::opcodes::OpCode::Concat,
+        e1.u.info as u32,
+        2,
+        0,
+        0,
+    );
+    emit_inst(fs, line, inst);
+    cg_free_exp(fs, e2);
     Ok(())
 }
 
