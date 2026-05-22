@@ -2352,7 +2352,7 @@ fn constructor(ls: &mut LexState, state: &mut LuaState, t: &mut ExprDesc) -> Res
     let freereg = ls.fs.as_ref().unwrap().freereg as i32;
     // C: init_exp(t, VNONRELOC, fs->freereg); luaK_reserveregs(fs, 1)
     init_exp(t, ExprKind::NonReloc, freereg);
-    // TODO(port): lua_code::reserve_regs(ls.fs.as_mut().unwrap(), 1)?;
+    reserve_regs(ls.fs.as_mut().unwrap(), 1)?;
 
     let mut cc = ConsControl {
         v: ExprDesc::default(),

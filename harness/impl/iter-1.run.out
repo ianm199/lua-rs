@@ -2,7 +2,11 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 
-thread 'main' (5604632) panicked at crates/lua-parse/src/lib.rs:739:14:
-not yet implemented: phase-b: cg_posfix_fold non-foldable binop Concat (KStr KStr)
+thread 'main' (5641577) panicked at crates/lua-parse/src/lib.rs:629:9:
+assertion `left == right` failed
+  left: 0
+ right: -1
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b: cg_posfix_fold non-foldable binop Concat (KStr KStr)
+[panic] assertion `left == right` failed
+  left: 0
+ right: -1
