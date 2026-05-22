@@ -43,3 +43,6 @@
 {"ts":"2026-05-16T14:13:50Z","action":"dispatch_done","detail":"func=abs_index cost=0.55327325","total_cost":0.00}
 {"ts":"2026-05-16T14:13:50Z","action":"panic_detected","detail":"func=push_value iter=9","total_cost":0.00}
 {"ts":"2026-05-16T14:13:50Z","action":"dispatch_start","detail":"func=push_value iter=9","total_cost":0.00}
+{"ts":"2026-05-16T14:14:28Z","action":"dispatch_done","detail":"func=push_value cost=0.450096","total_cost":0.00}
+{"ts":"2026-05-16T14:14:28Z","action":"panic_detected","detail":"func=set_field iter=10","total_cost":0.00}
+{"ts":"2026-05-16T14:14:28Z","action":"dispatch_start","detail":"func=set_field iter=10","total_cost":0.00}
