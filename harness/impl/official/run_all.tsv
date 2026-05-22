@@ -1,0 +1,44 @@
+all	FAIL	lua: pcall_k failed: Runtime: stdin:157: cannot open main.lua: No such file or directory (os error 2
+api	FAIL	
+attrib	FAIL	
+big	FAIL	
+bitwise	FAIL	
+bwcoercion	FAIL	
+calls	FAIL	
+calls_head313	FAIL	
+calls_isolated_tmp	FAIL	BISECT: after C-stack overflow
+closure	FAIL	
+code	FAIL	
+constructs	FAIL	
+coroutine	FAIL	lua: pcall_k failed: Runtime: stdin:165: assertion failed!
+cstack	FAIL	testing stack overflow detection
+db	FAIL	lua: pcall_k failed: Runtime: stdin:50: assertion failed!
+errors	FAIL	fatal runtime error: stack overflow, aborting
+events	FAIL	
+files-debug	FAIL	
+files	FAIL	lua: pcall_k failed: Runtime: attempt to yield across a C-call boundary
+gc	FAIL	lua: pcall_k failed: Runtime: stdin:552: assertion failed!
+gc_part	FAIL	
+gctmp	FAIL	
+gengc	FAIL	lua: pcall_k failed: Runtime: stdin:99: attempt to index a nil value (upvalue 'x')
+goto	FAIL	
+heavy	FAIL	
+literals	FAIL	lua: pcall_k failed: Runtime: attempt to concatenate a table value
+locals	FAIL	lua: pcall_k failed: Runtime: stdin:861: assertion failed!
+main	FAIL	
+math	FAIL	
+nextvar	FAIL	lua: pcall_k failed: Runtime: stdin:611: bad 'for' limit (number expected, got number)
+pm	FAIL	
+repro_closure	FAIL	
+sort	FAIL	
+sort_repro	FAIL	
+strings	FAIL	
+strings_part1	FAIL	
+test1	FAIL	
+test_bitor2	FAIL	
+test_weak	FAIL	
+tpack	FAIL	
+tracegc	FAIL	
+utf8	FAIL	
+vararg	FAIL	
+verybig	FAIL	

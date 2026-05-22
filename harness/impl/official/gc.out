@@ -1,7 +1,3 @@
-[1/4] Creating LuaState...
-[2/4] Opening standard library...
-[3/4] Loading source (parse + compile)...
-[4/4] Executing chunk...
 testing incremental garbage collection
 creating many objects
 functions with errors
@@ -14,4 +10,5 @@ weak tables
 
  >>> testC not active: skipping userdata GC tests <<<
 
-lua: pcall_k failed: Runtime: stdin:474: assertion failed!
+self-referenced threads
+lua: pcall_k failed: Runtime: stdin:552: assertion failed!

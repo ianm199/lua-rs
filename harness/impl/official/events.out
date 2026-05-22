@@ -1,12 +1,27 @@
-[1/4] Creating LuaState...
-[2/4] Opening standard library...
-[3/4] Loading source (parse + compile)...
-[4/4] Executing chunk...
 testing metatables
 
  >>> testC not active: skipping tests for userdata <<<
 
+[DBG concat] top-2-type=Discriminant(5) top-1=Table(GcRef(Gc(0x600003e5d0e0)))
+[DBG concat] top-2-type=Discriminant(5) top-1=ef8g
+[DBG concat] top-2-type=Discriminant(5) top-1=def8g
+[DBG concat] top-2-type=Discriminant(5) top-1=Table(GcRef(Gc(0x600003e5d0e0)))
+[DBG concat] top-2-type=Discriminant(5) top-1=Table(GcRef(Gc(0x600003e5d140)))
+[DBG concat] top-2-type=Discriminant(5) top-1=Table(GcRef(Gc(0x600003e5d260)))
+[DBG concat] top-2-type=Discriminant(5) top-1=Table(GcRef(Gc(0x600003e5d0e0)))
+[DBG concat] top-2-type=Discriminant(5) top-1=efg
+[DBG concat] top-2-type=Discriminant(5) top-1=Table(GcRef(Gc(0x600003e5d380)))
+[DBG concat] top-2-type=Discriminant(4) top-1=Table(GcRef(Gc(0x600003e5d3e0)))
+[DBG concat] top-2-type=Discriminant(4) top-1=Table(GcRef(Gc(0x600003e5d440)))
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x600003e5d4a0)))
+[DBG concat] top-2-type=Discriminant(5) top-1=Int(5)
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x600003e5d560)))
+[DBG concat] top-2-type=Discriminant(5) top-1=Int(5)
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x600003e5d560)))
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x600003e5d560)))
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x600003e5d560)))
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x600003e5d560)))
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x600003e5d560)))
 +
 +
 OK
-[ok] execution completed, status=Ok

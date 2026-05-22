@@ -1,10 +1,12 @@
-[1/4] Creating LuaState...
-[2/4] Opening standard library...
-[3/4] Loading source (parse + compile)...
-[4/4] Executing chunk...
 testing errors
 
  >>> testC not active: skipping tests for messages in C <<<
 
+[DBG concat] top-2-type=Discriminant(2) top-1=Table(GcRef(Gc(0x60000062d140)))
+[DBG concat] top-2-type=Discriminant(6) top-1=a
+[DBG concat] top-2-type=Discriminant(4) top-1=Bool(false)
+[DBG concat] top-2-type=Discriminant(5) top-1=Int(2)
 +
-lua: pcall_k failed: Runtime: stdin:389: attempt to index a nil value (local 'msg')
+
+thread 'main' (15783096) has overflowed its stack
+fatal runtime error: stack overflow, aborting

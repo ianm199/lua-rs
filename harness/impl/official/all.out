@@ -1,0 +1,12 @@
+
+	Starting Tests
+random seeds: 1779192466, 0
+current path:
+****/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?/init.lua;./?.lua;./?/init.lua****
+
+    ---- total memory: 2.9K, max memory: 2.9K ----
+
+time: 0 (+0)
+
+***** FILE 'main.lua'*****
+lua: pcall_k failed: Runtime: stdin:157: cannot open main.lua: No such file or directory (os error 2)

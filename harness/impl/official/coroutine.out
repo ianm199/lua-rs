@@ -1,0 +1,4 @@
+testing coroutines
+to-be-closed variables in coroutines
+testing 'coroutine.close'
+lua: pcall_k failed: Runtime: stdin:165: assertion failed!

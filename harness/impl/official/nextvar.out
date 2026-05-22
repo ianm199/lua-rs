@@ -1,7 +1,3 @@
-[1/4] Creating LuaState...
-[2/4] Opening standard library...
-[3/4] Loading source (parse + compile)...
-[4/4] Executing chunk...
 testing tables, next, and for
 
  >>> testC not active: skipping tests for table sizes <<<
@@ -10,4 +6,9 @@ testing tables, next, and for
 +
 +
 testing next x GC of deleted keys
-[err] pcall_k failed: Runtime: bad argument #1 (table expected, got nil)
+
+ >>> testC not active: skipping tests for table library on non-tables <<<
+
++
+testing floats in numeric for
+lua: pcall_k failed: Runtime: stdin:611: bad 'for' limit (number expected, got number)

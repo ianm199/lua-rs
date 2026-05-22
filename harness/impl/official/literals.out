@@ -1,12 +1,8 @@
-[1/4] Creating LuaState...
-[2/4] Opening standard library...
-[3/4] Loading source (parse + compile)...
-[4/4] Executing chunk...
 testing scanner
 +
 +
 +
 +
 +
-[DBG aux_resume] open_upval_indices=[]
-lua: pcall_k failed: Runtime: stdin:294: bad argument #1 to 'for iterator' (table expected, got nil)
+[DBG concat] top-2-type=Discriminant(5) top-1=]====]
+lua: pcall_k failed: Runtime: attempt to concatenate a table value

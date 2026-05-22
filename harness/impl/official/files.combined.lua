@@ -1,4 +1,3 @@
--- harness preamble: emulate the globals lua-c testes/all.lua sets
 _soft = true
 _port = true
 _nomsg = true

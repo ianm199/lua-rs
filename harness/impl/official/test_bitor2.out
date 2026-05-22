@@ -1,15 +1,10 @@
-[1/4] Creating LuaState...
-[2/4] Opening standard library...
-[3/4] Loading source (parse + compile)...
-[4/4] Executing chunk...
 step 1
 tonumber result =	1.844674407371e+19	number
 step 2
-tointeger result =	9223372036854775807	number
+tointeger result =	false	boolean
 step 3
-string metatable =	table: 0x6000002bc690
+string metatable =	table: 0x600001754900
 step 4
 step 5
-ok =	true
-err =	9223372036854775807
-[ok] execution completed, status=Ok
+ok =	false
+err =	stdin:21: attempt to 'bor' a string with a number
