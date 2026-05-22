@@ -1195,7 +1195,12 @@ impl LuaState {
     }
     pub fn fast_get_int<T>(&mut self, _t: T, _k: i64) -> Result<Option<LuaValue>, LuaError> { todo!("phase-b: fast_get_int") }
     pub fn fast_get_short_str<T, K>(&mut self, _t: T, _k: K) -> Result<Option<LuaValue>, LuaError> { todo!("phase-b: fast_get_short_str") }
-    pub fn fast_tm_table<U, T>(&mut self, _t: U, _tm: T) -> LuaValue { todo!("phase-b: fast_tm_table") }
+    pub fn fast_tm_table(&mut self, t: Option<&GcRef<LuaTable>>, tm: TagMethod) -> LuaValue {
+        let Some(mt) = t else { return LuaValue::Nil; };
+        debug_assert!((tm as u8) <= TagMethod::Eq as u8);
+        let ename = self.global().tmname[tm as usize].clone();
+        mt.get_short_str(&ename)
+    }
     pub fn fast_tm_ud<U, T>(&mut self, _u: U, _tm: T) -> LuaValue { todo!("phase-b: fast_tm_ud") }
 
     pub fn table_get_with_tm(&mut self, t: &LuaValue, k: &LuaValue) -> Result<LuaValue, LuaError> {
