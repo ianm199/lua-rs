@@ -944,10 +944,16 @@ pub(crate) fn traceback(state: &mut LuaState) -> Result<usize, LuaError> {
         let level = state.opt_arg_integer(arg + 2, default_level)? as i32;
 
         // C: luaL_traceback(L, L1, msg, level);
-        // TODO(phase-b): cross-thread traceback target requires simultaneous &mut access to two LuaState; signature in state_stub takes &mut LuaState, not Option.
-        let _ = other_thread;
-        let _ = (msg_owned, level);
-        state.push(LuaValue::Nil);
+        // TODO(phase-b): cross-thread traceback (other_thread != None) still
+        // requires simultaneous &mut access to two LuaState; the
+        // self-traceback path is wired up here.
+        if other_thread.is_some() {
+            let _ = other_thread;
+            let _ = (msg_owned, level);
+            state.push(LuaValue::Nil);
+        } else {
+            crate::auxlib::traceback(state, None, msg_owned.as_deref(), level)?;
+        }
     }
     Ok(1)
 }

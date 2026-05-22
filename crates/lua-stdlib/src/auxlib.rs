@@ -269,7 +269,7 @@ fn last_level(state: &mut LuaState) -> i32 {
 /// C: `LUALIB_API void luaL_traceback(lua_State *L, lua_State *L1, const char *msg, int level)`
 pub fn traceback(
     state: &mut LuaState,
-    other: Option<&mut LuaState>,
+    mut other: Option<&mut LuaState>,
     msg: Option<&[u8]>,
     level: i32,
 ) -> Result<(), LuaError> {

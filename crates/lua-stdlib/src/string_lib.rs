@@ -1745,7 +1745,13 @@ fn format_float(n: f64, conv: u8, spec: &FmtSpec) -> Vec<u8> {
         return s.to_vec();
     }
     match conv {
-        b'f' | b'F' => format!("{:.*}", prec, n).into_bytes(),
+        b'f' | b'F' => {
+            let mut result = format!("{:.*}", prec, n).into_bytes();
+            if spec.alt_form && !result.contains(&b'.') {
+                result.push(b'.');
+            }
+            result
+        }
         b'e' => format_exp(n, prec, false, spec.alt_form),
         b'E' => {
             let mut v = format_exp(n, prec, false, spec.alt_form);

@@ -3,5 +3,13 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 st=	false
-msg=	nil
-lua: pcall_k failed: Runtime: bad argument #1 (string expected, got nil)
+msg=	[string "-- harness preamble: emulate the globals lua-..."]:15: @x123
+stack traceback:
+	[C]: in function 'error'
+	[string "-- harness preamble: emulate the globals lua-..."]:15: in function <:-1>
+	[string "-- harness preamble: emulate the globals lua-..."]:16: in function <:-1>
+	[C]: in function 'xpcall'
+	[string "-- harness preamble: emulate the globals lua-..."]:18: in function <:-1>
+match:	nil
+find close:	nil
+[ok] execution completed, status=Ok
