@@ -1,3 +1,4 @@
 1 1.24946425 reference/lua-c/testes/literals.lua
 2 2.4976269999999996 reference/lua-c/testes/calls.lua
 4 2.8677962499999996 reference/lua-c/testes/files.lua
+5 0.7995764999999999 reference/lua-c/testes/attrib.lua

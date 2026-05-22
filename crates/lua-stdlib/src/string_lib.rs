@@ -1111,39 +1111,112 @@ pub fn str_match(state: &mut LuaState) -> Result<usize, LuaError> {
 ///
 /// C: `static int gmatch_aux(lua_State *L)`
 ///
-/// TODO(port): In C this accesses a GMatchState userdata via upvalue index 3.
-/// In Rust this would be stored in a Lua userdata object and accessed via
-/// `state.to_userdata(upvalue_index(3))`. For Phase A we stub this.
+/// PORT NOTE: The C version stores `GMatchState` inside a heap-allocated
+/// userdata referenced by upvalue 3, then mutates fields via the raw pointer
+/// each iteration. Our Phase-A `LuaCClosure.upvalues` is immutable, so the
+/// iterator state lives in a Lua table referenced by upvalue 1 with
+/// integer-keyed slots:
+///   t[1] = source bytes (string), t[2] = pattern bytes (string),
+///   t[3] = current source position (1-based; equals `lastmatch` after a
+///   successful match), t[4] = end of last match (`0` ≡ NULL in C, meaning
+///   "no match yet").
 pub fn gmatch_aux(state: &mut LuaState) -> Result<usize, LuaError> {
-    // TODO(port): gmatch_aux needs userdata access via state.to_userdata(upvalue_index(3))
-    // The GMatchState holds the iterator position. This requires the upvalue
-    // closure mechanism to be in place.
-    Err(LuaError::runtime(format_args!(
-        "gmatch_aux: userdata upvalue access not yet implemented"
-    )))
+    // C: GMatchState *gm = (GMatchState *)lua_touserdata(L, lua_upvalueindex(3));
+    // Pull the state table from upvalue 1 onto the top of the stack.
+    state.push_value(upvalue_index(1))?;
+    let tbl_idx = state.top();
+
+    // Read t[1] = src, t[2] = pat, t[3] = pos, t[4] = lastmatch.
+    state.raw_geti(tbl_idx, 1)?;
+    let s: Vec<u8> = state.to_lua_string_bytes(-1).unwrap_or_default();
+    state.pop_n(1);
+    state.raw_geti(tbl_idx, 2)?;
+    let p: Vec<u8> = state.to_lua_string_bytes(-1).unwrap_or_default();
+    state.pop_n(1);
+    state.raw_geti(tbl_idx, 3)?;
+    let pos = state.to_integer_x(-1).unwrap_or(1);
+    state.pop_n(1);
+    state.raw_geti(tbl_idx, 4)?;
+    let lastmatch_raw = state.to_integer_x(-1).unwrap_or(0);
+    state.pop_n(1);
+    let last_match: Option<usize> = if lastmatch_raw <= 0 {
+        None
+    } else {
+        Some((lastmatch_raw - 1) as usize)
+    };
+
+    let ls = s.len();
+    let start_pos = if pos < 1 { 0usize } else { (pos - 1) as usize };
+
+    let mut ms = MatchState::new(&s, &p);
+
+    // C: for (src = gm->src; src <= gm->ms.src_end; src++)
+    let mut src = start_pos;
+    while src <= ls {
+        // C: reprepstate(&gm->ms);
+        ms.reset_level();
+        // C: if ((e = match(&gm->ms, src, gm->p)) != NULL && e != gm->lastmatch)
+        if let Some(e) = match_pat(&mut ms, src, 0)? {
+            if Some(e) != last_match {
+                // C: gm->src = gm->lastmatch = e;
+                // Write back into the state table. The table is still on top of
+                // the stack at tbl_idx.
+                state.push(LuaValue::Int((e + 1) as i64));
+                state.raw_seti(tbl_idx, 3)?;
+                state.push(LuaValue::Int((e + 1) as i64));
+                state.raw_seti(tbl_idx, 4)?;
+                // Pop the state table before pushing captures.
+                state.pop_n(1);
+                // C: return push_captures(&gm->ms, src, e);
+                return push_captures(state, &ms, src, e);
+            }
+        }
+        src += 1;
+    }
+
+    // C: return 0;  /* not found */
+    state.pop_n(1);
+    Ok(0)
 }
 
 /// `string.gmatch(s, pattern [, init])` — return an iterator for all matches.
 ///
 /// C: `static int gmatch(lua_State *L)`
 ///
-/// TODO(port): The C code stores GMatchState in a lua_newuserdatauv and creates
-/// a C closure over 3 upvalues. Implementing this faithfully requires Lua
-/// userdata and C-closure support in LuaState.
+/// PORT NOTE: C uses `lua_newuserdatauv` for the GMatchState plus a 3-upvalue
+/// C closure. Phase-A LuaCClosure upvalues are immutable, so we collapse the
+/// state into a 4-element Lua table held in a single upvalue (see
+/// `gmatch_aux`).
 pub fn gmatch(state: &mut LuaState) -> Result<usize, LuaError> {
-    let s = state.check_arg_string(1)?;
-    let p = state.check_arg_string(2)?;
+    let s: Vec<u8> = state.check_arg_string(1)?.to_vec();
+    let p: Vec<u8> = state.check_arg_string(2)?.to_vec();
     let ls = s.len();
+    // C: size_t init = posrelatI(luaL_optinteger(L, 3, 1), ls) - 1;
     let init_raw = state.opt_arg_integer(3, 1)?;
-    let init = pos_relat_i(init_raw, ls).saturating_sub(1).min(ls + 1);
+    let mut init = pos_relat_i(init_raw, ls).saturating_sub(1);
+    // C: if (init > ls) init = ls + 1;
+    if init > ls {
+        init = ls + 1;
+    }
 
-    // C: lua_settop(L, 2);  (keep strings to avoid GC during iteration)
+    // C: lua_settop(L, 2);
     state.set_top(2);
 
-    // TODO(port): Create a GMatchState userdata and push a C closure wrapping
-    // gmatch_aux with 3 upvalues (s, p, gm). Requires userdata + cclosure support.
-    // For now, push nil as placeholder.
-    state.push(LuaValue::Nil);
+    // Build the iterator-state table: t = {src, pat, pos, lastmatch}.
+    state.create_table(4, 0)?;
+    let tbl_idx = state.top();
+    state.push_bytes(&s)?;
+    state.raw_seti(tbl_idx, 1)?;
+    state.push_bytes(&p)?;
+    state.raw_seti(tbl_idx, 2)?;
+    state.push(LuaValue::Int((init + 1) as i64));
+    state.raw_seti(tbl_idx, 3)?;
+    state.push(LuaValue::Int(0));
+    state.raw_seti(tbl_idx, 4)?;
+
+    // C: lua_pushcclosure(L, gmatch_aux, 3);
+    // Our version uses 1 upvalue (the state table) instead of 3.
+    state.push_c_closure(gmatch_aux, 1)?;
     Ok(1)
 }
 

@@ -404,12 +404,39 @@ impl LuaState {
     /// (`"true"`/`"false"`/`"nil"`, `%I` integers, `%.14g` floats); for other
     /// reference types the result is `"<typename>: 0x<hex pointer>"`.
     ///
-    /// TODO(port): the `__tostring` metamethod path is not yet wired —
-    /// `luaL_callmeta` has no Rust analogue here yet. When it lands, prefer
-    /// the metamethod result over the default formatting below.
+    /// If the value has a `__tostring` metamethod, it is invoked first and its
+    /// (string) result is used in place of the default formatting (matching
+    /// C: `luaL_callmeta(L, idx, "__tostring")` inside `luaL_tolstring`).
     pub fn to_display_string(&mut self, idx: i32) -> Result<Vec<u8>, LuaError> {
         let abs = abs_index(self, idx);
         let v = index_to_value(self, abs);
+        let mt: Option<GcRef<LuaTable>> = match &v {
+            LuaValue::Table(t) => t.metatable(),
+            LuaValue::UserData(u) => u.metatable(),
+            _ => self.global().mt[v.base_type() as usize].clone(),
+        };
+        if let Some(mt_ref) = mt {
+            let key = self.intern_str(b"__tostring")?;
+            let f = mt_ref.get_short_str(&key);
+            if !matches!(f, LuaValue::Nil) {
+                let func_idx = self.top_idx();
+                self.push(f);
+                self.push(v.clone());
+                if self.current_ci().is_lua_code() {
+                    self.do_call(func_idx, 1)?;
+                } else {
+                    self.do_call_no_yield(func_idx, 1)?;
+                }
+                let top = self.top_idx();
+                let result = self.get_at(StackIdx(top.0 - 1));
+                if let LuaValue::Str(s) = result {
+                    return Ok(s.as_bytes().to_vec());
+                }
+                return Err(LuaError::runtime(format_args!(
+                    "'__tostring' must return a string"
+                )));
+            }
+        }
         let bytes: Vec<u8> = match &v {
             LuaValue::Str(s) => {
                 let out = s.as_bytes().to_vec();
