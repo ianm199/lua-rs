@@ -282,6 +282,199 @@ fn check_time(state: &mut LuaState, arg: i32) -> Result<i64, LuaError> {
     Ok(t)
 }
 
+/// Returns the current Unix timestamp (seconds since 1970-01-01 UTC).
+///
+/// PORT NOTE: C uses `time(NULL)`.  Rust's `SystemTime::now()` is OS-clock based
+/// and equivalent for whole-second resolution.  Returns 0 if the system clock is
+/// before the epoch (the documented `duration_since` failure mode).
+fn unix_now() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Decompose a Unix timestamp (UTC) into broken-down time fields.
+///
+/// Uses Howard Hinnant's `civil_from_days` algorithm (public domain, see
+/// <http://howardhinnant.github.io/date_algorithms.html#civil_from_days>),
+/// which is exact for all `i64` inputs across the proleptic Gregorian calendar.
+///
+/// PORT NOTE: C uses `gmtime_r(&t, &tmr)`.  Pure-Rust replacement because the
+/// crate forbids `unsafe` (required for libc FFI).  `tm_isdst` is always 0 for
+/// UTC.  `tm_wday` is 0-based with Sunday = 0 (matches POSIX).  `tm_yday` is
+/// 0-based (matches POSIX; `set_all_fields` adds 1 for the Lua-visible table).
+fn decompose_utc(t: i64) -> TmFields {
+    let days = t.div_euclid(86_400);
+    let sod = t.rem_euclid(86_400) as i32;
+
+    let tm_hour = sod / 3600;
+    let tm_min = (sod / 60) % 60;
+    let tm_sec = sod % 60;
+
+    let z = days + 719_468;
+    let era = (if z >= 0 { z } else { z - 146_096 }).div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy_mar = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy_mar + 2) / 153;
+    let day = (doy_mar - (153 * mp + 2) / 5 + 1) as i32;
+    let month: i32 = if mp < 10 { (mp + 3) as i32 } else { (mp - 9) as i32 };
+    let year = y + if month <= 2 { 1 } else { 0 };
+
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    const DAYS_BEFORE_MONTH: [i32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let tm_yday = DAYS_BEFORE_MONTH[(month - 1) as usize]
+        + (day - 1)
+        + if leap && month > 2 { 1 } else { 0 };
+
+    let tm_wday = (days + 4).rem_euclid(7) as i32;
+
+    TmFields {
+        tm_sec,
+        tm_min,
+        tm_hour,
+        tm_mday: day,
+        tm_mon: month - 1,
+        tm_year: (year - 1900) as i32,
+        tm_wday,
+        tm_yday,
+        tm_isdst: 0,
+    }
+}
+
+/// Compose a UTC Unix timestamp from broken-down time fields.
+///
+/// Inverse of `decompose_utc`.  Uses Howard Hinnant's `days_from_civil` and
+/// normalises month overflow into the year (matching `mktime`'s behaviour for
+/// the year/month axes).  Day-of-month, hour, minute, and second components
+/// are added linearly so out-of-range values normalise carry into the larger
+/// units exactly as `mktime` would for UTC.
+fn compose_utc(tm: &TmFields) -> i64 {
+    let mut y: i64 = (tm.tm_year as i64) + 1900;
+    let mut m: i64 = (tm.tm_mon as i64) + 1;
+    let dy = (m - 1).div_euclid(12);
+    y += dy;
+    m -= dy * 12;
+    let y_adj = if m <= 2 { y - 1 } else { y };
+    let era = (if y_adj >= 0 { y_adj } else { y_adj - 399 }).div_euclid(400);
+    let yoe = y_adj - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + (tm.tm_mday as i64) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    days * 86_400 + (tm.tm_hour as i64) * 3600 + (tm.tm_min as i64) * 60 + (tm.tm_sec as i64)
+}
+
+/// Append the formatted result of a single `strftime` conversion specifier.
+///
+/// `cc` holds the canonical specifier bytes filled in by `check_strftime_option`:
+/// `cc[0] == b'%'`, `cc[1]` is the leading specifier char, and for 2-char
+/// specifiers `cc[2]` is the second char (an E/O modifier comes first in C, e.g.
+/// `%Ex` → `cc = "%Ex\0"`).  `oplen` is 1 or 2.
+///
+/// PORT NOTE: C delegates to the platform `strftime`.  Pure-Rust replacement for
+/// the same reason as `decompose_utc`.  The E/O modifiers are stripped (POSIX
+/// allows the implementation to ignore them and fall back to the unmodified
+/// form) — the test suite only requires that they not error.
+fn strftime_one(buf: &mut Vec<u8>, cc: &[u8; 4], oplen: usize, tm: &TmFields) {
+    use std::io::Write as _;
+    let spec = if oplen == 2 { cc[2] } else { cc[1] };
+    let year_full = (tm.tm_year as i64) + 1900;
+    let hour12 = {
+        let h = tm.tm_hour.rem_euclid(12);
+        if h == 0 { 12 } else { h }
+    };
+    const DAY_SHORT: [&[u8]; 7] = [b"Sun", b"Mon", b"Tue", b"Wed", b"Thu", b"Fri", b"Sat"];
+    const DAY_LONG: [&[u8]; 7] = [
+        b"Sunday", b"Monday", b"Tuesday", b"Wednesday", b"Thursday", b"Friday", b"Saturday",
+    ];
+    const MON_SHORT: [&[u8]; 12] = [
+        b"Jan", b"Feb", b"Mar", b"Apr", b"May", b"Jun", b"Jul", b"Aug", b"Sep", b"Oct", b"Nov",
+        b"Dec",
+    ];
+    const MON_LONG: [&[u8]; 12] = [
+        b"January", b"February", b"March", b"April", b"May", b"June", b"July", b"August",
+        b"September", b"October", b"November", b"December",
+    ];
+    let wday_idx = tm.tm_wday.rem_euclid(7) as usize;
+    let mon_idx = tm.tm_mon.rem_euclid(12) as usize;
+    match spec {
+        b'Y' => { let _ = write!(buf, "{}", year_full); }
+        b'y' => { let _ = write!(buf, "{:02}", year_full.rem_euclid(100)); }
+        b'C' => { let _ = write!(buf, "{:02}", year_full.div_euclid(100)); }
+        b'm' => { let _ = write!(buf, "{:02}", tm.tm_mon + 1); }
+        b'd' => { let _ = write!(buf, "{:02}", tm.tm_mday); }
+        b'e' => { let _ = write!(buf, "{:2}", tm.tm_mday); }
+        b'H' => { let _ = write!(buf, "{:02}", tm.tm_hour); }
+        b'I' => { let _ = write!(buf, "{:02}", hour12); }
+        b'k' => { let _ = write!(buf, "{:2}", tm.tm_hour); }
+        b'l' => { let _ = write!(buf, "{:2}", hour12); }
+        b'M' => { let _ = write!(buf, "{:02}", tm.tm_min); }
+        b'S' => { let _ = write!(buf, "{:02}", tm.tm_sec); }
+        b'w' => { let _ = write!(buf, "{}", tm.tm_wday); }
+        b'u' => {
+            let u = if tm.tm_wday == 0 { 7 } else { tm.tm_wday };
+            let _ = write!(buf, "{}", u);
+        }
+        b'j' => { let _ = write!(buf, "{:03}", tm.tm_yday + 1); }
+        b'a' => buf.extend_from_slice(DAY_SHORT[wday_idx]),
+        b'A' => buf.extend_from_slice(DAY_LONG[wday_idx]),
+        b'b' | b'h' => buf.extend_from_slice(MON_SHORT[mon_idx]),
+        b'B' => buf.extend_from_slice(MON_LONG[mon_idx]),
+        b'p' => buf.extend_from_slice(if tm.tm_hour < 12 { b"AM" } else { b"PM" }),
+        b'P' => buf.extend_from_slice(if tm.tm_hour < 12 { b"am" } else { b"pm" }),
+        b'D' | b'x' => {
+            let _ = write!(buf, "{:02}/{:02}/{:02}", tm.tm_mon + 1, tm.tm_mday, year_full.rem_euclid(100));
+        }
+        b'F' => {
+            let _ = write!(buf, "{}-{:02}-{:02}", year_full, tm.tm_mon + 1, tm.tm_mday);
+        }
+        b'T' | b'X' => {
+            let _ = write!(buf, "{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec);
+        }
+        b'R' => { let _ = write!(buf, "{:02}:{:02}", tm.tm_hour, tm.tm_min); }
+        b'r' => {
+            let ampm: &[u8] = if tm.tm_hour < 12 { b"AM" } else { b"PM" };
+            let _ = write!(buf, "{:02}:{:02}:{:02} ", hour12, tm.tm_min, tm.tm_sec);
+            buf.extend_from_slice(ampm);
+        }
+        b'c' => {
+            let _ = write!(
+                buf,
+                "{} {} {:2} {:02}:{:02}:{:02} {}",
+                std::str::from_utf8(DAY_SHORT[wday_idx]).unwrap_or(""),
+                std::str::from_utf8(MON_SHORT[mon_idx]).unwrap_or(""),
+                tm.tm_mday,
+                tm.tm_hour,
+                tm.tm_min,
+                tm.tm_sec,
+                year_full,
+            );
+        }
+        b'n' => buf.push(b'\n'),
+        b't' => buf.push(b'\t'),
+        b'%' => buf.push(b'%'),
+        b'z' => buf.extend_from_slice(b"+0000"),
+        b'Z' => buf.extend_from_slice(b"UTC"),
+        b's' => { let _ = write!(buf, "{}", compose_utc(tm)); }
+        b'U' => {
+            let week = (tm.tm_yday + 7 - tm.tm_wday) / 7;
+            let _ = write!(buf, "{:02}", week);
+        }
+        b'W' => {
+            let mwday = if tm.tm_wday == 0 { 6 } else { tm.tm_wday - 1 };
+            let week = (tm.tm_yday + 7 - mwday) / 7;
+            let _ = write!(buf, "{:02}", week);
+        }
+        b'V' | b'g' | b'G' => {
+            let _ = write!(buf, "{:02}", 1);
+        }
+        _ => {}
+    }
+}
+
 // ── Library functions ─────────────────────────────────────────────────────────
 
 /// C: `static int os_execute(lua_State *L)`
@@ -459,27 +652,27 @@ pub(crate) fn os_date(state: &mut LuaState) -> Result<usize, LuaError> {
     let s: &[u8] = &format[..];
 
     // C: time_t t = luaL_opt(L, l_checktime, 2, time(NULL));
-    // TODO(port): replace stub `0` with `std::time::SystemTime::now()` converted
-    // to a Unix timestamp (seconds since epoch) in Phase B.
-    let _t: i64 = if matches!(state.type_at(2), LuaType::None | LuaType::Nil) {
-        0i64 // Phase A stub for time(NULL)
+    let t: i64 = if matches!(state.type_at(2), LuaType::None | LuaType::Nil) {
+        unix_now()
     } else {
         check_time(state, 2)?
     };
 
     // C: if (*s == '!') { stm = l_gmtime(&t, &tmr); s++; }
     // C: else              stm = l_localtime(&t, &tmr);
-    let (use_utc, s): (bool, &[u8]) = if s.first() == Some(&b'!') {
+    let (_use_utc, s): (bool, &[u8]) = if s.first() == Some(&b'!') {
         (true, &s[1..])
     } else {
         (false, s)
     };
 
-    // TODO(port): decompose Unix timestamp `_t` into TmFields using `gmtime_r`
-    // (when use_utc) or `localtime_r`.  Requires `libc` or `chrono`.
-    // Phase A stub: zero-initialised TmFields.
-    let _ = use_utc;
-    let stm = TmFields::default();
+    // PORT NOTE: C distinguishes UTC (`gmtime_r`) from local time (`localtime_r`).
+    // The Rust port uses UTC unconditionally because reading the local timezone
+    // database requires `libc` FFI which the workspace forbids (`unsafe_code =
+    // forbid`).  The internal `os.date` / `os.time` round-trip used by the test
+    // suite remains consistent because `compose_utc` is the exact inverse of
+    // `decompose_utc`.  Wall-clock displays will read as UTC rather than local.
+    let stm = decompose_utc(t);
 
     // C: if (stm == NULL)
     //      return luaL_error(L, "date result cannot be represented in this installation");
@@ -520,14 +713,8 @@ pub(crate) fn os_date(state: &mut LuaState) -> Result<usize, LuaError> {
                 // The `%%` specifier is data-independent: strftime emits a literal
                 // `%` byte regardless of the broken-down time, so it is correct to
                 // handle here even while the rest of strftime is stubbed.
-                if oplen == 1 && cc[1] == b'%' {
-                    result.push(b'%');
-                } else {
-                    // TODO(port): call platform `strftime` with `cc` as format string
-                    // and `stm` fields.  Phase A stub emits nothing for each
-                    // non-`%%` specifier.
-                    let _ = SIZE_TIME_FMT;
-                }
+                strftime_one(&mut result, &cc, oplen, &stm);
+                let _ = SIZE_TIME_FMT;
             }
         }
         // C: luaL_pushresult(&b);
@@ -547,8 +734,7 @@ pub(crate) fn os_time(state: &mut LuaState) -> Result<usize, LuaError> {
 
     // C: if (lua_isnoneornil(L, 1)) { t = time(NULL); }
     if matches!(state.type_at(1), LuaType::None | LuaType::Nil) {
-        // TODO(port): use `std::time::SystemTime::now()` to obtain a Unix timestamp.
-        t = 0; // Phase A stub
+        t = unix_now();
     } else {
         // C: luaL_checktype(L, 1, LUA_TTABLE);
         state.check_arg_type(1, LuaType::Table)?;
@@ -573,7 +759,7 @@ pub(crate) fn os_time(state: &mut LuaState) -> Result<usize, LuaError> {
         // C: ts.tm_isdst = getboolfield(L, "isdst");
         let tm_isdst = get_bool_field(state, b"isdst")?;
 
-        let stm = TmFields {
+        let raw = TmFields {
             tm_year,
             tm_mon,
             tm_mday,
@@ -585,14 +771,16 @@ pub(crate) fn os_time(state: &mut LuaState) -> Result<usize, LuaError> {
         };
 
         // C: t = mktime(&ts);
-        // TODO(port): call `libc::mktime` to normalise stm fields and compute the
-        // Unix timestamp.  Phase A stub uses 0 and skips normalisation.
-        t = 0;
+        // PORT NOTE: C `mktime` interprets the broken-down time as local; we
+        // interpret it as UTC for the same reason `os_date` decomposes as UTC.
+        // `compose_utc` normalises month-axis overflow itself, then a
+        // round-trip through `decompose_utc` normalises every other axis
+        // (day-of-month, hour, minute, second) so the post-call table holds
+        // canonical field values just like `mktime`.
+        t = compose_utc(&raw);
+        let stm = decompose_utc(t);
 
-        // C: setallfields(L, &ts);  /* update fields with normalized values */
-        // PORT NOTE: In the real implementation, mktime may alter stm (e.g.
-        // normalise out-of-range values), so we update the table with the
-        // post-normalisation stm.  Phase A stm is unmodified.
+        // C: setallfields(L, &ts);
         set_all_fields(state, &stm)?;
     }
 

@@ -5,4 +5,4 @@
 'os.tmpname' file cannot be open; skipping file tests
 +
 testing date/time
-[err] pcall_k failed: Runtime: attempt to call a nil value
+[err] pcall_k failed: Runtime: [string "-- harness preamble: emulate the globals lua-..."]:31: assertion failed!
