@@ -1,0 +1,79 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 523069,
+  "duration_api_ms": 442507,
+  "ttft_ms": 2755,
+  "num_turns": 72,
+  "result": "Build is green. No temporary `eprintln` was added.\n\n## Report\n\n**Root cause:** `push_c_function` in `crates/lua-stdlib/src/state_stub.rs:329` (and the n=0 branch of `push_cclosure` in `crates/lua-vm/src/api.rs:1135`) always appended the function pointer to `GlobalState.c_functions` and used the fresh index as the `LightC` payload — so every call to `ipairs(...)` produced a new `LuaCFnPtr` index, and the resulting `LuaClosure::LightC(idx)` values compared unequal even though they wrapped the same C function. This broke `assert(ipairs{} == ipairs{})` at nextvar.lua:72 (line 81 of the combined preamble+test file), which is the assertion that surfaced in the failure tail. C-Lua's `lua_pushcclosure(L, f, 0)` writes the function pointer directly with `setfvalue`, so two pushes of the same `f` are `==`.\n\n**Fix:** Dedup the registry lookup. Before pushing, scan `c_functions` for an existing entry equal to `f`; reuse its index if found, otherwise append. Applied in both `state_stub.rs::push_c_function` and `api.rs::push_cclosure` (n=0 branch only; closures with upvalues remain distinct objects, matching C-Lua's `luaF_newCclosure` semantics).\n\n**New state:** The original `ipairs{} == ipairs{}` assertion now passes. The test progresses past the table-sizes skip notice and runs ~hundreds more bytecode steps before hitting a new, unrelated panic at `crates/lua-vm/src/state.rs:1143` (\"index out of bounds: the len is 85 but the index is 272\"). That is a separate downstream bug for the next iteration. `cargo build -p lua-cli` is green.",
+  "stop_reason": "end_turn",
+  "session_id": "75cae0f6-86fc-4c68-a921-23d429fdead3",
+  "total_cost_usd": 3.4748522499999996,
+  "usage": {
+    "input_tokens": 77,
+    "cache_creation_input_tokens": 74307,
+    "cache_read_input_tokens": 4963421,
+    "output_tokens": 21070,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 74307,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 630,
+        "cache_read_input_tokens": 92696,
+        "cache_creation_input_tokens": 510,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 510
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1508,
+      "outputTokens": 16,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001588,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 77,
+      "outputTokens": 21070,
+      "cacheReadInputTokens": 4963421,
+      "cacheCreationInputTokens": 74307,
+      "webSearchRequests": 0,
+      "costUSD": 3.4732642499999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01TU1fAws5bU1uyWY5kKJR87",
+      "tool_input": {
+        "command": "env | grep -i dump; echo ---; env | grep -i lua | head -5",
+        "description": "Check env vars"
+      }
+    }
+  ],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "f091bad9-7f57-45c5-9052-e947adb4f8b3"
+}

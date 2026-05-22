@@ -449,3 +449,13 @@
 [2026-05-17T19:44:45Z mega]   [O7.D6] DEBUG dispatch on file: reference/lua-c/testes/calls.lua [parallel]
 [2026-05-17T19:45:13Z mega]   [O7.D7] DEBUG dispatch on file: reference/lua-c/testes/constructs.lua [parallel]
 [2026-05-17T19:47:52Z mega]   [O7.D8] DEBUG dispatch on file: reference/lua-c/testes/nextvar.lua [parallel]
+[2026-05-17T19:56:37Z mega]   [O7.D4] DEBUG done. iter cost=$[2026-05-17T19:42:27Z  total=$35.9942
+[2026-05-17T19:56:37Z mega]   [O7.D2.4319235] DEBUG done. iter cost=$reference/lua-c/testes/tpack.lua  total=$35.9942
+[2026-05-17T19:56:37Z mega]   [O7.D1] DEBUG done. iter cost=$3.94040475  total=$39.9346
+[2026-05-17T19:56:37Z mega]   [O7.D2] DEBUG done. iter cost=$3.61352425  total=$43.5481
+[2026-05-17T19:56:37Z mega]   [O7.D5] DEBUG done. iter cost=$2.6474474999999997  total=$46.1955
+[2026-05-17T19:56:37Z mega]   [O7.D6] DEBUG done. iter cost=$1.5529877499999998  total=$47.7485
+[2026-05-17T19:56:37Z mega]   [O7.D3] DEBUG done. iter cost=$8.688720500000002  total=$56.4372
+[2026-05-17T19:56:37Z mega]   [O7.D7] DEBUG done. iter cost=$4.7529442500000005  total=$61.1901
+[2026-05-17T19:56:37Z mega]   [O7.D8] DEBUG done. iter cost=$3.4748522499999996  total=$64.6650
+[2026-05-17T19:56:37Z mega] ─── outer round 8 (spent: $64.6650) ───

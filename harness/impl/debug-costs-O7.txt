@@ -6,3 +6,4 @@
 6 1.5529877499999998 reference/lua-c/testes/calls.lua
 3 8.688720500000002 reference/lua-c/testes/math.lua
 7 4.7529442500000005 reference/lua-c/testes/constructs.lua
+8 3.4748522499999996 reference/lua-c/testes/nextvar.lua
