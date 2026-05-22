@@ -100,11 +100,14 @@ if [ "$MODE" = "pilot" ]; then
 fi
 
 # Phase A file list — derived from ANALYSES/file_deps.txt.
+# Per PORT_STRATEGY §4: Phase A scope = lexer + parser + bytecode emitter
+# + the lua-vm support files (lobject, ltable, lstring, lstate, ldo, lvm,
+# etc. — i.e. everything we need translated before we can compile per-crate
+# in Phase B). lua-gc and lua-coro are deferred to Phases D/E.
 if [ "$MODE" = "phase" ] && [ "$PHASE" = "A" ]; then
-    # Phase A = lexer + parser + bytecode + a handful of supporting files in lua-vm
     while IFS=$'\t' read -r cfile crate _ ; do
         case "$crate" in
-            lua-lex|lua-parse|lua-code) FILES+=("$cfile") ;;
+            lua-lex|lua-parse|lua-code|lua-vm) FILES+=("$cfile") ;;
         esac
     done < <(awk -F'[[:space:]]+' '!/^#/ && NF>=2 {print $1"\t"$2}' ANALYSES/file_deps.txt)
 fi
@@ -236,15 +239,18 @@ Use the Translator subagent (.claude/agents/translator.md). When done, stop — 
     local syntax_ok="true"
     local syntax_residual=0
     if [ -f "$rust_full" ]; then
+        # Use per-invocation tempfile so parallel workers don't race
+        local rmeta_tmp
+        rmeta_tmp=$(mktemp -t lua-rs-syntax.XXXXXX)
         rustc --edition 2021 --crate-type=lib --emit=metadata \
-            -o /tmp/lua-rs-syntax-check.rmeta \
+            -o "$rmeta_tmp" \
             "$rust_full" 2>"$syntax_log" >/dev/null || true
         local namefilt='cannot find|unresolved|no `[A-Z][a-zA-Z_]*`|use of undeclared|cannot find type|cannot find macro|cannot find function|cannot find value|cannot find trait|cannot find derive|associated function|associated item|cannot find attribute|aborting due to'
         syntax_residual=$(grep '^error' "$syntax_log" 2>/dev/null | grep -vE "$namefilt" | wc -l | tr -d ' ')
         if [ "$syntax_residual" -gt 0 ]; then
             syntax_ok="false"
         fi
-        rm -f /tmp/lua-rs-syntax-check.rmeta
+        rm -f "$rmeta_tmp"
     fi
 
     local cost
