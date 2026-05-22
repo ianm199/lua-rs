@@ -1204,7 +1204,16 @@ impl LuaState {
     pub fn table_array_set<T>(&mut self, _t: T, _idx: usize, _v: LuaValue) -> Result<(), LuaError> { todo!("phase-b: table_array_set") }
     pub fn table_ensure_array<T>(&mut self, _t: T, _n: usize) -> Result<(), LuaError> { todo!("phase-b: table_ensure_array") }
     pub fn table_length<T>(&mut self, _t: T) -> Result<i64, LuaError> { todo!("phase-b: table_length") }
-    pub fn table_metatable<T: ?Sized>(&mut self, _t: &T) -> Option<GcRef<LuaTable>> { todo!("phase-b: table_metatable") }
+    pub fn table_metatable(&mut self, v: &LuaValue) -> Option<GcRef<LuaTable>> {
+        match v {
+            LuaValue::Table(t) => t.metatable(),
+            LuaValue::UserData(u) => u.metatable(),
+            other => {
+                let idx = other.base_type() as usize;
+                self.global().mt[idx].clone()
+            }
+        }
+    }
     pub fn table_resize(&mut self, _t: &GcRef<LuaTable>, _na: usize, _nh: usize) -> Result<(), LuaError> { todo!("phase-b: table_resize") }
     pub fn table_getn(&self, _t: &GcRef<LuaTable>) -> i64 { todo!("phase-b: table_getn") }
 

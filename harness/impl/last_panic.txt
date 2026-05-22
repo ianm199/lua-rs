@@ -1,1 +1,1 @@
-LuaTable::get
+table_metatable
