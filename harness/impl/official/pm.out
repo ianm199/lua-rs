@@ -1,193 +1,181 @@
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
-[cg_free_reg-bug] reg=34 freereg=36 nactvar=32 pc=2278 previousline=422
-backtrace:
-   0: std::backtrace_rs::backtrace::libunwind::trace
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/../../backtrace/src/backtrace/libunwind.rs:117:9
-   1: std::backtrace_rs::backtrace::trace_unsynchronized
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/../../backtrace/src/backtrace/mod.rs:66:14
-   2: std::backtrace::Backtrace::create
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/backtrace.rs:331:13
-   3: lua_parse::cg_free_reg
-             at ./crates/lua-parse/src/lib.rs:634:41
-   4: lua_parse::cg_free_exps
-   5: lua_parse::cg_emit_eq
-             at ./crates/lua-parse/src/lib.rs:899:5
-   6: lua_parse::cg_posfix_fold
-             at ./crates/lua-parse/src/lib.rs:748:16
-   7: lua_parse::subexpr
-             at ./crates/lua-parse/src/lib.rs:3594:9
-   8: lua_parse::expr
-             at ./crates/lua-parse/src/lib.rs:3605:5
-   9: lua_parse::explist
-             at ./crates/lua-parse/src/lib.rs:3334:5
-  10: lua_parse::funcargs
-             at ./crates/lua-parse/src/lib.rs:3354:17
-  11: lua_parse::suffixedexp
-             at ./crates/lua-parse/src/lib.rs:3453:17
-  12: lua_parse::exprstat
-             at ./crates/lua-parse/src/lib.rs:4199:5
-  13: lua_parse::statement
-             at ./crates/lua-parse/src/lib.rs:4320:13
-  14: lua_parse::statlist
-             at ./crates/lua-parse/src/lib.rs:3030:9
-  15: lua_parse::block
-             at ./crates/lua-parse/src/lib.rs:3614:5
-  16: lua_parse::statement
-             at ./crates/lua-parse/src/lib.rs:4283:13
-  17: lua_parse::statlist
-             at ./crates/lua-parse/src/lib.rs:3030:9
-  18: lua_parse::mainfunc
-             at ./crates/lua-parse/src/lib.rs:4361:5
-  19: lua_parse::parse
-             at ./crates/lua-parse/src/lib.rs:4445:5
-  20: lua_rs::parser_hook
-             at ./crates/lua-cli/src/main.rs:54:17
-  21: lua_vm::do_::parse_stub
-             at ./crates/lua-vm/src/do_.rs:62:16
-  22: lua_vm::do_::f_parser
-             at ./crates/lua-vm/src/do_.rs:1630:9
-  23: lua_vm::do_::protected_parser::{{closure}}
-             at ./crates/lua-vm/src/do_.rs:1678:35
-  24: lua_vm::do_::raw_run_protected
-             at ./crates/lua-vm/src/do_.rs:212:18
-  25: lua_vm::do_::pcall
-             at ./crates/lua-vm/src/do_.rs:1521:28
-  26: lua_vm::do_::protected_parser
-             at ./crates/lua-vm/src/do_.rs:1678:18
-  27: lua_vm::state::LuaState::protected_parser
-             at ./crates/lua-vm/src/state.rs:1505:9
-  28: lua_vm::api::load
-             at ./crates/lua-vm/src/api.rs:1663:24
-  29: <lua_vm::state::LuaState as lua_stdlib::state_stub::LuaStateStubExt>::load
-             at ./crates/lua-stdlib/src/state_stub.rs:375:22
-  30: lua_stdlib::auxlib::load_bufferx
-             at ./crates/lua-stdlib/src/auxlib.rs:1058:20
-  31: lua_rs::main::{{closure}}
-             at ./crates/lua-cli/src/main.rs:126:22
-  32: core::ops::function::FnOnce::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
-  33: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panic/unwind_safe.rs:274:9
-  34: std::panicking::catch_unwind::do_call
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:581:40
-  35: std::panicking::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:544:19
-  36: std::panic::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panic.rs:359:14
-  37: lua_rs::main
-             at ./crates/lua-cli/src/main.rs:117:18
-  38: core::ops::function::FnOnce::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
-  39: std::sys::backtrace::__rust_begin_short_backtrace
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/sys/backtrace.rs:160:18
-  40: std::rt::lang_start::{{closure}}
-  41: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:287:21
-  42: std::panicking::catch_unwind::do_call
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:581:40
-  43: std::panicking::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:544:19
-  44: std::panic::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panic.rs:359:14
-  45: std::rt::lang_start_internal::{{closure}}
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/rt.rs:175:24
-  46: std::panicking::catch_unwind::do_call
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:581:40
-  47: std::panicking::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:544:19
-  48: std::panic::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panic.rs:359:14
-  49: std::rt::lang_start_internal
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/rt.rs:171:5
-  50: _main
+[cg_emit_eq] e1=NonReloc info=0 e2=NonReloc info=1 r1=0 r2=1 freereg=2 nactvar=0 line=8
+[cg_emit_eq] e1=NonReloc info=2 e2=KInt info=0 r1=2 r2=128 freereg=5 nactvar=4 line=30
+[cg_emit_eq] e1=NonReloc info=3 e2=KInt info=0 r1=3 r2=127 freereg=5 nactvar=4 line=30
+[cg_emit_eq] e1=NonReloc info=2 e2=KInt info=0 r1=2 r2=128 freereg=5 nactvar=4 line=32
+[cg_emit_eq] e1=NonReloc info=3 e2=KInt info=0 r1=3 r2=127 freereg=5 nactvar=4 line=32
+[cg_emit_eq] e1=NonReloc info=2 e2=KInt info=0 r1=2 r2=128 freereg=5 nactvar=4 line=34
+[cg_emit_eq] e1=NonReloc info=3 e2=KInt info=0 r1=3 r2=128 freereg=5 nactvar=4 line=34
+[cg_emit_eq] e1=NonReloc info=2 e2=KInt info=0 r1=2 r2=132 freereg=5 nactvar=4 line=36
+[cg_emit_eq] e1=NonReloc info=3 e2=KInt info=0 r1=3 r2=134 freereg=5 nactvar=4 line=36
+[cg_emit_eq] e1=NonReloc info=2 e2=KInt info=0 r1=2 r2=136 freereg=5 nactvar=4 line=38
+[cg_emit_eq] e1=NonReloc info=3 e2=KInt info=0 r1=3 r2=138 freereg=5 nactvar=4 line=38
+[cg_emit_eq] e1=NonReloc info=2 e2=KInt info=0 r1=2 r2=136 freereg=5 nactvar=4 line=40
+[cg_emit_eq] e1=NonReloc info=3 e2=KInt info=0 r1=3 r2=138 freereg=5 nactvar=4 line=40
+[cg_emit_eq] e1=NonReloc info=2 e2=KInt info=0 r1=2 r2=138 freereg=5 nactvar=4 line=42
+[cg_emit_eq] e1=NonReloc info=3 e2=KInt info=0 r1=3 r2=138 freereg=5 nactvar=4 line=42
+[cg_emit_eq] e1=NonReloc info=5 e2=KInt info=0 r1=5 r2=131 freereg=6 nactvar=4 line=45
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=48
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=49
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=50
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=52
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=53
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=56
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=57
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=58
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=60
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=61
+[cg_emit_eq] e1=NonReloc info=5 e2=NonReloc info=6 r1=5 r2=6 freereg=7 nactvar=4 line=63
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=79
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=80
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=81
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=82
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=83
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=84
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=85
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=88
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=89
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=90
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=91
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=94
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=95
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=97
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=98
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=99
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=100
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=101
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=102
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=103
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=104
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=105
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=106
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=107
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=108
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=109
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=110
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=111
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=112
+[cg_emit_eq] e1=NonReloc info=6 e2=NonReloc info=7 r1=6 r2=7 freereg=8 nactvar=5 line=113
+[cg_emit_eq] e1=NonReloc info=7 e2=NonReloc info=8 r1=7 r2=8 freereg=9 nactvar=6 line=127
+[cg_emit_eq] e1=NonReloc info=7 e2=NonReloc info=8 r1=7 r2=8 freereg=9 nactvar=6 line=128
+[cg_emit_eq] e1=NonReloc info=7 e2=NonReloc info=8 r1=7 r2=8 freereg=9 nactvar=6 line=129
+[cg_emit_eq] e1=NonReloc info=9 e2=NonReloc info=10 r1=9 r2=10 freereg=11 nactvar=8 line=140
+[cg_emit_eq] e1=NonReloc info=10 e2=KInt info=0 r1=10 r2=138 freereg=11 nactvar=9 line=148
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=150
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=151
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=152
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=153
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=154
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=155
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=156
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=157
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=158
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=161
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=162
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=11 r1=10 r2=11 freereg=12 nactvar=9 line=163
+[cg_emit_eq] e1=NonReloc info=10 e2=KInt info=0 r1=10 r2=128 freereg=11 nactvar=9 line=165
+[cg_emit_eq] e1=NonReloc info=9 e2=NonReloc info=15 r1=9 r2=15 freereg=16 nactvar=14 line=167
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=15 r1=10 r2=15 freereg=16 nactvar=14 line=167
+[cg_emit_eq] e1=NonReloc info=11 e2=NonReloc info=15 r1=11 r2=15 freereg=16 nactvar=14 line=167
+[cg_emit_eq] e1=NonReloc info=12 e2=NonReloc info=15 r1=12 r2=15 freereg=16 nactvar=14 line=167
+[cg_emit_eq] e1=NonReloc info=13 e2=NonReloc info=15 r1=13 r2=15 freereg=16 nactvar=14 line=167
+[cg_emit_eq] e1=NonReloc info=9 e2=NonReloc info=15 r1=9 r2=15 freereg=16 nactvar=14 line=169
+[cg_emit_eq] e1=NonReloc info=10 e2=NonReloc info=15 r1=10 r2=15 freereg=16 nactvar=14 line=169
+[cg_emit_eq] e1=NonReloc info=11 e2=KInt info=0 r1=11 r2=138 freereg=15 nactvar=14 line=169
+[cg_emit_eq] e1=NonReloc info=12 e2=NonReloc info=15 r1=12 r2=15 freereg=16 nactvar=14 line=169
+[cg_emit_eq] e1=NonReloc info=15 e2=NonReloc info=16 r1=15 r2=16 freereg=17 nactvar=14 line=172
+[cg_emit_eq] e1=NonReloc info=15 e2=NonReloc info=16 r1=15 r2=16 freereg=17 nactvar=14 line=173
+[cg_emit_eq] e1=NonReloc info=15 e2=NonReloc info=16 r1=15 r2=16 freereg=17 nactvar=14 line=174
+[cg_emit_eq] e1=NonReloc info=15 e2=NonReloc info=16 r1=15 r2=16 freereg=17 nactvar=14 line=175
+[cg_emit_eq] e1=NonReloc info=9 e2=NonReloc info=16 r1=9 r2=16 freereg=17 nactvar=15 line=178
+[cg_emit_eq] e1=NonReloc info=10 e2=KInt info=0 r1=10 r2=132 freereg=16 nactvar=15 line=178
+[cg_emit_eq] e1=NonReloc info=9 e2=NonReloc info=16 r1=9 r2=16 freereg=17 nactvar=15 line=180
+[cg_emit_eq] e1=NonReloc info=10 e2=KInt info=0 r1=10 r2=129 freereg=16 nactvar=15 line=180
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=181
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=182
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=184
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=185
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=186
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=187
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=188
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=193
+[cg_emit_eq] e1=NonReloc info=15 e2=NonReloc info=19 r1=15 r2=19 freereg=20 nactvar=18 line=202
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=206
+[cg_emit_eq] e1=NonReloc info=17 e2=NonReloc info=18 r1=17 r2=18 freereg=19 nactvar=16 line=212
+[cg_emit_eq] e1=NonReloc info=17 e2=NonReloc info=18 r1=17 r2=18 freereg=19 nactvar=16 line=212
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=17 r1=16 r2=17 freereg=18 nactvar=15 line=217
+[cg_emit_eq] e1=NonReloc info=17 e2=NonReloc info=18 r1=17 r2=18 freereg=19 nactvar=16 line=223
+[cg_emit_eq] e1=NonReloc info=16 e2=NonReloc info=18 r1=16 r2=18 freereg=19 nactvar=17 line=227
+[cg_emit_eq] e1=NonReloc info=4 e2=NonReloc info=5 r1=4 r2=5 freereg=6 nactvar=3 line=233
+[cg_emit_eq] e1=NonReloc info=18 e2=NonReloc info=19 r1=18 r2=19 freereg=21 nactvar=20 line=236
+[cg_emit_eq] e1=NonReloc info=21 e2=KInt info=0 r1=21 r2=128 freereg=22 nactvar=20 line=236
+[cg_emit_eq] e1=NonReloc info=21 e2=KInt info=0 r1=21 r2=130 freereg=22 nactvar=20 line=236
+[cg_emit_eq] e1=NonReloc info=21 e2=KInt info=0 r1=21 r2=131 freereg=22 nactvar=20 line=236
+[cg_emit_eq] e1=NonReloc info=21 e2=KInt info=0 r1=21 r2=131 freereg=22 nactvar=20 line=236
+[cg_emit_eq] e1=NonReloc info=22 e2=NonReloc info=23 r1=22 r2=23 freereg=24 nactvar=21 line=245
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=250
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=254
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=254
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=254
+[cg_emit_eq] e1=NonReloc info=23 e2=KInt info=0 r1=23 r2=130 freereg=24 nactvar=22 line=254
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=258
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=259
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=259
+[cg_emit_eq] e1=NonReloc info=23 e2=NonReloc info=24 r1=23 r2=24 freereg=25 nactvar=22 line=259
+[cg_emit_eq] e1=NonReloc info=25 e2=NonReloc info=23 r1=25 r2=23 freereg=26 nactvar=24 line=287
+[cg_emit_eq] e1=NonReloc info=25 e2=NonReloc info=26 r1=25 r2=26 freereg=27 nactvar=24 line=291
+[cg_emit_eq] e1=NonReloc info=25 e2=NonReloc info=26 r1=25 r2=26 freereg=27 nactvar=24 line=292
+[cg_emit_eq] e1=NonReloc info=25 e2=NonReloc info=26 r1=25 r2=26 freereg=27 nactvar=24 line=293
+[cg_emit_eq] e1=NonReloc info=25 e2=NonReloc info=26 r1=25 r2=26 freereg=27 nactvar=24 line=294
+[cg_emit_eq] e1=NonReloc info=25 e2=NonReloc info=26 r1=25 r2=26 freereg=27 nactvar=24 line=296
+[cg_emit_eq] e1=NonReloc info=25 e2=NonReloc info=26 r1=25 r2=26 freereg=27 nactvar=24 line=299
+[cg_emit_eq] e1=NonReloc info=29 e2=NonReloc info=31 r1=29 r2=31 freereg=32 nactvar=30 line=304
+[cg_emit_eq] e1=NonReloc info=24 e2=KInt info=0 r1=24 r2=133 freereg=26 nactvar=25 line=305
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=311
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=311
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=311
+[cg_emit_eq] e1=NonReloc info=29 e2=NonReloc info=33 r1=29 r2=33 freereg=34 nactvar=30 line=315
+[cg_emit_eq] e1=NonReloc info=26 e2=KInt info=0 r1=26 r2=127 freereg=27 nactvar=25 line=317
+[cg_emit_eq] e1=NonReloc info=33 e2=NonReloc info=34 r1=33 r2=34 freereg=35 nactvar=31 line=324
+[cg_emit_eq] e1=NonReloc info=24 e2=KInt info=0 r1=24 r2=130 freereg=26 nactvar=25 line=325
+[cg_emit_eq] e1=NonReloc info=25 e2=KInt info=0 r1=25 r2=177 freereg=27 nactvar=26 line=333
+[cg_emit_eq] e1=NonReloc info=25 e2=KInt info=0 r1=25 r2=159 freereg=27 nactvar=26 line=339
+[cg_emit_eq] e1=NonReloc info=25 e2=KInt info=0 r1=25 r2=128 freereg=27 nactvar=26 line=346
+[cg_emit_eq] e1=NonReloc info=25 e2=KInt info=0 r1=25 r2=127 freereg=27 nactvar=26 line=353
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=359
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=360
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=361
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=362
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=363
+[cg_emit_eq] e1=NonReloc info=26 e2=NonReloc info=27 r1=26 r2=27 freereg=28 nactvar=25 line=364
+[cg_emit_eq] e1=NonReloc info=26 e2=KInt info=0 r1=26 r2=128 freereg=27 nactvar=25 line=366
+[cg_emit_eq] e1=NonReloc info=26 e2=KInt info=0 r1=26 r2=128 freereg=27 nactvar=25 line=367
+[cg_emit_eq] e1=NonReloc info=26 e2=KInt info=0 r1=26 r2=129 freereg=27 nactvar=25 line=368
+[cg_emit_eq] e1=NonReloc info=26 e2=KInt info=0 r1=26 r2=130 freereg=27 nactvar=25 line=369
+[cg_emit_eq] e1=NonReloc info=26 e2=KInt info=0 r1=26 r2=131 freereg=27 nactvar=25 line=370
+[cg_emit_eq] e1=NonReloc info=25 e2=KInt info=0 r1=25 r2=129 freereg=28 nactvar=27 line=375
+[cg_emit_eq] e1=NonReloc info=26 e2=KInt info=0 r1=26 r2=132 freereg=28 nactvar=27 line=375
+[cg_emit_eq] e1=NonReloc info=27 e2=NonReloc info=29 r1=27 r2=29 freereg=30 nactvar=28 line=377
+[cg_emit_eq] e1=NonReloc info=37 e2=NonReloc info=33 r1=37 r2=33 freereg=38 nactvar=34 line=381
+[cg_emit_eq] e1=NonReloc info=30 e2=KInt info=0 r1=30 r2=127 freereg=31 nactvar=29 line=383
+[cg_emit_eq] e1=NonReloc info=31 e2=NonReloc info=32 r1=31 r2=32 freereg=33 nactvar=30 line=406
+[cg_emit_eq] e1=NonReloc info=31 e2=NonReloc info=32 r1=31 r2=32 freereg=33 nactvar=30 line=407
+[cg_emit_eq] e1=NonReloc info=31 e2=KInt info=0 r1=31 r2=129 freereg=32 nactvar=30 line=408
+[cg_emit_eq] e1=NonReloc info=31 e2=KInt info=0 r1=31 r2=131 freereg=32 nactvar=30 line=409
+[cg_emit_eq] e1=NonReloc info=31 e2=NonReloc info=32 r1=31 r2=32 freereg=33 nactvar=30 line=410
+[cg_emit_eq] e1=NonReloc info=31 e2=NonReloc info=32 r1=31 r2=32 freereg=33 nactvar=30 line=411
+[cg_emit_eq] e1=NonReloc info=31 e2=NonReloc info=32 r1=31 r2=32 freereg=33 nactvar=30 line=412
+[cg_emit_eq] e1=NonReloc info=31 e2=KInt info=0 r1=31 r2=131 freereg=32 nactvar=30 line=415
+[cg_emit_eq] e1=NonReloc info=31 e2=KInt info=0 r1=31 r2=131 freereg=32 nactvar=30 line=416
+[cg_emit_eq] e1=NonReloc info=34 e2=NonReloc info=36 r1=34 r2=36 freereg=37 nactvar=32 line=422
 
-
-thread 'main' (9837229) panicked at crates/lua-parse/src/lib.rs:636:9:
+thread 'main' (9900935) panicked at crates/lua-parse/src/lib.rs:629:9:
 assertion `left == right` failed
   left: 34
  right: 35
-stack backtrace:
-   0: __rustc::rust_begin_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:689:5
-   1: core::panicking::panic_fmt
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panicking.rs:80:14
-   2: core::panicking::assert_failed_inner
-   3: core::panicking::assert_failed
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panicking.rs:394:5
-   4: lua_parse::cg_free_reg
-             at ./crates/lua-parse/src/lib.rs:636:9
-   5: lua_parse::cg_free_exps
-   6: lua_parse::cg_emit_eq
-             at ./crates/lua-parse/src/lib.rs:899:5
-   7: lua_parse::cg_posfix_fold
-             at ./crates/lua-parse/src/lib.rs:748:16
-   8: lua_parse::subexpr
-             at ./crates/lua-parse/src/lib.rs:3594:9
-   9: lua_parse::expr
-             at ./crates/lua-parse/src/lib.rs:3605:5
-  10: lua_parse::explist
-             at ./crates/lua-parse/src/lib.rs:3334:5
-  11: lua_parse::funcargs
-             at ./crates/lua-parse/src/lib.rs:3354:17
-  12: lua_parse::suffixedexp
-             at ./crates/lua-parse/src/lib.rs:3453:17
-  13: lua_parse::exprstat
-             at ./crates/lua-parse/src/lib.rs:4199:5
-  14: lua_parse::statement
-             at ./crates/lua-parse/src/lib.rs:4320:13
-  15: lua_parse::statlist
-             at ./crates/lua-parse/src/lib.rs:3030:9
-  16: lua_parse::block
-             at ./crates/lua-parse/src/lib.rs:3614:5
-  17: lua_parse::statement
-             at ./crates/lua-parse/src/lib.rs:4283:13
-  18: lua_parse::statlist
-             at ./crates/lua-parse/src/lib.rs:3030:9
-  19: lua_parse::mainfunc
-             at ./crates/lua-parse/src/lib.rs:4361:5
-  20: lua_parse::parse
-             at ./crates/lua-parse/src/lib.rs:4445:5
-  21: lua_rs::parser_hook
-             at ./crates/lua-cli/src/main.rs:54:17
-  22: lua_vm::do_::parse_stub
-             at ./crates/lua-vm/src/do_.rs:62:16
-  23: lua_vm::do_::f_parser
-             at ./crates/lua-vm/src/do_.rs:1630:9
-  24: lua_vm::do_::protected_parser::{{closure}}
-             at ./crates/lua-vm/src/do_.rs:1678:35
-  25: lua_vm::do_::raw_run_protected
-             at ./crates/lua-vm/src/do_.rs:212:18
-  26: lua_vm::do_::pcall
-             at ./crates/lua-vm/src/do_.rs:1521:28
-  27: lua_vm::do_::protected_parser
-             at ./crates/lua-vm/src/do_.rs:1678:18
-  28: lua_vm::state::LuaState::protected_parser
-             at ./crates/lua-vm/src/state.rs:1505:9
-  29: lua_vm::api::load
-             at ./crates/lua-vm/src/api.rs:1663:24
-  30: <lua_vm::state::LuaState as lua_stdlib::state_stub::LuaStateStubExt>::load
-             at ./crates/lua-stdlib/src/state_stub.rs:375:22
-  31: lua_stdlib::auxlib::load_bufferx
-             at ./crates/lua-stdlib/src/auxlib.rs:1058:20
-  32: lua_rs::main::{{closure}}
-             at ./crates/lua-cli/src/main.rs:126:22
-  33: core::ops::function::FnOnce::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
-  34: <core::panic::unwind_safe::AssertUnwindSafe<F> as core::ops::function::FnOnce<()>>::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/panic/unwind_safe.rs:274:9
-  35: std::panicking::catch_unwind::do_call
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:581:40
-  36: std::panicking::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panicking.rs:544:19
-  37: std::panic::catch_unwind
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/std/src/panic.rs:359:14
-  38: lua_rs::main
-             at ./crates/lua-cli/src/main.rs:117:18
-  39: core::ops::function::FnOnce::call_once
-             at /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c/library/core/src/ops/function.rs:250:5
-note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [panic] assertion `left == right` failed
   left: 34
  right: 35

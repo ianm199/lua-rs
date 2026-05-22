@@ -889,6 +889,10 @@ fn cg_emit_eq(
         let r = cg_exp_to_any_reg(fs, line, e2)?;
         (r, lua_code::opcodes::OpCode::Eq)
     };
+    eprintln!(
+        "[cg_emit_eq] e1={:?} info={} e2={:?} info={} r1={} r2={} freereg={} nactvar={} line={}",
+        e1.k, e1.u.info, e2.k, e2.u.info, r1, r2, fs.freereg, fs.nactvar, line
+    );
     cg_free_exps(fs, e1, e2);
     let k_bit = if matches!(op, BinOpr::Eq) { 1 } else { 0 };
     let cmp = lua_code::opcodes::Instruction::abck(
