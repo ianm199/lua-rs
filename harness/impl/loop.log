@@ -4128,3 +4128,7 @@ help: use `let _ = ...` to ignore the expression or result
 [2026-05-17T00:03:52Z] ─── iter 5  (spent: $0.00) ───
 [2026-05-17T00:03:53Z]   stub blocker: table_array_set
 [2026-05-17T00:03:53Z]   dispatching IMPLEMENT agent for table_array_set at crates/lua-vm/src/state.rs:1439:102 (budget $10)
+[2026-05-17T00:05:45Z]   agent done. iter cost=$0.62487775  total=$0.00
+[2026-05-17T00:05:45Z] ─── iter 6  (spent: $0.00) ───
+[2026-05-17T00:05:46Z]   stub blocker: fast_get_int
+[2026-05-17T00:05:46Z]   dispatching IMPLEMENT agent for fast_get_int at crates/lua-vm/src/state.rs:1398:95 (budget $10)

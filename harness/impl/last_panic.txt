@@ -1,1 +1,1 @@
-table_array_set
+fast_get_int

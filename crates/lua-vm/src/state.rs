@@ -1395,7 +1395,11 @@ impl LuaState {
         let v = tbl.get(k);
         if matches!(v, LuaValue::Nil) { Ok(None) } else { Ok(Some(v)) }
     }
-    pub fn fast_get_int<T>(&mut self, _t: T, _k: i64) -> Result<Option<LuaValue>, LuaError> { todo!("phase-b: fast_get_int") }
+    pub fn fast_get_int(&mut self, t: &LuaValue, k: i64) -> Result<Option<LuaValue>, LuaError> {
+        let LuaValue::Table(tbl) = t else { return Ok(None); };
+        let v = tbl.get_int(k);
+        if matches!(v, LuaValue::Nil) { Ok(None) } else { Ok(Some(v)) }
+    }
     pub fn fast_get_short_str(&mut self, t: &LuaValue, k: &LuaValue) -> Result<Option<LuaValue>, LuaError> {
         let LuaValue::Table(tbl) = t else { return Ok(None); };
         let LuaValue::Str(s) = k else { return Ok(None); };
