@@ -584,9 +584,10 @@ fn classend(ms: &MatchState, p: usize) -> Result<usize, LuaError> {
                 let ch = pat[q];
                 q += 1;
                 if ch == L_ESC && q < pat.len() {
-                    q += 1; // skip escaped char
-                } else if ch == b']' {
-                    return Ok(q);
+                    q += 1;
+                }
+                if q < pat.len() && pat[q] == b']' {
+                    return Ok(q + 1);
                 }
             }
         }

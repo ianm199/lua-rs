@@ -995,7 +995,10 @@ pub(crate) fn concat(state: &mut LuaState, total: i32) -> Result<(), LuaError> {
             state.coerce_to_string(top - 2)?;
             n = 2;
         } else if is_empty(&v_tm2) {
-            // C: setobjs2s(L, top-2, top-1); consumed 2 inputs → 1 result
+            // C: tostring(L, s2v(top-1)) ran as part of the entry condition,
+            // so top-1 is guaranteed to be a string here. We replicate that
+            // conversion before the copy so numbers don't leak through.
+            state.coerce_to_string(top - 1)?;
             let v = state.get_at(top - 1).clone();
             state.set_at(top - 2, v);
             n = 2;

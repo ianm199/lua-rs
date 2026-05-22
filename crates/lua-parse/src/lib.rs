@@ -2706,7 +2706,15 @@ fn createlabel(
     let needs_close = solvegotos(ls, state, l)?;
     if needs_close {
         // C: luaK_codeABC(fs, OP_CLOSE, luaY_nvarstack(fs), 0, 0)
-        // TODO(port): lua_code::code_abc(ls.fs.as_mut().unwrap(), OpCode::Close, nstack, 0, 0)?;
+        let nstack = nvarstack(ls, ls.fs.as_ref().unwrap()) as u32;
+        let inst = lua_code::opcodes::Instruction::abck(
+            lua_code::opcodes::OpCode::Close,
+            nstack,
+            0,
+            0,
+            0,
+        );
+        emit_inst(ls.fs.as_mut().unwrap(), line, inst);
         return Ok(true);
     }
     Ok(false)
@@ -3691,7 +3699,15 @@ fn gotostat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
             nvarstack(ls, fs)
         };
         if cur_nvarstack > lblevel {
-            // TODO(port): emit OP_CLOSE with lblevel (no upvalue closes in current tests)
+            // C: luaK_codeABC(fs, OP_CLOSE, lblevel, 0, 0)
+            let inst = lua_code::opcodes::Instruction::abck(
+                lua_code::opcodes::OpCode::Close,
+                lblevel as u32,
+                0,
+                0,
+                0,
+            );
+            emit_inst(ls.fs.as_mut().unwrap(), line, inst);
         }
         let jpc = cg_jump(ls.fs.as_mut().unwrap(), line);
         cg_patch_list(ls.fs.as_mut().unwrap(), jpc, lb_pc)?;
