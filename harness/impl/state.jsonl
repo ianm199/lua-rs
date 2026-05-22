@@ -1,3 +1,6 @@
 {"ts":"2026-05-16T13:47:08Z","action":"run_start","detail":"print(\"hello\")","total_cost":0.00}
 {"ts":"2026-05-16T13:47:08Z","action":"panic_detected","detail":"func=require_lib iter=1","total_cost":0.00}
 {"ts":"2026-05-16T13:47:08Z","action":"dispatch_start","detail":"func=require_lib iter=1","total_cost":0.00}
+{"ts":"2026-05-16T13:49:04Z","action":"dispatch_done","detail":"func=require_lib cost=0.9077387499999999","total_cost":0.00}
+{"ts":"2026-05-16T13:49:05Z","action":"panic_detected","detail":"func=get_field iter=2","total_cost":0.00}
+{"ts":"2026-05-16T13:49:05Z","action":"dispatch_start","detail":"func=get_field iter=2","total_cost":0.00}

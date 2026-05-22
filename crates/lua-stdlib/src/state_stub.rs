@@ -292,6 +292,10 @@ impl LuaStateStubExt for LuaState {
     fn require_lib(&mut self, name: &[u8], openf: lua_CFunction, glb: bool) -> Result<(), LuaError> {
         crate::auxlib::requiref(self, name, openf, glb)
     }
+
+    fn get_field(&mut self, idx: i32, k: &[u8]) -> Result<LuaType, LuaError> {
+        lua_vm::api::get_field(self, idx, k)
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
