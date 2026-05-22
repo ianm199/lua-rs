@@ -1592,6 +1592,7 @@ fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
     // C: int c = zgetc(p->z)  — read first character
     // zgetc → z.getc()  (macros.tsv)
     let c = p.z.getc();
+    eprintln!("[DEBUG f_parser] first char c={}", c);
 
     // C: if (c == LUA_SIGNATURE[0])
     // LUA_SIGNATURE → const LUA_SIGNATURE: &[u8] = b"\x1bLua"  (macros.tsv)
@@ -1604,9 +1605,12 @@ fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
     } else {
         // C: checkmode(L, p->mode, "text")
         check_mode(state, p.mode.as_deref(), b"text")?;
+        eprintln!("[DEBUG f_parser] calling parse_stub");
         // C: cl = luaY_parser(L, p->z, &p->buff, &p->dyd, p->name, c)
         // TODO(port): parser API not yet finalised; returns a LClosure.
-        parse_stub(state, &mut p.z, &mut p.buff, &mut p.dyd, &p.name, c)?
+        let r = parse_stub(state, &mut p.z, &mut p.buff, &mut p.dyd, &p.name, c);
+        eprintln!("[DEBUG f_parser] parse_stub returned ok={}", r.is_ok());
+        r?
     };
 
     // C: lua_assert(cl->nupvalues == cl->p->sizeupvalues)

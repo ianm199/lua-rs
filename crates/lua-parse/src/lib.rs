@@ -2563,6 +2563,7 @@ fn exprstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
         restassign(ls, state, &mut v_assign, 1)?;
     } else {
         // C: stat -> func call; check it's a call, fix result count
+        eprintln!("[DEBUG exprstat] v.k={:?} after suffixedexp; current token={}", v_assign.v.k, ls.t.token);
         if v_assign.v.k != ExprKind::Call {
             return Err(LuaError::syntax(format_args!("syntax error")));
         }

@@ -416,3 +416,7 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [2026-05-16T19:16:48Z] ─── iter 1  (spent: $0.00) ───
 [2026-05-16T19:16:48Z]   real-error blocker at step 4/4 Executing chunk: crates/lua-vm/src/state.rs:1382:22:
 [2026-05-16T19:16:48Z]   dispatching DEBUG agent for real-error (budget $15)
+[2026-05-16T19:20:01Z]   agent done. iter cost=$1.4868467500000004  total=$0.00
+[2026-05-16T19:20:01Z] ─── iter 2  (spent: $0.00) ───
+[2026-05-16T19:20:01Z]   real-error blocker at step 3/4 Loading source (parse + compile): Syntax: syntax error (load_string status=1)
+[2026-05-16T19:20:01Z]   dispatching DEBUG agent for real-error (budget $15)

@@ -28,13 +28,18 @@ fn parser_hook(
     name: &[u8],
     firstchar: i32,
 ) -> Result<GcRef<LuaLClosure>, LuaError> {
+    eprintln!("[DEBUG parser_hook] source.len={} firstchar={} name={:?}", source.len(), firstchar, std::str::from_utf8(name).unwrap_or("?"));
     let proto = lua_parse::parse(
         state,
         lua_parse::DynData::default(),
         source,
         name,
         firstchar,
-    )?;
+    ).map_err(|e| {
+        eprintln!("[DEBUG parser_hook] parse failed with {:?}", e);
+        e
+    })?;
+    eprintln!("[DEBUG parser_hook] parse succeeded");
     Ok(GcRef::new(LuaLClosure {
         proto: GcRef::new(*proto),
         upvals: Vec::new(),
