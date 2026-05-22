@@ -929,7 +929,7 @@ fn g_read(
     first: i32,
 ) -> Result<usize, LuaError> {
     // C: int nargs = lua_gettop(L) - 1;
-    let nargs = state.top_idx().get() as i32 - 1;
+    let nargs = state.top() - 1;
     let mut n = first;
     let mut success = true;
 
@@ -1037,7 +1037,7 @@ fn g_write(
     arg: i32,
 ) -> Result<usize, LuaError> {
     // C: int nargs = lua_gettop(L) - arg;
-    let nargs = state.top_idx().get() as i32 - arg;
+    let nargs = state.top() - arg;
     let mut overall_ok = true;
 
     for i in 0..nargs {
@@ -1341,7 +1341,9 @@ pub fn f_flush(state: &mut LuaState) -> Result<usize, LuaError> {
 ///   4..n+3) format arguments
 fn aux_lines(state: &mut LuaState, toclose: bool) -> Result<(), LuaError> {
     // C: int n = lua_gettop(L) - 1;
-    let n = state.top_idx().get() as i32 - 1;
+    // `lua_gettop` is the stack count RELATIVE to the current frame, not the
+    // absolute `top_idx`; using `state.top()` mirrors that.
+    let n = state.top() - 1;
     // C: luaL_argcheck(L, n <= MAXARGLINE, MAXARGLINE+2, "too many arguments");
     if n > MAX_ARG_LINE as i32 {
         return Err(LuaError::arg_error(
