@@ -198,6 +198,7 @@ for ITER in $(seq 1 $MAX_ITER); do
     fi
 
     func=$(extract_panic_func "$output_file")
+    loc=$(extract_panic_loc "$output_file")
     if [ -z "$func" ]; then
         emit "  no todo!() panic detected — final output:"
         tail -15 "$output_file" | tee -a "$LOG"
@@ -228,9 +229,9 @@ for ITER in $(seq 1 $MAX_ITER); do
     fi
 
     # Dispatch
-    emit "  dispatching agent for $func (budget \$10)"
-    record "dispatch_start" "func=$func iter=$ITER"
-    iter_cost=$(dispatch_implement_agent "$func")
+    emit "  dispatching agent for $func at $loc (budget \$10)"
+    record "dispatch_start" "func=$func loc=$loc iter=$ITER"
+    iter_cost=$(dispatch_implement_agent "$func" "$loc")
     emit "  agent done. iter cost=\$$iter_cost  total=\$$TOTAL_COST"
     record "dispatch_done" "func=$func cost=$iter_cost"
 
