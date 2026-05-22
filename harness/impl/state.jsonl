@@ -31,3 +31,6 @@
 {"ts":"2026-05-16T14:09:21Z","action":"dispatch_done","detail":"func=fast_tm_table cost=1.6393012500000004","total_cost":0.00}
 {"ts":"2026-05-16T14:09:21Z","action":"panic_detected","detail":"func=set_at iter=5","total_cost":0.00}
 {"ts":"2026-05-16T14:09:21Z","action":"dispatch_start","detail":"func=set_at iter=5","total_cost":0.00}
+{"ts":"2026-05-16T14:10:29Z","action":"dispatch_done","detail":"func=set_at cost=0.6019414999999999","total_cost":0.00}
+{"ts":"2026-05-16T14:10:29Z","action":"panic_detected","detail":"func=get_at iter=6","total_cost":0.00}
+{"ts":"2026-05-16T14:10:29Z","action":"dispatch_start","detail":"func=get_at iter=6","total_cost":0.00}

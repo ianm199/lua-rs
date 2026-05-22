@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 66343,
+  "duration_api_ms": 66979,
+  "ttft_ms": 2634,
+  "num_turns": 12,
+  "result": "Build is green (warnings only, no errors).\n\n**Report:**\n\n- **File modified:** `crates/lua-vm/src/state.rs:1067-1070`\n- **What `set_at` does now:** Converts the `impl Into<StackIdxConv>` index argument into a `StackIdx`, then writes the supplied `LuaValue` into `self.stack[i].val`. This mirrors `set_stack_val` (line 1015) and matches the C `setobj`/`setobjs2s` family used by PORTING.md §4.3 (`state.set_at(o1, state.get_at(o2).clone())`). The stack `Vec` is preallocated to `BASIC_STACK_SIZE + EXTRA_STACK` in `stack_init`, so writes within `stack_last` are bounds-safe; callers that grow beyond that are expected to call `check_stack`/`stack_resize` first.\n- **`todo!()`s inside this impl:** None — the body is two lines of plain index arithmetic and a slice write.\n- **Build status:** `cargo build -p lua-cli` finished cleanly (warnings only, no errors).",
+  "stop_reason": "end_turn",
+  "session_id": "0326b961-d39c-456f-a86c-0160808ee649",
+  "total_cost_usd": 0.6019414999999999,
+  "usage": {
+    "input_tokens": 17,
+    "cache_creation_input_tokens": 37130,
+    "cache_read_input_tokens": 552496,
+    "output_tokens": 3690,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37130,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 375,
+        "cache_read_input_tokens": 55415,
+        "cache_creation_input_tokens": 614,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 614
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1191,
+      "outputTokens": 21,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001296,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 17,
+      "outputTokens": 3690,
+      "cacheReadInputTokens": 552496,
+      "cacheCreationInputTokens": 37130,
+      "webSearchRequests": 0,
+      "costUSD": 0.6006454999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "5750c622-7858-4b47-8221-38a3a2d0269c"
+}

@@ -31,12 +31,6 @@ warning: unused import: `lua_types::value::F2Imod`
 13 | use lua_types::value::F2Imod;
    |     ^^^^^^^^^^^^^^^^^^^^^^^^
 
-warning: unused import: `lua_types::tagmethod::TagMethod`
-   --> crates/lua-vm/src/state.rs:769:5
-    |
-769 | use lua_types::tagmethod::TagMethod;
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 warning: unused import: `std::rc::Rc`
   --> crates/lua-vm/src/table.rs:44:5
    |
@@ -162,9 +156,9 @@ warning: variable does not need to be mutable
     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
 
 warning: variable does not need to be mutable
-    --> crates/lua-vm/src/state.rs:1957:9
+    --> crates/lua-vm/src/state.rs:1990:9
      |
-1957 |     let mut status = if status == LuaStatus::Yield as i32 {
+1990 |     let mut status = if status == LuaStatus::Yield as i32 {
      |         ----^^^^^^
      |         |
      |         help: remove this `mut`
@@ -917,33 +911,33 @@ warning: constant `LUA_EXTRASPACE` is never used
     |       ^^^^^^^^^^^^^^
 
 warning: function `set_debt` is never used
-    --> crates/lua-vm/src/state.rs:1334:15
+    --> crates/lua-vm/src/state.rs:1367:15
      |
-1334 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
+1367 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
      |               ^^^^^^^^
 
 warning: function `extend_ci` is never used
-    --> crates/lua-vm/src/state.rs:1384:15
+    --> crates/lua-vm/src/state.rs:1417:15
      |
-1384 | pub(crate) fn extend_ci(state: &mut LuaState) -> CallInfoIdx {
+1417 | pub(crate) fn extend_ci(state: &mut LuaState) -> CallInfoIdx {
      |               ^^^^^^^^^
 
 warning: function `inc_c_stack` is never used
-    --> crates/lua-vm/src/state.rs:1552:15
+    --> crates/lua-vm/src/state.rs:1585:15
      |
-1552 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
+1585 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
      |               ^^^^^^^^^^^
 
 warning: function `free_thread` is never used
-    --> crates/lua-vm/src/state.rs:1897:15
+    --> crates/lua-vm/src/state.rs:1930:15
      |
-1897 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
+1930 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
      |               ^^^^^^^^^^^
 
 warning: function `warn_error` is never used
-    --> crates/lua-vm/src/state.rs:2295:15
+    --> crates/lua-vm/src/state.rs:2328:15
      |
-2295 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
+2328 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
      |               ^^^^^^^^^^
 
 warning: type alias `LocalGcRef` is never used
@@ -1397,9 +1391,9 @@ warning: methods `fill`, `getc`, and `read` are never used
     |                   ^^^^
 
 warning: structure field `nCcalls` should have a snake case name
-   --> crates/lua-vm/src/state.rs:871:9
+   --> crates/lua-vm/src/state.rs:890:9
     |
-871 |     pub nCcalls: u32,
+890 |     pub nCcalls: u32,
     |         ^^^^^^^ help: convert the identifier to snake case: `n_ccalls`
     |
     = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
@@ -2976,7 +2970,7 @@ help: use `let _ = ...` to ignore the resulting value
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 
-thread 'main' (4401610) panicked at crates/lua-vm/src/state.rs:437:48:
-not yet implemented: phase-b: LuaTable::get
+thread 'main' (4430413) panicked at crates/lua-vm/src/state.rs:1065:9:
+not yet implemented: phase-b: get_at
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b: LuaTable::get
+[panic] not yet implemented: phase-b: get_at

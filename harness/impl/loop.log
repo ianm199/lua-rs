@@ -65,3 +65,7 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 [2026-05-16T14:09:21Z] ─── iter 5  (spent: $0.00) ───
 [2026-05-16T14:09:21Z]   blocked on: set_at
 [2026-05-16T14:09:21Z]   dispatching agent for set_at (budget $10)
+[2026-05-16T14:10:29Z]   agent done. iter cost=$0.6019414999999999  total=$0.00
+[2026-05-16T14:10:29Z] ─── iter 6  (spent: $0.00) ───
+[2026-05-16T14:10:29Z]   blocked on: get_at
+[2026-05-16T14:10:29Z]   dispatching agent for get_at (budget $10)

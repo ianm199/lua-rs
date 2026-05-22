@@ -1061,8 +1061,11 @@ impl LuaState {
 
 impl LuaState {
     pub fn get_at(&self, idx: impl Into<StackIdxConv>) -> LuaValue {
-        let _i: StackIdx = idx.into().0;
-        todo!("phase-b: get_at")
+        let i: StackIdx = idx.into().0;
+        match self.stack.get(i.0 as usize) {
+            Some(slot) => slot.val.clone(),
+            None => LuaValue::Nil,
+        }
     }
     pub fn set_at(&mut self, idx: impl Into<StackIdxConv>, v: LuaValue) {
         let i: StackIdx = idx.into().0;
