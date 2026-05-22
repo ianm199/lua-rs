@@ -36,8 +36,10 @@ const LUA_OFSEP: &[u8] = b"_";
 // C: static const char *const CLIBS = "_CLIBS";
 const CLIBS: &[u8] = b"_CLIBS";
 
-// C: #define LIB_FAIL "open"
-const LIB_FAIL: &[u8] = b"open";
+// C: #define LIB_FAIL "open" (POSIX/Windows) or "absent" (fallback stub).
+// Since all lsys_* functions in this port are stubs (no real dynamic loading),
+// we are always in the fallback case where LIB_FAIL = "absent".
+const LIB_FAIL: &[u8] = b"absent";
 
 // C: LUA_PATH_SEP — path-list separator
 const LUA_PATH_SEP: u8 = b';';
@@ -1165,15 +1167,15 @@ pub fn luaopen_package(state: &mut LuaState) -> Result<usize, LuaError> {
 //   source:        src/loadlib.c  (758 lines, 25 functions)
 //   target_crate:  lua-stdlib
 //   confidence:    medium
-//   todos:         11
+//   todos:         9
 //   port_notes:    6
 //   unsafe_blocks: 0   (must be 0 outside lua-gc/lua-coro)
 //   notes:         All three lsys_* platform backends are stubs (unsafe needed
-//                  for dlopen/LoadLibraryEx; banned in lua-stdlib). readable()
-//                  is a stub (std::fs banned in lua-stdlib). searcher_lua is
-//                  also a stub (no load_file yet). The path-finding and
-//                  require logic are faithfully ported. Stack index arithmetic
-//                  in findloader/ll_require should be verified in Phase B.
+//                  for dlopen/LoadLibraryEx; banned in lua-stdlib). LIB_FAIL is
+//                  "absent" to match the C fallback platform stub. readable()
+//                  and searcher_lua are wired through file_loader_hook on
+//                  GlobalState (Phase B). Stack index arithmetic in
+//                  findloader/ll_require should be verified in Phase B.
 //                  LUA_PATH_DEFAULT / LUA_CPATH_DEFAULT are hardcoded and
 //                  must be replaced with platform configuration constants.
 // ──────────────────────────────────────────────────────────────────────────────

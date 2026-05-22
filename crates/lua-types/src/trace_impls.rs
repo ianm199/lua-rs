@@ -48,12 +48,7 @@ impl Trace for LuaValue {
             LuaValue::Table(t) => t.trace(m),
             LuaValue::Function(c) => c.trace(m),
             LuaValue::UserData(u) => {
-                if let Some(mt) = u.metatable() {
-                    mt.trace(m);
-                }
-                for v in u.uv.iter() {
-                    v.trace(m);
-                }
+                u.trace(m);
             }
             LuaValue::Thread(_t) => {
                 // PORT NOTE: GcRef<LuaThread> is a placeholder unit type in

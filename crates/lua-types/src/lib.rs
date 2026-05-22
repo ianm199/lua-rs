@@ -10,6 +10,7 @@
 pub mod arith;
 pub mod closure;
 pub mod error;
+pub mod filehandle;
 pub mod gc;
 pub mod opcode;
 pub mod proto;
@@ -24,6 +25,7 @@ pub mod value;
 // ── Top-level re-exports (most consumers use these flat names) ──────────
 pub use closure::{LuaClosure, LuaLClosure};
 pub use error::LuaError;
+pub use filehandle::LuaFileHandle;
 pub use gc::GcRef;
 pub use proto::{AbsLineInfo, LocalVar, LuaProto, UpvalDesc};
 pub use status::LuaStatus;

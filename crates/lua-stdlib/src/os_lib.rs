@@ -506,12 +506,32 @@ pub(crate) fn os_execute(state: &mut LuaState) -> Result<usize, LuaError> {
 /// Returns `true` on success, or `nil, errmsg` on failure.
 pub(crate) fn os_remove(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: const char *filename = luaL_checkstring(L, 1);
-    let _filename: Vec<u8> = state.check_arg_string(1)?.to_vec();
-    // TODO(port): C `remove()` maps to `std::fs::remove_file` / `remove_dir`,
-    // both banned in lua-stdlib.  Phase B needs an OS-capability abstraction.
-    state.push(LuaValue::Nil);
-    state.push_string(b"os.remove: not implemented in lua-stdlib")?;
-    Ok(2)
+    let filename: Vec<u8> = state.check_arg_string(1)?.to_vec();
+    // `std::fs` is banned in lua-stdlib; delegate to the embedder hook.
+    let hook = state.global().file_remove_hook;
+    match hook {
+        Some(remove_fn) => match remove_fn(&filename) {
+            Ok(()) => {
+                state.push(LuaValue::Bool(true));
+                Ok(1)
+            }
+            Err(e) => {
+                state.push(LuaValue::Nil);
+                let msg = match &e {
+                    LuaError::Runtime(LuaValue::Str(s)) => s.as_bytes().to_vec(),
+                    other => format!("{:?}", other).into_bytes(),
+                };
+                let s = state.intern_str(&msg)?;
+                state.push(LuaValue::Str(s));
+                Ok(2)
+            }
+        },
+        None => {
+            state.push(LuaValue::Nil);
+            state.push_string(b"os.remove: no filesystem hook registered")?;
+            Ok(2)
+        }
+    }
 }
 
 /// C: `static int os_rename(lua_State *L)`

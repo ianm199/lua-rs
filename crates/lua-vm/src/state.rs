@@ -603,6 +603,26 @@ pub type ParserHook = fn(
 /// served exclusively from `package.preload`.
 pub type FileLoaderHook = fn(filename: &[u8]) -> Result<Vec<u8>, LuaError>;
 
+/// Function-pointer signature for opening a file handle, installed on
+/// [`GlobalState::file_open_hook`] by the embedder.
+///
+/// `std::fs` is banned outside `lua-cli`, so `lua-stdlib`'s io library reaches
+/// the filesystem via this hook. `None` causes `io.open` and `io.output(name)`
+/// to return a "file system not available" error, which is appropriate for
+/// sandboxed embeddings.
+///
+/// `mode` is a Lua fopen-style mode string (e.g. `b"r"`, `b"w"`, `b"a"`,
+/// `b"r+"`, etc.). The hook must honour at least `r`, `w`, and `a`.
+pub type FileOpenHook =
+    fn(filename: &[u8], mode: &[u8]) -> Result<Box<dyn lua_types::LuaFileHandle>, LuaError>;
+
+/// Function-pointer signature for removing a file, installed on
+/// [`GlobalState::file_remove_hook`] by the embedder.
+///
+/// `std::fs` is banned outside `lua-cli`, so `lua-stdlib`'s `os.remove`
+/// reaches the filesystem via this hook. Returns `Ok(())` on success.
+pub type FileRemoveHook = fn(filename: &[u8]) -> Result<(), LuaError>;
+
 /// Process-wide state shared by all Lua threads.
 ///
 /// C: `global_State` in `lstate.h`.
@@ -622,6 +642,16 @@ pub struct GlobalState {
     /// system) since `std::fs` is banned in `lua-stdlib`. `None` makes
     /// `loadfile` and the Lua-file searcher report a file-not-found error.
     pub file_loader_hook: Option<FileLoaderHook>,
+
+    /// Phase-B hook for opening a file handle for read/write/append. Set by
+    /// `lua-cli` since `std::fs` is banned in `lua-stdlib`. `None` causes
+    /// `io.open` and `io.output(name)` to return an error; the standard streams
+    /// (`io.stdin`, `io.stdout`, `io.stderr`) remain functional.
+    pub file_open_hook: Option<FileOpenHook>,
+
+    /// Phase-B hook for removing a file. Set by `lua-cli` since `std::fs` is
+    /// banned in `lua-stdlib`. `None` causes `os.remove` to return an error.
+    pub file_remove_hook: Option<FileRemoveHook>,
 
     // C: l_mem totalbytes — Phase D memory accounting
     // types.tsv: global_State.totalbytes → isize
@@ -3077,6 +3107,8 @@ pub fn new_state() -> Option<LuaState> {
     let global = GlobalState {
         parser_hook: None,
         file_loader_hook: None,
+        file_open_hook: None,
+        file_remove_hook: None,
         totalbytes: std::mem::size_of::<GlobalState>() as isize,
         gc_debt: 0,
         gc_estimate: 0,

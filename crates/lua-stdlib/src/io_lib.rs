@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::io::{self, SeekFrom};
 use std::rc::Rc;
 
-use lua_types::{LuaError, LuaType, LuaValue};
+use lua_types::{LuaError, LuaFileHandle, LuaType, LuaValue};
 use crate::state_stub::{LuaState, LuaStateStubExt as _, lua_CFunction, upvalue_index, CompareOp, LuaDebug};
 
 thread_local! {
@@ -82,36 +82,11 @@ const LUAL_BUFFER_SIZE: usize = 8192;
 
 /// Capabilities required by the io library from an OS file handle.
 ///
-/// TODO(port): Every concrete implementation of this trait requires either
-/// `std::fs::File` (regular files), `std::io::Stdin`/`Stdout`/`Stderr`
-/// (standard streams), or pipe handles from `std::process::Child` (popen). All
-/// three are banned outside `lua-cli` by PORTING.md. This trait is the intended
-/// abstraction seam for that restriction.
-pub trait LuaFileOps: Send {
-    /// Read one byte; return it as `i32`, or `EOF_SENTINEL` on EOF/error.
-    fn read_byte(&mut self) -> i32;
-
-    /// Push back a previously-read byte for the next `read_byte` call.
-    fn unread_byte(&mut self, byte: i32);
-
-    /// Write a byte slice; return the number of bytes actually written.
-    fn write_bytes(&mut self, data: &[u8]) -> io::Result<usize>;
-
-    /// Flush any write buffers to the OS.
-    fn flush(&mut self) -> io::Result<()>;
-
-    /// Seek within the file using a `SeekFrom` position.
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64>;
-
-    /// Return the current file position without moving it.
-    fn tell(&mut self) -> io::Result<u64>;
-
-    /// Clear the error/EOF flag on the stream. C: `clearerr`.
-    fn clear_error(&mut self);
-
-    /// Return `true` if the stream has a pending error. C: `ferror`.
-    fn has_error(&self) -> bool;
-
+/// This trait extends [`LuaFileHandle`] (defined in `lua-types`) with the
+/// additional `set_buf_mode` operation. Concrete implementations backed by
+/// `std::fs::File` live in `lua-cli`; standard-stream implementations live in
+/// this module. The split keeps `std::fs` out of `lua-stdlib` per PORTING.md §1.
+pub trait LuaFileOps: LuaFileHandle {
     /// Control stream buffering. C: `setvbuf`.
     fn set_buf_mode(&mut self, mode: BufMode, size: usize) -> io::Result<()>;
 }
@@ -155,8 +130,9 @@ pub enum StdFileKind {
 /// interior-mutability borrow splitting between the file handle and `LuaState`.
 pub struct LStream {
     /// OS file handle. `None` = incompletely opened (pre-file pattern).
-    /// TODO(port): concrete type is `Box<dyn LuaFileOps>`; implementations need std::fs.
-    pub file: Option<Box<dyn LuaFileOps>>,
+    /// Concrete implementations are installed via `GlobalState::file_open_hook`
+    /// (registered by `lua-cli`) to keep `std::fs` out of `lua-stdlib`.
+    pub file: Option<Box<dyn LuaFileHandle>>,
     /// Close callback. `None` means the stream is closed. C: `p->closef == NULL`.
     pub close_fn: Option<fn(&mut LuaState) -> Result<usize, LuaError>>,
 }
@@ -176,7 +152,7 @@ struct StdStreamHandle {
     kind: StdFileKind,
 }
 
-impl LuaFileOps for StdStreamHandle {
+impl LuaFileHandle for StdStreamHandle {
     fn read_byte(&mut self) -> i32 { EOF_SENTINEL }
     fn unread_byte(&mut self, _byte: i32) {}
     fn write_bytes(&mut self, _data: &[u8]) -> io::Result<usize> {
@@ -194,6 +170,9 @@ impl LuaFileOps for StdStreamHandle {
     }
     fn clear_error(&mut self) {}
     fn has_error(&self) -> bool { false }
+}
+
+impl LuaFileOps for StdStreamHandle {
     fn set_buf_mode(&mut self, _mode: BufMode, _size: usize) -> io::Result<()> { Ok(()) }
 }
 
@@ -223,7 +202,7 @@ impl ReadNumState {
 
     /// Save current char to `buf` and read the next byte from `file`.
     /// Returns `false` if the buffer is full (numeral too long). C: `nextc`.
-    fn advance(&mut self, file: &mut dyn LuaFileOps) -> bool {
+    fn advance(&mut self, file: &mut dyn LuaFileHandle) -> bool {
         // C: if (rn->n >= L_MAXLENNUM) { rn->buff[0] = '\0'; return 0; }
         if self.count >= L_MAX_LEN_NUM {
             self.buf[0] = 0;
@@ -236,7 +215,7 @@ impl ReadNumState {
     }
 
     /// Accept current char if it equals either byte in `set`. C: `test2`.
-    fn try2(&mut self, file: &mut dyn LuaFileOps, set: [u8; 2]) -> bool {
+    fn try2(&mut self, file: &mut dyn LuaFileHandle, set: [u8; 2]) -> bool {
         // C: if (rn->c == set[0] || rn->c == set[1]) return nextc(rn);
         if self.current == set[0] as i32 || self.current == set[1] as i32 {
             self.advance(file)
@@ -246,7 +225,7 @@ impl ReadNumState {
     }
 
     /// Consume a run of (hex)digits; return the count. C: `readdigits`.
-    fn read_digits(&mut self, file: &mut dyn LuaFileOps, hex: bool) -> usize {
+    fn read_digits(&mut self, file: &mut dyn LuaFileHandle, hex: bool) -> usize {
         // C: while ((hex ? isxdigit(rn->c) : isdigit(rn->c)) && nextc(rn)) count++;
         let mut count = 0usize;
         loop {
@@ -450,27 +429,33 @@ fn new_file(state: &mut LuaState) -> Result<Rc<RefCell<LStream>>, LuaError> {
 /// Open `fname` and push its handle; raise a runtime error on failure.
 /// C: `opencheck(L, fname, mode)`.
 ///
-/// TODO(port): std::fs::File::open needed.
+/// The file system is reached via `GlobalState::file_open_hook` (registered by
+/// `lua-cli`) since `std::fs` is banned in `lua-stdlib` per PORTING.md §1.
 fn opencheck(state: &mut LuaState, fname: &[u8], mode: &[u8]) -> Result<(), LuaError> {
-    // C: LStream *p = newfile(L); p->f = fopen(fname, mode);
-    // C: if (p->f == NULL) luaL_error(L, "cannot open file '%s' (%s)", fname, strerror(errno));
-    new_file(state)?;
-    // TODO(port): std::fs::File — open fname in mode, store in LStream.file
-    let open_result: Result<Box<dyn LuaFileOps>, io::Error> = Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "TODO(port): std::fs::File not yet wired",
-    ));
-    match open_result {
-        Ok(_f) => {
-            // TODO(port): store f in the just-allocated LStream.file
-            Ok(())
+    let hook = state.global().file_open_hook;
+    let fh = match hook {
+        Some(open_fn) => open_fn(fname, mode).map_err(|e| {
+            LuaError::runtime(format_args!(
+                "cannot open file '{}' ({})",
+                fname.escape_ascii(),
+                match &e {
+                    LuaError::Runtime(LuaValue::Str(s)) => {
+                        String::from_utf8_lossy(s.as_bytes()).into_owned()
+                    }
+                    other => format!("{:?}", other),
+                }
+            ))
+        })?,
+        None => {
+            return Err(LuaError::runtime(format_args!(
+                "cannot open file '{}' (no filesystem hook registered)",
+                fname.escape_ascii()
+            )));
         }
-        Err(e) => Err(LuaError::runtime(format_args!(
-            "cannot open file '{}' ({})",
-            fname.escape_ascii(),
-            e
-        ))),
-    }
+    };
+    let cell = new_file(state)?;
+    cell.borrow_mut().file = Some(fh);
+    Ok(())
 }
 
 // ── Close functions ──────────────────────────────────────────────────────────
@@ -605,6 +590,9 @@ fn f_gc(state: &mut LuaState) -> Result<usize, LuaError> {
 // ── io.open / io.popen / io.tmpfile ─────────────────────────────────────────
 
 /// `io.open(filename [, mode])`. C: `io_open`.
+///
+/// The file system is reached via `GlobalState::file_open_hook` (registered by
+/// `lua-cli`) since `std::fs` is banned in `lua-stdlib` per PORTING.md §1.
 pub fn io_open(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: const char *filename = luaL_checkstring(L, 1);
     // C: const char *mode = luaL_optstring(L, 2, "r");
@@ -614,20 +602,35 @@ pub fn io_open(state: &mut LuaState) -> Result<usize, LuaError> {
     if !check_mode(&mode) {
         return Err(LuaError::arg_error(2, "invalid mode"));
     }
-    new_file(state)?;
-    // C: p->f = fopen(filename, mode);
-    // C: return (p->f == NULL) ? luaL_fileresult(L, 0, filename) : 1;
-    // TODO(port): std::fs — open filename in the requested mode, store in LStream.file
-    let open_result: Result<Box<dyn LuaFileOps>, io::Error> = Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "TODO(port): std::fs::File not yet wired",
-    ));
-    match open_result {
-        Ok(_f) => {
-            // TODO(port): store _f in the just-allocated LStream.file
-            Ok(1)
+    let hook = state.global().file_open_hook;
+    match hook {
+        Some(open_fn) => match open_fn(&filename, &mode) {
+            Ok(fh) => {
+                let cell = new_file(state)?;
+                cell.borrow_mut().file = Some(fh);
+                // C: return 1; (the file handle userdata is on the stack)
+                Ok(1)
+            }
+            Err(e) => {
+                let os_err = io::Error::new(
+                    io::ErrorKind::Other,
+                    match &e {
+                        LuaError::Runtime(LuaValue::Str(s)) => {
+                            String::from_utf8_lossy(s.as_bytes()).into_owned()
+                        }
+                        other => format!("{:?}", other),
+                    },
+                );
+                file_result(state, false, Some(&filename), os_err)
+            }
+        },
+        None => {
+            let os_err = io::Error::new(
+                io::ErrorKind::Unsupported,
+                "no filesystem hook registered",
+            );
+            file_result(state, false, Some(&filename), os_err)
         }
-        Err(e) => file_result(state, false, Some(&filename), e),
     }
 }
 
@@ -664,12 +667,12 @@ pub fn io_tmpfile(state: &mut LuaState) -> Result<usize, LuaError> {
 /// Retrieve the current default IO file from the registry; error if closed.
 /// C: `getiofile(L, findex)`.
 ///
-/// TODO(port): borrow split — returns `&mut dyn LuaFileOps` while caller also
+/// TODO(port): borrow split — returns `&mut dyn LuaFileHandle` while caller also
 /// needs `&mut LuaState`. Phase B: use `RefCell` inside `LStream`.
 fn get_io_file<'a>(
     state: &'a mut LuaState,
     key: &[u8],
-) -> Result<&'a mut dyn LuaFileOps, LuaError> {
+) -> Result<&'a mut dyn LuaFileHandle, LuaError> {
     // C: lua_getfield(L, LUA_REGISTRYINDEX, findex);
     // C: p = (LStream *)lua_touserdata(L, -1);
     // C: if (isclosed(p)) luaL_error(L, "default %s file is closed", findex+IOPREF_LEN);
@@ -724,7 +727,7 @@ pub fn io_output(state: &mut LuaState) -> Result<usize, LuaError> {
 /// C: `read_number(L, f)`.
 fn read_number(
     state: &mut LuaState,
-    file: &mut dyn LuaFileOps,
+    file: &mut dyn LuaFileHandle,
 ) -> Result<bool, LuaError> {
     // C: do { rn.c = l_getc(rn.f); } while (isspace(rn.c)); /* skip spaces */
     let first = loop {
@@ -789,7 +792,7 @@ fn read_number(
 /// Test for EOF: push `""` and return `true` if not at EOF. C: `test_eof`.
 fn test_eof(
     state: &mut LuaState,
-    file: &mut dyn LuaFileOps,
+    file: &mut dyn LuaFileHandle,
 ) -> Result<bool, LuaError> {
     // C: int c = getc(f); ungetc(c, f); lua_pushliteral(L, ""); return (c != EOF);
     let c = file.read_byte();
@@ -807,7 +810,7 @@ fn test_eof(
 /// per-byte allocation; Rust's Vec grows here, which is slightly slower.
 fn read_line(
     state: &mut LuaState,
-    file: &mut dyn LuaFileOps,
+    file: &mut dyn LuaFileHandle,
     chop: bool,
 ) -> Result<bool, LuaError> {
     let mut buf: Vec<u8> = Vec::new();
@@ -845,7 +848,7 @@ fn read_line(
 /// PERF(port): C uses `fread` with a large buffer; Rust reads byte-by-byte via
 /// `LuaFileOps::read_byte`. Phase B should add `read_chunk(&mut buf)` to the
 /// trait for bulk reads.
-fn read_all(state: &mut LuaState, file: &mut dyn LuaFileOps) -> Result<(), LuaError> {
+fn read_all(state: &mut LuaState, file: &mut dyn LuaFileHandle) -> Result<(), LuaError> {
     // C: do { nr = fread(p, LUAL_BUFFERSIZE, f); luaL_addsize(&b, nr); } while (nr == LUAL_BUFFERSIZE);
     let mut buf: Vec<u8> = Vec::new();
     loop {
@@ -871,7 +874,7 @@ fn read_all(state: &mut LuaState, file: &mut dyn LuaFileOps) -> Result<(), LuaEr
 /// Return `true` if anything was read. C: `read_chars(L, f, n)`.
 fn read_chars(
     state: &mut LuaState,
-    file: &mut dyn LuaFileOps,
+    file: &mut dyn LuaFileHandle,
     n: usize,
 ) -> Result<bool, LuaError> {
     // C: nr = fread(p, sizeof(char), n, f); luaL_addsize(&b, nr); return (nr > 0);
@@ -895,7 +898,7 @@ fn read_chars(
 /// is accessed through the stack index rather than a raw borrow.
 fn g_read(
     state: &mut LuaState,
-    file: &mut dyn LuaFileOps,
+    file: &mut dyn LuaFileHandle,
     first: i32,
 ) -> Result<usize, LuaError> {
     // C: int nargs = lua_gettop(L) - 1;
@@ -1003,7 +1006,7 @@ pub fn f_read(state: &mut LuaState) -> Result<usize, LuaError> {
 /// TODO(port): borrow split — same issue as g_read.
 fn g_write(
     state: &mut LuaState,
-    file: &mut dyn LuaFileOps,
+    file: &mut dyn LuaFileHandle,
     arg: i32,
 ) -> Result<usize, LuaError> {
     // C: int nargs = lua_gettop(L) - arg;
@@ -1058,40 +1061,67 @@ fn g_write(
 
 /// `io.write(...)`. C: `io_write`.
 ///
-/// PORT NOTE: routes writes directly through `state.write_output()` rather than
-/// `g_write(getiofile(IO_OUTPUT))`. The full C path needs typed-userdata access
-/// to pull `LStream` out of the registry and an interior-mutability split to
-/// borrow its `LuaFileOps` alongside `&mut LuaState`; both land in Phase B.
-/// Until then, the only `IO_OUTPUT` ever installed by `luaopen_io` is `stdout`,
-/// so writing through `write_output` is behaviourally identical for the
-/// default case and lets `print`/`io.write` share the same sink.
+/// Writes all arguments to the current default output file (`IO_OUTPUT`). When
+/// a file was set via `io.output(filename)`, writes go to that file; otherwise
+/// they go to stdout via `state.write_output()`.
+///
+/// The borrow split (needing both `&mut LuaState` and `&mut dyn LuaFileHandle`)
+/// is resolved by collecting all formatted strings first and then writing them
+/// to the file handle obtained from the `LSTREAM_REGISTRY`.
 pub fn io_write(state: &mut LuaState) -> Result<usize, LuaError> {
-    // C: int nargs = lua_gettop(L) - arg;  with arg == 1, so nargs == top().
+    // C: g_write(L, getiofile(L, IO_OUTPUT), 1)
+    // Step 1: collect all formatted byte strings before touching the file handle.
     let n = state.top();
-    for i in 1..=n {
+    let mut chunks: Vec<Vec<u8>> = Vec::with_capacity(n as usize);
+    for i in 1..=(n as i32) {
         if state.type_at(i) == LuaType::Number {
-            // C: lua_isinteger ? fprintf("%lld", ival) : fprintf("%.14g", fval)
             let s = if state.is_integer(i) {
                 let ival = state.to_integer(i).unwrap_or(0);
-                format!("{}", ival)
+                // C: LUA_INTEGER_FMT = "%lld"
+                format!("{}", ival).into_bytes()
             } else {
                 let fval = state.to_number(i).unwrap_or(0.0);
-                // TODO(port): proper %.14g (significant-digit) formatting; same
-                // gap as g_write — fine for now because integer tables hit the
-                // branch above and printf-style float formatting is unused on
-                // the common path.
-                format!("{:.14e}", fval)
+                // TODO(port): proper %.14g (significant-digit) formatting.
+                format!("{:.14e}", fval).into_bytes()
             };
-            state.write_output(s.as_bytes())?;
+            chunks.push(s);
         } else {
-            // C: luaL_checklstring(L, arg, &l); fwrite(s, 1, l, f);
             let bytes: Vec<u8> = state.check_arg_string(i)?;
-            state.write_output(&bytes)?;
+            chunks.push(bytes);
         }
     }
-    // C: returns the file handle (pushed by `getiofile`) so calls can chain
-    // as `io.write("x"):write("y")`. Mirror that by pushing the IO_OUTPUT
-    // userdata back onto the stack top.
+
+    // Step 2: get the current output file handle from LSTREAM_REGISTRY if possible.
+    // Push the IO_OUTPUT userdata to the stack to read its identity, then pop it.
+    // The metatable check also verifies this is a live (not collected) file handle.
+    let ud_id: Option<usize> = {
+        state.registry_get(IO_OUTPUT_KEY)?;
+        let id = state.test_arg_userdata(-1, LUA_FILE_HANDLE)
+            .map(|ud| ud.identity());
+        state.pop_n(1);
+        id
+    };
+
+    if let Some(id) = ud_id {
+        if let Some(rc) = lookup_lstream(id) {
+            let mut p = rc.borrow_mut();
+            if let Some(fh) = p.file.as_mut() {
+                for chunk in &chunks {
+                    fh.write_bytes(chunk).map_err(|e| {
+                        LuaError::runtime(format_args!("io.write: {}", e))
+                    })?;
+                }
+                drop(p);
+                state.registry_get(IO_OUTPUT_KEY)?;
+                return Ok(1);
+            }
+        }
+    }
+
+    // Fallback: IO_OUTPUT is not a live file handle; write to the VM stdout sink.
+    for chunk in &chunks {
+        state.write_output(chunk)?;
+    }
     state.registry_get(IO_OUTPUT_KEY)?;
     Ok(1)
 }
