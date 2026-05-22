@@ -134,13 +134,8 @@ def render(stdscr, files: list[FileEntry], summary: Summary,
         row += 1
 
         if f.status == "work" and row < max_y - 2:
-            # Expanded mode: show last 5 events per worker; normal: last 1
-            limit = 5 if expanded else 1
-            events = backend.events(f.cfile, limit=limit) if expanded else (
-                [None]  # placeholder; we use f.last_event for the unexpanded case
-            )
-            if expanded and events:
-                for ev in events:
+            if expanded:
+                for ev in backend.events(f.cfile, limit=5):
                     if row >= max_y - 2:
                         break
                     line = f"       ⤷ [{ev.type}] {ev.summary[:max_x - 16]}"
