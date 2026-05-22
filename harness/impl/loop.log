@@ -4329,3 +4329,7 @@ help: use `let _ = ...` to ignore the expression or result
 [2026-05-17T00:10:32Z] ─── iter 1  (spent: $0.00) ───
 [2026-05-17T00:10:32Z]   stub blocker: cg_posfix_fold non-foldable binop Le (Local KInt)
 [2026-05-17T00:10:32Z]   dispatching IMPLEMENT agent for cg_posfix_fold non-foldable binop Le (Local KInt) at crates/lua-parse/src/lib.rs:744:14 (budget $10)
+[2026-05-17T00:12:03Z]   agent done. iter cost=$0.7031029999999999  total=$0.00
+[2026-05-17T00:12:03Z] ─── iter 2  (spent: $0.00) ───
+[2026-05-17T00:12:03Z]   real-error blocker at step 3/4 Loading source (parse + compile): Syntax: internal: cg_exp_to_next_reg cannot discharge Call (load_string status=1)
+[2026-05-17T00:12:03Z]   dispatching DEBUG agent for real-error (budget $15)

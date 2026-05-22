@@ -1140,11 +1140,33 @@ fn cg_discharge_vars(
             e.k = ExprKind::Reloc;
         }
         ExprKind::VarArg | ExprKind::Call => {
-            cg_set_returns(fs, e, 1);
+            cg_set_one_ret(fs, e);
         }
         _ => {}
     }
     Ok(())
+}
+
+/// C: `luaK_setoneret` — adjust a Call/VarArg expression to produce a single
+/// result. For a Call this leaves the already-emitted instruction alone (it
+/// was emitted with `ARG_C = 2`, i.e. exactly one result) and reclassifies
+/// `e` as `NonReloc` pointing at the result register (the Call's `ARG_A`).
+/// For a VarArg this patches `ARG_C = 2` and leaves `e` as `Reloc` so the
+/// caller can place the single result into a destination register.
+fn cg_set_one_ret(fs: &mut FuncState, e: &mut ExprDesc) {
+    if e.k == ExprKind::Call {
+        let pc_idx = e.u.info as usize;
+        let lc = lua_code::opcodes::Instruction(fs.f.code[pc_idx].0);
+        debug_assert_eq!(lc.arg_c(), 2);
+        e.u.info = lc.arg_a() as i32;
+        e.k = ExprKind::NonReloc;
+    } else if e.k == ExprKind::VarArg {
+        let pc_idx = e.u.info as usize;
+        let mut lc = lua_code::opcodes::Instruction(fs.f.code[pc_idx].0);
+        lc.set_arg_c(2);
+        fs.f.code[pc_idx] = lua_types::opcode::Instruction::new(lc.0);
+        e.k = ExprKind::Reloc;
+    }
 }
 
 /// Like `cg_free_reg`, but only acts when the index actually belongs to a

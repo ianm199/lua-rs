@@ -1605,3 +1605,6 @@
 {"ts":"2026-05-17T00:10:32Z","action":"run_start","detail":"local function fact(n) if n <= 1 then return 1 else return n * fact(n-1) end end; print(fact(5))","total_cost":0.00}
 {"ts":"2026-05-17T00:10:32Z","action":"panic_detected","detail":"func=cg_posfix_fold non-foldable binop Le (Local KInt) iter=1","total_cost":0.00}
 {"ts":"2026-05-17T00:10:32Z","action":"dispatch_start","detail":"type=implement func=cg_posfix_fold non-foldable binop Le (Local KInt) iter=1","total_cost":0.00}
+{"ts":"2026-05-17T00:12:03Z","action":"dispatch_done","detail":"type=implement func=cg_posfix_fold non-foldable binop Le (Local KInt) cost=0.7031029999999999","total_cost":0.00}
+{"ts":"2026-05-17T00:12:03Z","action":"real_error","detail":"err=Syntax: internal: cg_exp_to_next_reg cannot discharge Call (load_string status=1) step=3/4 Loading source (parse + compile) iter=2","total_cost":0.00}
+{"ts":"2026-05-17T00:12:03Z","action":"dispatch_start","detail":"type=debug err=Syntax: internal: cg_exp_to_next_reg cannot discharge Call (load_string status=1) iter=2","total_cost":0.00}
