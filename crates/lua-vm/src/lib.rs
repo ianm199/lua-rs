@@ -1,5 +1,7 @@
 //! Skeleton crate. See PORT_STRATEGY.md for scope.
 
+pub mod func;
+
 // ──────────────────────────────────────────────────────────────────────────
 // PORT STATUS
 //   source:        (none — skeleton; Phase A populates this crate)
