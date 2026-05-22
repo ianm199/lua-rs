@@ -12,3 +12,4 @@ workspace = true
 lua-types.workspace = true
 lua-vm.workspace = true
 lua-code.workspace = true
+lua-lex.workspace = true

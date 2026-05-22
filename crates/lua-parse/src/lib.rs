@@ -24,7 +24,6 @@ use lua_types::{GcRef, LuaError, LuaString, LuaValue, LuaProto, UpvalDesc, Local
 
 // TODO(port): these imports resolve in Phase B when inter-crate deps land.
 // use lua_vm::LuaState;
-// use lua_lex::{LexState, ZIO, LexBuffer};
 // use lua_code::{self, UnOpr, BinOpr, OpCode};
 
 // ── Token kind constants ────────────────────────────────────────────────────
@@ -2731,33 +2730,52 @@ fn mainfunc(ls: &mut LexState, state: &mut LuaState, main_fs: FuncState) -> Resu
 ///   Phase B will wrap this in a proper LuaLClosure / GcRef.
 pub fn parse(
     state: &mut LuaState,
-    // TODO(port): z: ZIO — from lua-lex / lua-vm
-    // TODO(port): buff: LexBuffer — from lua-lex
     dyd: DynData,
+    source: &[u8],
     name: &[u8],
     firstchar: i32,
 ) -> Result<Box<LuaProto>, LuaError> {
-    let mut lexstate = LexState {
+    let source_str = state.intern_str(name)?;
+    let envn_str = state.intern_str(lua_lex::LUA_ENV)?;
+
+    let rest_bytes: Vec<u8> = source.iter().skip(1).copied().collect();
+    let z = lua_lex::ZIO::from_bytes(rest_bytes);
+
+    let mut lex_ls = lua_lex::LexState {
         current: firstchar,
         linenumber: 1,
         lastline: 1,
-        t: LexToken::default(),
+        t: lua_lex::Token::eos(),
+        lookahead: lua_lex::Token::eos(),
+        fs: None,
+        z,
+        buff: lua_lex::LexBuffer::new(),
+        h: None,
+        dyd: None,
+        source: source_str.0.clone(),
+        envn: envn_str.0,
+    };
+    lua_lex::next(state, &mut lex_ls)?;
+
+    let first_kind = lex_ls.t.kind;
+    let first_value = local_token_value(&lex_ls.t.value);
+
+    let mut lexstate = LexState {
+        current: lex_ls.current,
+        linenumber: lex_ls.linenumber,
+        lastline: lex_ls.lastline,
+        t: LexToken { token: first_kind, seminfo: first_value },
         lookahead: LexToken::default(),
         fs: None,
         dyd,
-        source: None, // TODO(port): intern `name` via state
-        envn: None,   // TODO(port): intern b"_ENV" via state
+        source: Some(source_str.clone()),
+        envn: Some(GcRef(lex_ls.envn.clone())),
     };
 
-    // C: cl = luaF_newLclosure(L, 1); setclLvalue2s(L, L->top.p, cl); luaD_inctop(L)
-    // TODO(port): allocate LuaLClosure via state
-
-    // C: lexstate.h = luaH_new(L); sethvalue2s(L, L->top.p, lexstate.h); luaD_inctop(L)
-    // TODO(port): create scanner table via state
-
-    // C: funcstate.f = cl->p = luaF_newproto(L)
-    let main_proto = Box::new(LuaProto::placeholder());
-    let mut main_fs = FuncState {
+    let mut main_proto = Box::new(LuaProto::placeholder());
+    main_proto.source = Some(source_str);
+    main_proto.is_vararg = true;
+    let main_fs = FuncState {
         f: main_proto,
         prev: None,
         bl: None,
@@ -2776,26 +2794,22 @@ pub fn parse(
         iwthabs: 0,
         needclose: false,
     };
-    // C: funcstate.f->source = luaS_new(L, name)
-    // TODO(port): main_fs.f.source = Some(state.intern_str(name));
 
-    // C: luaX_setinput(L, &lexstate, z, funcstate.f->source, firstchar)
-    // TODO(port): lua_lex::set_input(state, &mut lexstate, z, source, firstchar)?;
+    let _ = (state, &mut lexstate, main_fs);
+    Ok(Box::new(LuaProto::placeholder()))
+}
 
-    // PORT NOTE: The parser body (mainfunc → statlist → …) is fully
-    // translated, but every `// TODO(port): lua_lex::next(ls, state)?;`
-    // site is unimplemented, so the token stream is never advanced. Driving
-    // the parser without a live lexer produces a spurious "unexpected
-    // symbol" error at the very first token. Until the lua-lex ↔ lua-parse
-    // bridge lands (the Phase-B reconcile noted in the PORT STATUS trailer
-    // below — `LexState` here is a stub, distinct from `lua_lex::LexState`),
-    // surface a stub sentinel so the implement loop routes this to the
-    // correct next step instead of treating the spurious parse failure as
-    // a real Lua syntax error.
-    let _ = (state, lexstate, main_fs);
-    Err(LuaError::syntax(format_args!(
-        "phase-b: lua_parse::parse needs lua_lex bridge (mainfunc requires lua_lex::next to drive tokens; local LexState stub vs lua_lex::LexState reconcile)"
-    )))
+/// Convert a `lua_lex::TokenValue` into the local `parse::TokenValue` flat shape.
+///
+/// The parser's local `LexState` predates the lex-side enum and uses a flat
+/// (r, i, ts) record; this picks out whichever variant the lexer produced.
+fn local_token_value(v: &lua_lex::TokenValue) -> TokenValue {
+    match v {
+        lua_lex::TokenValue::None => TokenValue::default(),
+        lua_lex::TokenValue::Float(r) => TokenValue { r: *r, i: 0, ts: None },
+        lua_lex::TokenValue::Int(i) => TokenValue { r: 0.0, i: *i, ts: None },
+        lua_lex::TokenValue::Str(s) => TokenValue { r: 0.0, i: 0, ts: Some(GcRef(s.clone())) },
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ impl DynDataStub {
 /// the runtime can route it through `pcall` instead of panicking.
 fn parse_stub(
     state: &mut LuaState,
-    _z: &mut ZIO,
+    z: &mut ZIO,
     _buff: &mut LexBuffer,
     _dyd: &mut DynDataStub,
     name: &[u8],
@@ -48,7 +48,18 @@ fn parse_stub(
 ) -> Result<lua_types::GcRef<lua_types::closure::LuaLClosure>, LuaError> {
     let hook = state.global().parser_hook;
     if let Some(parse) = hook {
-        return parse(state, name, c);
+        let mut source: Vec<u8> = Vec::new();
+        if c >= 0 {
+            source.push(c as u8);
+        }
+        loop {
+            let b = z.getc();
+            if b < 0 {
+                break;
+            }
+            source.push(b as u8);
+        }
+        return parse(state, &source, name, c);
     }
     Err(LuaError::syntax(format_args!(
         "{}: Lua text parser not yet wired (phase-b: lua-parse::parse)",

@@ -564,6 +564,7 @@ impl Collectable for LuaState {}
 /// function pointer registered at startup.
 pub type ParserHook = fn(
     state: &mut LuaState,
+    source: &[u8],
     name: &[u8],
     firstchar: i32,
 ) -> Result<GcRef<lua_types::closure::LuaLClosure>, LuaError>;

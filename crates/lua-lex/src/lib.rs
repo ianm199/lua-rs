@@ -117,6 +117,17 @@ pub struct ZIO {
 }
 
 impl ZIO {
+    /// Construct a ZIO from a reader callback that yields successive chunks.
+    pub fn new(reader: Box<dyn FnMut() -> Option<Vec<u8>>>) -> Self {
+        ZIO { reader, n: 0, p: 0, current_chunk: Vec::new() }
+    }
+
+    /// Construct a ZIO that yields the supplied bytes once and then EOZ.
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+        let mut once = Some(bytes);
+        ZIO::new(Box::new(move || once.take()))
+    }
+
     /// C: `#define zgetc(z) (((z)->n--)>0 ? cast_uchar(*(z)->p++) : luaZ_fill(z))`
     /// macros.tsv: zgetc → z.getc()
     pub fn getc(&mut self) -> i32 {
@@ -715,7 +726,7 @@ fn token2str_raw(token: i32) -> Vec<u8> {
 /// //   }
 /// // }
 /// ```
-pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
+pub fn init(state: &mut LuaState) -> Result<(), LuaError> {
     // C: TString *e = luaS_newliteral(L, LUA_ENV);
     // macros.tsv: luaS_newliteral → state.intern_str(b"...")
     // TODO(port): call state.intern_str(LUA_ENV) once LuaState has that method (Phase B)
@@ -765,7 +776,7 @@ pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
 /// //   luaZ_resizebuffer(ls->L, ls->buff, LUA_MINBUFFER);
 /// // }
 /// ```
-pub(crate) fn set_input(
+pub fn set_input(
     state: &mut LuaState,
     ls: &mut LexState,
     z: ZIO,
@@ -869,7 +880,7 @@ pub(crate) fn new_string(
 /// //     ls->t.token = llex(ls, &ls->t.seminfo);
 /// // }
 /// ```
-pub(crate) fn next(
+pub fn next(
     state: &mut LuaState,
     ls: &mut LexState,
 ) -> Result<(), LuaError> {
@@ -908,7 +919,7 @@ pub(crate) fn next(
 /// //   return ls->lookahead.token;
 /// // }
 /// ```
-pub(crate) fn lookahead(
+pub fn lookahead(
     state: &mut LuaState,
     ls: &mut LexState,
 ) -> Result<i32, LuaError> {

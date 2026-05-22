@@ -24,10 +24,17 @@ use lua_vm::state::{new_state, LuaState};
 
 fn parser_hook(
     state: &mut LuaState,
+    source: &[u8],
     name: &[u8],
     firstchar: i32,
 ) -> Result<GcRef<LuaLClosure>, LuaError> {
-    let proto = lua_parse::parse(state, lua_parse::DynData::default(), name, firstchar)?;
+    let proto = lua_parse::parse(
+        state,
+        lua_parse::DynData::default(),
+        source,
+        name,
+        firstchar,
+    )?;
     Ok(GcRef::new(LuaLClosure {
         proto: GcRef::new(*proto),
         upvals: Vec::new(),
