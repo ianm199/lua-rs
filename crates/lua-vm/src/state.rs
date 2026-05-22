@@ -1163,9 +1163,20 @@ impl LuaState {
 
     /// Intern a byte string in the global string pool.
     ///
-    /// C: `luaS_new(L, s)` → `state.intern_str(s: &[u8])`
+    /// Mirrors C's `luaS_newlstr` (lstring.c): short strings (≤ LUAI_MAXSHORTLEN
+    /// = 40 bytes) are interned globally so equal content shares a single
+    /// TString; long strings always allocate a fresh TString. This is what
+    /// lets `string.format("%p", gsub(s, ".", fn))` differ from `%p(s)` even
+    /// when the substituted content is identical — the fresh string carries
+    /// its own GC identity.
+    ///
+    /// C: `luaS_newlstr` (and `luaS_new`, which calls `luaS_newlstr`)
     /// macros.tsv: `luaS_new → state.intern_str(s)`
     pub fn intern_str(&mut self, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> {
+        if bytes.len() > 40 {
+            let _local = crate::string::new(self, bytes)?;
+            return Ok(GcRef::new(LuaString::from_bytes(bytes.to_vec())));
+        }
         if let Some(existing) = self.global().interned_lt.get(bytes) {
             return Ok(existing.clone());
         }

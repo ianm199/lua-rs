@@ -1,0 +1,70 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 161309,
+  "duration_api_ms": 159463,
+  "ttft_ms": 2638,
+  "num_turns": 27,
+  "result": "Clean build, no errors. Only pre-existing warnings.\n\n## Report\n\n**Root cause:** `GcHandle::change_mode` at `crates/lua-vm/src/state.rs:1943` was a Phase-B no-op. The script tests `collectgarbage(\"generational\")` returning the previous mode — the call returned the old mode correctly via `gc_gen` (api.rs:1817), but never actually updated `g->gckind`. So the second call still saw `gckind == Incremental` and returned `\"incremental\"` instead of `\"generational\"`, failing the assertion at gc.lua line 16 (line 24 in the harness-prefixed source).\n\n**Fix:** Implemented `change_mode` to write `self._state.global_mut().gckind = mode as u8;`. This is the only observable effect that matters in Phases A–C, since the Rc-based heap doesn't need a real generational/incremental switchover.\n\n**State after fix:** `cargo build -p lua-cli` compiles green. Test not re-run per instructions; the assertion at gc.lua:16 should now pass and execution should proceed further into the file.",
+  "stop_reason": "end_turn",
+  "session_id": "0620a945-d9ea-4ed8-987e-11cfca2b9af9",
+  "total_cost_usd": 1.343441,
+  "usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 68698,
+    "cache_read_input_tokens": 1474923,
+    "output_tokens": 6995,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 68698,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 367,
+        "cache_read_input_tokens": 68511,
+        "cache_creation_input_tokens": 187,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 187
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1482,
+      "outputTokens": 20,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001582,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 32,
+      "outputTokens": 6995,
+      "cacheReadInputTokens": 1474923,
+      "cacheCreationInputTokens": 68698,
+      "webSearchRequests": 0,
+      "costUSD": 1.3418590000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "5ae17a15-c3c8-4cd2-b765-2ea7721e23a2"
+}

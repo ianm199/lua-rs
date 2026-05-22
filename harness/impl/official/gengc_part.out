@@ -2,10 +2,6 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing pattern matching
-+
-+
-+
-+
-OK
+created co, type=	thread
+resume returned: ok=	false	f=	coroutines not yet implemented (Phase E)	type=	string
 [ok] execution completed, status=Ok

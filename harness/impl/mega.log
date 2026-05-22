@@ -781,3 +781,4 @@
 [2026-05-18T05:22:08Z mega]   [O4.D2] DEBUG dispatch on file: reference/lua-c/testes/gc.lua [parallel]
 [2026-05-18T05:22:08Z mega]   [O4.D3] DEBUG dispatch on file: reference/lua-c/testes/gengc.lua [parallel]
 [2026-05-18T05:22:08Z mega]   [O4.D4] DEBUG dispatch on file: reference/lua-c/testes/pm.lua [parallel]
+[2026-05-18T05:24:51Z mega]   [O4.D5] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
