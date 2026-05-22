@@ -212,3 +212,6 @@
 {"ts":"2026-05-16T19:11:06Z","action":"dispatch_done","detail":"type=debug err=pcall_k failed: Runtime: attempt to call a nil value cost=3.2995807500000005","total_cost":0.00}
 {"ts":"2026-05-16T19:11:07Z","action":"panic_detected","detail":"func=set_ci_savedpc iter=18","total_cost":0.00}
 {"ts":"2026-05-16T19:11:07Z","action":"dispatch_start","detail":"type=implement func=set_ci_savedpc iter=18","total_cost":0.00}
+{"ts":"2026-05-16T19:11:36Z","action":"dispatch_done","detail":"type=implement func=set_ci_savedpc cost=0.340941","total_cost":0.00}
+{"ts":"2026-05-16T19:11:37Z","action":"panic_detected","detail":"func=ci_lua_closure iter=19","total_cost":0.00}
+{"ts":"2026-05-16T19:11:37Z","action":"dispatch_start","detail":"type=implement func=ci_lua_closure iter=19","total_cost":0.00}

@@ -1,1 +1,1 @@
-set_ci_savedpc
+ci_lua_closure

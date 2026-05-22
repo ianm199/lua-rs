@@ -372,3 +372,7 @@ help: use `let _ = ...` to ignore the resulting value
 [2026-05-16T19:11:06Z] ─── iter 18  (spent: $0.00) ───
 [2026-05-16T19:11:07Z]   stub blocker: set_ci_savedpc
 [2026-05-16T19:11:07Z]   dispatching IMPLEMENT agent for set_ci_savedpc at crates/lua-vm/src/state.rs:1178:69 (budget $10)
+[2026-05-16T19:11:36Z]   agent done. iter cost=$0.340941  total=$0.00
+[2026-05-16T19:11:36Z] ─── iter 19  (spent: $0.00) ───
+[2026-05-16T19:11:37Z]   stub blocker: ci_lua_closure
+[2026-05-16T19:11:37Z]   dispatching IMPLEMENT agent for ci_lua_closure at crates/lua-vm/src/state.rs:1186:105 (budget $10)
