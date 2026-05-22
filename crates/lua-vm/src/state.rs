@@ -1437,7 +1437,15 @@ impl LuaState {
         tbl.raw_set(self, &k, v)
     }
     pub fn table_array_set<T>(&mut self, _t: T, _idx: usize, _v: LuaValue) -> Result<(), LuaError> { todo!("phase-b: table_array_set") }
-    pub fn table_ensure_array<T>(&mut self, _t: T, _n: usize) -> Result<(), LuaError> { todo!("phase-b: table_ensure_array") }
+    pub fn table_ensure_array<T>(&mut self, _t: T, _n: usize) -> Result<(), LuaError> {
+        // PORT NOTE: C's luaH_resizearray preallocates the table's contiguous
+        // array region (h->array). Phase B's LuaTable (lua-types/src/value.rs)
+        // is a single Vec<(K,V)> placeholder with no separate array part, so
+        // there is nothing to preallocate — actual storage happens lazily in
+        // table_array_set via raw_set. The rich array+hash impl in
+        // crates/lua-vm/src/table.rs lights up in Phase D.
+        Ok(())
+    }
     pub fn table_length<T>(&mut self, _t: T) -> Result<i64, LuaError> { todo!("phase-b: table_length") }
     pub fn table_metatable(&mut self, v: &LuaValue) -> Option<GcRef<LuaTable>> {
         match v {

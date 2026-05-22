@@ -2,5 +2,8 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-hi there
-[ok] execution completed, status=Ok
+
+thread 'main' (5697748) panicked at crates/lua-vm/src/state.rs:1440:89:
+not yet implemented: phase-b: table_ensure_array
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[panic] not yet implemented: phase-b: table_ensure_array
