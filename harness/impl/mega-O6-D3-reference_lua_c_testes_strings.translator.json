@@ -1,0 +1,103 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "duration_ms": 414139,
+  "duration_api_ms": 413257,
+  "ttft_ms": 3925,
+  "num_turns": 56,
+  "result": "Fix verified: long strings now have distinct `%p` identities, short strings still share. No temp instrumentation to remove. I have not re-run the full strings.lua test; the mega-loop will re-test.\n\n## Summary\n\n**Root cause:** `LuaState::intern_str()` in `crates/lua-vm/src/state.rs:1182` was globally interning *every* byte sequence into `interned_lt`, including long strings. Lua 5.4 only interns short strings (≤ `LUAI_MAXSHORTLEN` = 40 bytes); long strings must each get a fresh object identity so that `string.format(\"%p\", s1) ~= string.format(\"%p\", s2)` holds for two distinct long strings (strings.lua line 194: `local s1 = string.rep(\"a\", 300); local s2 = string.rep(\"a\", 300); assert(... ~= ...)`).\n\n**Fix:** Gated the global intern path behind `bytes.len() <= MAX_SHORT_LEN`; long strings now return a fresh `GcRef::new(LuaString::from_bytes(...))` per call. Exposed `MAX_SHORT_LEN` as `pub(crate)` in `crates/lua-vm/src/string.rs`. Doc comment updated to reflect correct semantics.\n\n**New state:** My focused repro (`string.rep(\"a\", 300)` twice with `%p`) now shows distinct addresses (`0x...3190` vs `0x...3220`) where it previously shared. Build is green (`cargo build -p lua-cli`). The mega-loop will re-test strings.lua end-to-end.",
+  "stop_reason": "end_turn",
+  "session_id": "326e6cfd-2615-4a6c-884b-608cd3528510",
+  "total_cost_usd": 3.585486500000001,
+  "usage": {
+    "input_tokens": 61,
+    "cache_creation_input_tokens": 108234,
+    "cache_read_input_tokens": 4497374,
+    "output_tokens": 26339,
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 108234,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "",
+    "iterations": [
+      {
+        "input_tokens": 1,
+        "output_tokens": 638,
+        "cache_read_input_tokens": 126729,
+        "cache_creation_input_tokens": 404,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 404
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard"
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 1482,
+      "outputTokens": 15,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.001557,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000
+    },
+    "claude-opus-4-7[1m]": {
+      "inputTokens": 61,
+      "outputTokens": 26339,
+      "cacheReadInputTokens": 4497374,
+      "cacheCreationInputTokens": 108234,
+      "webSearchRequests": 0,
+      "costUSD": 3.583929500000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000
+    }
+  },
+  "permission_denials": [
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_01QQYz2vppB5cBTfs8k6xYqn",
+      "tool_input": {
+        "command": "awk 'NR==201 || NR==202 || NR==203 {print NR \": \" $0}' /Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/strings.lua",
+        "description": "Print lines 201-203 of strings.lua"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_014QfRPM88ht2hmtXn7zRRub",
+      "tool_input": {
+        "command": "cat > /tmp/test_q.lua << 'EOF'\nlocal x = \"\\0\\1\\0023\\5\\0009\"\nlocal q = string.format('%q', x)\nprint('q=', q)\nprint('xlen=', #x)\nprint('rlen=', #load(string.format('return %q', x))())\nfor i=1,#x do io.write(string.byte(x,i),' ') end print()\nlocal r = load(string.format('return %q', x))()\nfor i=1,#r do io.write(string.byte(r,i),' ') end print()\nEOF\ntarget/debug/lua-rs /tmp/test_q.lua 2>&1 | tail -20",
+        "description": "Test %q roundtrip"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_0143Je1w67RM9WFdSoPe9CWd",
+      "tool_input": {
+        "command": "target/debug/lua-rs \"$(cat /tmp/test_q.lua)\" 2>&1 | tail -30",
+        "description": "Run test via cat"
+      }
+    },
+    {
+      "tool_name": "Bash",
+      "tool_use_id": "toolu_015FhURD8QzoJcPTDgi7jfAQ",
+      "tool_input": {
+        "command": "git stash && cargo build -q -p lua-cli 2>&1 | grep -E \"^error\" | head -5; git stash pop",
+        "description": "Test build without my changes"
+      }
+    }
+  ],
+  "terminal_reason": "completed",
+  "fast_mode_state": "off",
+  "uuid": "607bbf42-b1d6-4497-a625-960b38e28c47"
+}

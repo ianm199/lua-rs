@@ -1,3 +1,4 @@
 4 0.9738510000000001 reference/lua-c/testes/literals.lua
 1 [2026-05-18T05:45:42Z mega]   → committed a60fbe7 (debug/reference/lua-c/testes/closure.lua )
 2.99566725 reference/lua-c/testes/closure.lua
+3 3.585486500000001 reference/lua-c/testes/strings.lua

@@ -155,29 +155,21 @@ pub fn co_resume(state: &mut LuaState) -> Result<usize, LuaError> {
 /// its to-be-closed variables are cleaned up before propagation.
 ///
 /// C: `static int luaB_auxwrap(lua_State *L)`
+///
+/// Phase A–D pragmatic implementation: invoke the wrapped function (stored
+/// in upvalue 1) synchronously on the caller's thread, returning whatever
+/// it returns.  This works for coroutine bodies that never yield, which
+/// covers the `calls.lua` tail-call test.  A body that calls
+/// `coroutine.yield` will surface the Phase-E stub error from `co_yield`.
+/// Phase E replaces this with the full `auxresume` cross-thread sequence.
 fn aux_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
-    // C: lua_State *co = lua_tothread(L, lua_upvalueindex(1));
-    // TODO(port): coroutine stub — upvalue_index(1) gives the first C-closure
-    // upvalue pseudo-index; to_thread reads GcRef<LuaState> from that slot.
-    let co = match state.to_thread(upvalue_index(1)) {
-        Some(c) => c,
-        None => panic!("coroutine.wrap: upvalue 1 is not a thread (Phase A–D stub)"),
-    };
-    // C: int r = auxresume(L, co, lua_gettop(L));
     let narg = state.get_top();
-    let r = aux_resume(state, co.clone(), narg);
-    let _ = co;
-    if r < 0 {
-        // Phase A–D stub: aux_resume placed an error object on top of the
-        // caller's stack and returned -1.  C's `luaB_auxwrap` would consult
-        // cross-thread status, close to-be-closed vars, and luaL_where-prefix
-        // the message before propagating; until Phase E wires those, raise
-        // the error value directly via `lua_error` semantics.
-        let err_val = state.pop();
-        Err(LuaError::from_value(err_val))
-    } else {
-        Ok(r as usize)
+    state.push_value_at(upvalue_index(1))?;
+    if narg > 0 {
+        state.insert(-(narg + 1))?;
     }
+    state.call(narg, -1)?;
+    Ok(state.get_top() as usize)
 }
 
 /// `coroutine.create(f)` — create a new coroutine that will run function `f`.
@@ -210,12 +202,14 @@ pub fn co_create(state: &mut LuaState) -> Result<usize, LuaError> {
 /// `coroutine.resume`, but raises an error rather than returning `false`.
 ///
 /// C: `static int luaB_cowrap(lua_State *L)`
+///
+/// Phase A–D pragmatic implementation: rather than allocate a (stubbed)
+/// thread, capture the wrapped function itself as upvalue 1 of `aux_wrap`.
+/// The closure invokes the function synchronously when called.  Phase E
+/// restores `luaB_cocreate` + `lua_pushcclosure` once real coroutines exist.
 pub fn co_wrap(state: &mut LuaState) -> Result<usize, LuaError> {
-    // C: luaB_cocreate(L);
-    co_create(state)?;
-    // C: lua_pushcclosure(L, luaB_auxwrap, 1);
-    // TODO(port): push_cclosure(aux_wrap, 1) creates a C closure with the thread
-    // (currently on top of the stack) as upvalue 1; Phase B wire-up needed.
+    state.check_arg_type(1, LuaType::Function)?;
+    state.push_value_at(1)?;
     state.push_cclosure(aux_wrap, 1)?;
     Ok(1)
 }
