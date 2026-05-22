@@ -608,3 +608,12 @@
 [2026-05-18T00:31:37Z mega]   surface scan returned 1 unique stub blockers
 [2026-05-18T00:31:37Z mega]   grouped into 1 disjoint-file agents (parallel cap 4)
 [2026-05-18T00:31:37Z mega]   [O1.1] dispatch on 'is_main_thread' @ crates/lua-vm/src/state.rs:1826:48 (budget $8) [parallel]
+[2026-05-18T00:36:39Z mega]   [O1.1] agent done. iter cost=$2.3123879999999994  total=$2.3124
+[2026-05-18T00:36:39Z mega] ─── outer round 2 (spent: $2.3124) ───
+[2026-05-18T00:37:10Z mega]   scan: 58/75 programs pass cleanly
+[2026-05-18T00:37:10Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-18T00:37:10Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-18T00:37:10Z mega]   [O2.D1] DEBUG dispatch on prog: local mt = {__add = function(a, b) return {v = a.v + b.v} end}; local a = setmetatable({v=10}, mt); local b = setmetatable({v=5}, mt); print((a+b).v) [parallel]
+[2026-05-18T00:37:10Z mega]   [O2.D2] DEBUG dispatch on file: reference/lua-c/testes/goto.lua [parallel]
+[2026-05-18T00:37:10Z mega]   [O2.D3] DEBUG dispatch on file: reference/lua-c/testes/sort.lua [parallel]
+[2026-05-18T00:37:10Z mega]   [O2.D4] DEBUG dispatch on file: reference/lua-c/testes/closure.lua [parallel]

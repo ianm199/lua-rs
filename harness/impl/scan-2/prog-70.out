@@ -3,4 +3,5 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing errors
-[err] pcall_k failed: Runtime: module 'debug' not found:
+DBG MMBIN: p1=nil p2=number tm=Add
+[err] pcall_k failed: Runtime: [string "_soft = true..."]:48: assertion failed!

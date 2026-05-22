@@ -3,8 +3,8 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing pattern matching
-
-thread 'main' (7362648) panicked at crates/lua-stdlib/src/string_lib.rs:939:29:
-range end index 12 out of range for slice of length 11
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] range end index 12 out of range for slice of length 11
++
++
++
++
+[err] pcall_k failed: Runtime: attempt to call a boolean value

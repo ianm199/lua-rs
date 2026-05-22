@@ -1,9 +1,0 @@
-4 [2026-05-17T18:57:32Z mega]   → committed 1d9f732 (debug/reference/lua-c/testes/closure.lua )
-1.3853347500000004 reference/lua-c/testes/closure.lua
-2 1.75186575 reference/lua-c/testes/goto.lua
-1 1.20335825 reference/lua-c/testes/vararg.lua
-3 0.61128825 reference/lua-c/testes/sort.lua
-5 0.41545699999999997 reference/lua-c/testes/pm.lua
-6 1.12833325 reference/lua-c/testes/strings.lua
-7 1.35670675 reference/lua-c/testes/bitwise.lua
-8 1.87018225 reference/lua-c/testes/math.lua

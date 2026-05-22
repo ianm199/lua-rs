@@ -3,4 +3,5 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing metatables
-[err] pcall_k failed: Runtime: module 'debug' not found:
+DBG MMBIN: p1=string p2=number tm=Sub
+[err] pcall_k failed: Runtime: attempt to perform arithmetic on a function value

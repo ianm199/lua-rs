@@ -3,8 +3,8 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing tables, next, and for
-[err] pcall_k failed: Runtime: _soft = true
-_port = true
-_nomsg = true
-_U = false
-arg = ar:80: assertion failed!
+
+ >>> testC not active: skipping tests for table sizes <<<
+
++
+[err] pcall_k failed: Runtime: [string "_soft = true..."]:16: assertion failed!

@@ -2783,32 +2783,41 @@ fn undef_goto(ls: &LexState, gt_idx: usize) -> LuaError {
 /// C: static void leaveblock(FuncState *fs)
 /// Pops the innermost block scope, emitting CLOSE if needed.
 fn leave_block(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
-    // Take the current block out of the chain
-    let fs = ls.fs.as_mut().unwrap();
-    let bl_box = fs.bl.take().unwrap();
-    let mut bl = *bl_box;
-    let previous = bl.previous.take();
+    // Snapshot block fields without popping; createlabel below relies on
+    // fs->bl still pointing at this (loop) block so solvegotos can read
+    // fs->bl->firstgoto.
+    let (bl_nactvar, bl_isloop, bl_upval, bl_firstgoto, bl_firstlabel) = {
+        let bl = ls
+            .fs
+            .as_ref()
+            .unwrap()
+            .bl
+            .as_ref()
+            .expect("leave_block: no current block");
+        (bl.nactvar, bl.isloop, bl.upval, bl.firstgoto, bl.firstlabel)
+    };
 
-    let stklevel = reg_level(ls, ls.fs.as_ref().unwrap(), bl.nactvar as i32);
+    let stklevel = reg_level(ls, ls.fs.as_ref().unwrap(), bl_nactvar as i32);
     let mut fs_box = ls.fs.take().unwrap();
-    remove_vars(ls, &mut fs_box, bl.nactvar as i32);
-    debug_assert!(bl.nactvar == fs_box.nactvar);
+    remove_vars(ls, &mut fs_box, bl_nactvar as i32);
+    debug_assert!(bl_nactvar == fs_box.nactvar);
     ls.fs = Some(fs_box);
 
-    let hasclose = if bl.isloop {
+    let hasclose = if bl_isloop {
         // C: createlabel(ls, luaS_newliteral(ls->L, "break"), 0, 0)
-        // TODO(port): intern "break" string
-        // TODO(port): createlabel(ls, state, break_str, 0, false)?
-        false // placeholder
+        let break_str = state.intern_str(b"break")?;
+        createlabel(ls, state, break_str, 0, false)?
     } else {
         false
     };
 
-    // Restore previous block
+    // Now pop the block off fs.bl, restoring its previous link.
+    let mut bl_box = ls.fs.as_mut().unwrap().bl.take().unwrap();
+    let previous = bl_box.previous.take();
     ls.fs.as_mut().unwrap().bl = previous;
 
     let has_prev_block = ls.fs.as_ref().unwrap().bl.is_some();
-    if !hasclose && has_prev_block && bl.upval {
+    if !hasclose && has_prev_block && bl_upval {
         // C: luaK_codeABC(fs, OP_CLOSE, stklevel, 0, 0)
         let line = ls.linenumber;
         let inst = lua_code::opcodes::Instruction::abck(
@@ -2823,15 +2832,14 @@ fn leave_block(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> 
     ls.fs.as_mut().unwrap().freereg = stklevel as u8;
 
     // C: ls->dyd->label.n = bl->firstlabel
-    ls.dyd.label.truncate(bl.firstlabel as usize);
+    ls.dyd.label.truncate(bl_firstlabel as usize);
 
-    // C: fs->bl = bl->previous — already done above
     if has_prev_block {
-        movegotosout(ls, bl.firstgoto as usize, bl.nactvar, bl.upval);
+        movegotosout(ls, bl_firstgoto as usize, bl_nactvar, bl_upval);
     } else {
         // C: if (bl->firstgoto < ls->dyd->gt.n) undefgoto(...)
-        if (bl.firstgoto as usize) < ls.dyd.gt.len() {
-            return Err(undef_goto(ls, bl.firstgoto as usize));
+        if (bl_firstgoto as usize) < ls.dyd.gt.len() {
+            return Err(undef_goto(ls, bl_firstgoto as usize));
         }
     }
     Ok(())
@@ -3729,9 +3737,9 @@ fn breakstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
     // C: luaX_next(ls) — skip 'break'
     lex_next(ls, state)?;
     // C: newgotoentry(ls, luaS_newliteral(ls->L, "break"), line, luaK_jump(ls->fs))
-    // TODO(port): intern b"break" via state
-    // TODO(port): let pc = lua_code::jump(ls.fs.as_mut().unwrap())?;
-    // TODO(port): new_goto_entry(ls, state, break_str, line, pc)?;
+    let break_str = state.intern_str(b"break")?;
+    let pc = cg_jump(ls.fs.as_mut().unwrap(), line);
+    new_goto_entry(ls, state, break_str, line, pc)?;
     Ok(())
 }
 

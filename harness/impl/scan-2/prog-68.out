@@ -3,4 +3,5 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing UTF-8 library
-[err] pcall_k failed: Runtime: module 'utf8' not found:
+ok
+[ok] execution completed, status=Ok

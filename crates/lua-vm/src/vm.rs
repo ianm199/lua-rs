@@ -1923,7 +1923,6 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                         let tm = tagmethod_from_index(i.arg_c() as usize);
                         let prev_inst = state.proto_code(&cl, pc - 2);
                         let result_idx = base + prev_inst.arg_a();
-                        eprintln!("DBG MMBIN: p1={} p2={} tm={:?}", ra_v.type_name(), rb_v.type_name(), tm);
                         state.set_ci_savedpc(ci, pc);
                         state.set_top(state.ci_top(ci));
                         state.try_bin_tm(&ra_v, Some(ra_idx), &rb_v, Some(rb_idx), result_idx, tm)?;
