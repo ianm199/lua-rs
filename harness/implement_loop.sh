@@ -82,6 +82,35 @@ extract_panic_loc() {
     grep -oE "panicked at [^:]+:[0-9]+:[0-9]+" "$1" | head -1 | sed 's/^panicked at //'
 }
 
+detect_failure_type() {
+    # Classify the run output. Returns one of:
+    #   success      - program produced "hello" output (or whatever marker)
+    #   stub         - hit a todo!() panic OR a `phase-b: ...` LuaError sentinel
+    #   real-error   - hit a real Lua runtime error (not a stub sentinel)
+    #   unknown      - exited non-zero with no recognizable diagnostic
+    local out="$1"
+    if grep -q '^hello$' "$out" || grep -q '^"hello"$' "$out"; then
+        echo "success"; return
+    fi
+    if grep -qE "not yet implemented:" "$out" \
+        || grep -qE "(Runtime|Syntax|Error): phase-[a-z0-9_-]+:" "$out"; then
+        echo "stub"; return
+    fi
+    if grep -qE "^\[err\] .* failed:" "$out"; then
+        echo "real-error"; return
+    fi
+    echo "unknown"
+}
+
+extract_real_error() {
+    grep -oE "^\[err\] .*$" "$1" | head -1 | sed 's/^\[err\] //'
+}
+
+extract_step() {
+    # Returns the CLI step the program reached before failure: [1/4], [2/4], etc.
+    grep -oE "^\[[0-9]+/[0-9]+\] [^.]*" "$1" | tail -1 | sed 's/^\[//;s/\] / /'
+}
+
 dispatch_implement_agent() {
     local func="$1"
     local loc="${2:-}"
@@ -174,6 +203,101 @@ Report (under 150 words):
     echo "$cost"
 }
 
+dispatch_debug_agent() {
+    # Used when the test fails with a REAL Lua error (not a stub sentinel).
+    # The agent's job: localize the bug, fix it, verify the failure moves.
+    local err_msg="$1"
+    local step="$2"
+    local recent_output="$3"
+    local safe_name="debug-$ITER"
+    local out_json="$OUT_DIR/iter-$ITER-$safe_name.translator.json"
+    local transcript="$OUT_DIR/iter-$ITER-$safe_name.transcript.jsonl"
+
+    local prompt="You are a Debug agent for a Lua 5.4 → Rust port. The test
+program \`$TEST_PROG\` reached step $step and failed with a REAL Lua
+runtime error (not a todo!() stub sentinel):
+
+  $err_msg
+
+This means a recently-implemented function returns the wrong value
+somewhere — e.g. nil where a table is expected, or wrong arity. Your
+job: find the root cause and fix it. The fix must be a real one — do
+NOT paper over the error by catching and ignoring it.
+
+Process:
+
+1. Read the panic / error context. Recent test output:
+
+$recent_output
+
+2. Trace the call path from the CLI step. The cli is at
+   crates/lua-cli/src/main.rs. open_libs is in
+   crates/lua-stdlib/src/init.rs; load_string and pcall are in
+   crates/lua-stdlib/src/auxlib.rs.
+
+3. Add temporary eprintln!() instrumentation if needed to localize
+   which call returns the unexpected value. After each batch:
+     cargo run -q -p lua-cli -- '$TEST_PROG' 2>&1 | grep -E '^\\[' | head -25
+   Iterate until you isolate the buggy function.
+
+4. Identify the root cause. Likely categories:
+   - A method returns LuaValue::Nil where it should return a table/value
+   - A registry/global slot is checked-but-not-initialized
+   - A no-op placeholder (e.g. LuaTable::raw_set) silently dropped data
+   - A wrong index/offset/arity
+   - A signature mismatch between caller and callee
+
+5. Fix the root cause. Acceptable fixes:
+   - Implement a missing initialization
+   - Store data in a direct GlobalState field if the LuaTable placeholder
+     can't hold it (see init_registry's globals/loaded fields as
+     precedent)
+   - Correct a wrong index/offset
+   - Update a stub method body to do real work
+
+6. REMOVE all temporary eprintln!() before stopping.
+
+7. Verify the test now produces a DIFFERENT error (it's fine if it
+   still fails — the loop will handle the next blocker). Just confirm
+   the original \"$err_msg\" no longer appears.
+
+Constraints:
+
+- Edit files under crates/. You MAY touch lua-types if (and only if)
+  the bug is genuinely there and the type-vocabulary hook permits it.
+- The PreToolUse type-vocab hook blocks duplicate definitions; respect
+  it. The unsafe-budget hook is scoped per-crate; don't add unsafe.
+- Do NOT replace todo!() bodies that aren't relevant to this bug.
+- Do NOT use std::process, tokio, async, futures, rayon.
+
+Report (under 200 words):
+- The root cause (which function/file/line returns the unexpected value)
+- The fix (what you changed)
+- The new error (if any) after your fix"
+
+    export CLAUDE_CONFIG_DIR="$HOME/.claude-personal"
+    unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+    export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-64000}"
+
+    claude -p \
+        --append-system-prompt "$(cat PORTING.md)" \
+        --allowedTools "Read,Write,Edit,Glob,Grep,Bash(cargo build*),Bash(cargo check*),Bash(cargo run*),Bash(grep *),Bash(rg *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(find *)" \
+        --permission-mode dontAsk \
+        --output-format stream-json \
+        --include-partial-messages \
+        --verbose \
+        --max-budget-usd 15.00 \
+        "$prompt" \
+        2>>"$OUT_DIR/iter-$ITER-$safe_name.stderr" \
+        | tee "$transcript" >/dev/null
+
+    jq -s 'map(select(.type == "result")) | .[-1] // {}' "$transcript" > "$out_json" 2>/dev/null || echo '{}' > "$out_json"
+    local cost
+    cost=$(jq -r '.total_cost_usd // 0' "$out_json")
+    TOTAL_COST=$(awk -v a="$TOTAL_COST" -v b="$cost" 'BEGIN { printf "%.4f", a + b }')
+    echo "$cost"
+}
+
 # ───── Main loop ───────────────────────────────────────────────────────
 
 emit "═════════════════════════════════════════════════════════════════"
@@ -197,51 +321,71 @@ for ITER in $(seq 1 $MAX_ITER); do
     run_test > "$output_file" 2>&1
     rc=$?
 
-    if grep -q '^hello$' "$output_file" || grep -q '"hello"$' "$output_file"; then
-        emit "  ★ SUCCESS: program produced 'hello' output"
-        record "success" "iter=$ITER"
-        break
-    fi
+    failure=$(detect_failure_type "$output_file")
 
-    func=$(extract_panic_func "$output_file")
-    loc=$(extract_panic_loc "$output_file")
-    if [ -z "$func" ]; then
-        emit "  no todo!() panic detected — final output:"
-        tail -15 "$output_file" | tee -a "$LOG"
-        record "no_panic" "iter=$ITER rc=$rc"
-        break
-    fi
+    case "$failure" in
+        success)
+            emit "  ★ SUCCESS: program produced expected output"
+            record "success" "iter=$ITER"
+            break
+            ;;
+        stub)
+            func=$(extract_panic_func "$output_file")
+            loc=$(extract_panic_loc "$output_file")
+            emit "  stub blocker: $func"
+            record "panic_detected" "func=$func iter=$ITER"
+            echo "$func" > "$LAST_PANIC_FILE"
+            CURRENT_KEY="$func"
+            ;;
+        real-error)
+            err_msg=$(extract_real_error "$output_file")
+            step=$(extract_step "$output_file")
+            emit "  real-error blocker at step $step: $err_msg"
+            record "real_error" "err=$err_msg step=$step iter=$ITER"
+            echo "$err_msg" > "$LAST_PANIC_FILE"
+            CURRENT_KEY="$err_msg"
+            ;;
+        unknown)
+            emit "  unknown failure mode — final output:"
+            tail -15 "$output_file" | tee -a "$LOG"
+            record "no_panic" "iter=$ITER rc=$rc"
+            break
+            ;;
+    esac
 
-    emit "  blocked on: $func"
-    record "panic_detected" "func=$func iter=$ITER"
-    echo "$func" > "$LAST_PANIC_FILE"
-
-    if [ "$func" = "$PREV_FUNC" ]; then
+    if [ "$CURRENT_KEY" = "$PREV_FUNC" ]; then
         STUCK_COUNT=$((STUCK_COUNT + 1))
         if [ "$STUCK_COUNT" -ge 2 ]; then
-            emit "  STUCK on $func after 2 consecutive iterations — bailing"
-            record "stuck" "func=$func"
+            emit "  STUCK on \"$CURRENT_KEY\" after 2 consecutive iterations — bailing"
+            record "stuck" "key=$CURRENT_KEY"
             break
         fi
     else
         STUCK_COUNT=0
     fi
 
-    # Cost cap check
     if awk -v t="$TOTAL_COST" -v cap="$LOOP_COST_CAP" 'BEGIN { exit !(t > cap) }'; then
         emit "  cost cap \$$LOOP_COST_CAP exceeded; bailing"
         record "cost_cap" ""
         break
     fi
 
-    # Dispatch
-    emit "  dispatching agent for $func at $loc (budget \$10)"
-    record "dispatch_start" "func=$func loc=$loc iter=$ITER"
-    iter_cost=$(dispatch_implement_agent "$func" "$loc")
-    emit "  agent done. iter cost=\$$iter_cost  total=\$$TOTAL_COST"
-    record "dispatch_done" "func=$func cost=$iter_cost"
+    if [ "$failure" = "stub" ]; then
+        emit "  dispatching IMPLEMENT agent for $func at $loc (budget \$10)"
+        record "dispatch_start" "type=implement func=$func iter=$ITER"
+        iter_cost=$(dispatch_implement_agent "$func" "$loc")
+        emit "  agent done. iter cost=\$$iter_cost  total=\$$TOTAL_COST"
+        record "dispatch_done" "type=implement func=$func cost=$iter_cost"
+    else
+        recent_output=$(tail -25 "$output_file")
+        emit "  dispatching DEBUG agent for real-error (budget \$15)"
+        record "dispatch_start" "type=debug err=$err_msg iter=$ITER"
+        iter_cost=$(dispatch_debug_agent "$err_msg" "$step" "$recent_output")
+        emit "  agent done. iter cost=\$$iter_cost  total=\$$TOTAL_COST"
+        record "dispatch_done" "type=debug err=$err_msg cost=$iter_cost"
+    fi
 
-    PREV_FUNC="$func"
+    PREV_FUNC="$CURRENT_KEY"
 done
 
 emit "═════════════════════════════════════════════════════════════════"
