@@ -709,6 +709,30 @@ static MATHLIB: &[LibReg] = &[
     LibReg { name: b"mininteger", func: None },
 ];
 
+static MATHLIB_FUNCS: &[(&[u8], LuaCFunction)] = &[
+    (b"abs",        math_abs),
+    (b"acos",       math_acos),
+    (b"asin",       math_asin),
+    (b"atan",       math_atan),
+    (b"ceil",       math_ceil),
+    (b"cos",        math_cos),
+    (b"deg",        math_deg),
+    (b"exp",        math_exp),
+    (b"tointeger",  math_toint),
+    (b"floor",      math_floor),
+    (b"fmod",       math_fmod),
+    (b"ult",        math_ult),
+    (b"log",        math_log),
+    (b"max",        math_max),
+    (b"min",        math_min),
+    (b"modf",       math_modf),
+    (b"rad",        math_rad),
+    (b"sin",        math_sin),
+    (b"sqrt",       math_sqrt),
+    (b"tan",        math_tan),
+    (b"type",       math_type),
+];
+
 // ── Module entry point ────────────────────────────────────────────────────
 
 /// Open the `math` library: create the table, populate constants, register
@@ -720,8 +744,7 @@ static MATHLIB: &[LibReg] = &[
 pub fn luaopen_math(state: &mut LuaState) -> Result<usize, LuaError> {
     // C: luaL_newlib(L, mathlib);
     // Creates a new table and registers all non-None entries from MATHLIB.
-    // TODO(phase-b): MATHLIB uses local LibReg; convert to &[(&[u8], lua_CFunction)] for state.new_lib.
-    state.new_table();
+    state.new_lib(MATHLIB_FUNCS)?;
 
     // C: lua_pushnumber(L, PI); lua_setfield(L, -2, "pi");
     state.push(LuaValue::Float(PI));
