@@ -4529,7 +4529,7 @@ help: use `let _ = ...` to ignore the expression or result
 [1/4] Creating LuaState...
 [2/4] Opening standard library...
 
-thread 'main' (4714116) panicked at crates/lua-vm/src/api.rs:671:5:
-not yet implemented: phase-b: push_cclosure
+thread 'main' (4761665) panicked at crates/lua-stdlib/src/state_stub.rs:159:80:
+not yet implemented: phase-b-reconcile: create_table
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b: push_cclosure
+[panic] not yet implemented: phase-b-reconcile: create_table

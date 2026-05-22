@@ -164,3 +164,6 @@
 {"ts":"2026-05-16T18:36:51Z","action":"dispatch_done","detail":"type=implement func=push_string cost=0.4112075","total_cost":0.00}
 {"ts":"2026-05-16T18:36:51Z","action":"panic_detected","detail":"func=get_subtable_registry iter=2","total_cost":0.00}
 {"ts":"2026-05-16T18:36:51Z","action":"dispatch_start","detail":"type=implement func=get_subtable_registry iter=2","total_cost":0.00}
+{"ts":"2026-05-16T18:38:34Z","action":"dispatch_done","detail":"type=implement func=get_subtable_registry cost=0.87179975","total_cost":0.00}
+{"ts":"2026-05-16T18:38:34Z","action":"panic_detected","detail":"func=create_table iter=3","total_cost":0.00}
+{"ts":"2026-05-16T18:38:34Z","action":"dispatch_start","detail":"type=implement func=create_table iter=3","total_cost":0.00}

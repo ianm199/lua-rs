@@ -308,3 +308,7 @@ help: use `let _ = ...` to ignore the resulting value
 [2026-05-16T18:36:51Z] ─── iter 2  (spent: $0.00) ───
 [2026-05-16T18:36:51Z]   stub blocker: get_subtable_registry
 [2026-05-16T18:36:51Z]   dispatching IMPLEMENT agent for get_subtable_registry at crates/lua-stdlib/src/state_stub.rs:244:82 (budget $10)
+[2026-05-16T18:38:34Z]   agent done. iter cost=$0.87179975  total=$0.00
+[2026-05-16T18:38:34Z] ─── iter 3  (spent: $0.00) ───
+[2026-05-16T18:38:34Z]   stub blocker: create_table
+[2026-05-16T18:38:34Z]   dispatching IMPLEMENT agent for create_table at crates/lua-stdlib/src/state_stub.rs:159:80 (budget $10)

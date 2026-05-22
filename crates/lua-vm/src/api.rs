@@ -343,6 +343,10 @@ impl LuaState {
         Ok(())
     }
 
+    pub fn create_table(&mut self, narr: i32, nrec: i32) -> Result<(), LuaError> {
+        create_table(self, narr, nrec)
+    }
+
     /// Ensure `registry[name]` is a table; push it onto the stack.
     /// Returns `true` if the table already existed, `false` if newly created.
     ///
