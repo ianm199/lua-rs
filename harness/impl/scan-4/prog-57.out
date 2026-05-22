@@ -3,8 +3,6 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing closures
-
-thread 'main' (10440382) panicked at crates/lua-vm/src/debug.rs:242:9:
-get_func_line: hit ABSLINEINFO in incremental walk
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] get_func_line: hit ABSLINEINFO in incremental walk
++
+OK
+[ok] execution completed, status=Ok

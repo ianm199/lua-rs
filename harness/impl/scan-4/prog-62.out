@@ -7,4 +7,5 @@ testing pattern matching
 +
 +
 +
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:444: assertion failed!
+OK
+[ok] execution completed, status=Ok

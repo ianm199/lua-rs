@@ -1310,6 +1310,71 @@ impl LuaStateStubExt for LuaState {
     fn close(&mut self) {
         let _ = self;
     }
+
+    /// Install (or clear) a debug hook on this thread.
+    ///
+    /// C: `LUA_API void lua_sethook (lua_State *L, lua_Hook func, int mask, int count)`
+    /// (`ldebug.c`).
+    ///
+    /// The Phase-B `LuaStateStubExt` signature uses `lua_CFunction` (the
+    /// stdlib C-function shape: `fn(&mut LuaState) -> Result<usize, LuaError>`)
+    /// for `f`, whereas the canonical `lua_vm::debug::set_hook` takes a
+    /// `Box<dyn FnMut(&mut LuaState, &LuaDebug)>` (a true Lua hook, which has
+    /// access to the active `lua_Debug`). To bridge the two, an installed
+    /// `lua_CFunction` is wrapped in a trampoline closure that calls it with
+    /// `state` and discards both the activation record and the
+    /// `Result<usize, LuaError>` (a hook's return value is ignored by C-Lua).
+    fn set_hook_full(
+        &mut self,
+        f: Option<lua_CFunction>,
+        mask: u32,
+        count: i32,
+    ) -> Result<(), LuaError> {
+        let hook: Option<Box<dyn FnMut(&mut LuaState, &lua_vm::debug::LuaDebug)>> = match f {
+            None => None,
+            Some(func) => Some(Box::new(move |state, _ar| {
+                let _ = func(state);
+            })),
+        };
+        lua_vm::debug::set_hook(self, hook, mask as i32, count);
+        Ok(())
+    }
+
+    /// Write `msg` to the host's standard output stream.
+    ///
+    /// C: `lua_writestring(s, l)` macro from `lauxlib.h` (defaults to
+    /// `fwrite(s, 1, l, stdout)`).
+    ///
+    /// Delegates to the canonical inherent `LuaState::write_output`. UFCS is
+    /// used to disambiguate from the trait method (this method) which would
+    /// otherwise recurse.
+    fn write_output(&mut self, msg: &[u8]) -> Result<(), LuaError> {
+        LuaState::write_output(self, msg)
+    }
+
+    /// `t[n] = v`, where `t` is the value at `idx` and `v` is popped from the
+    /// stack top. Honours `__newindex`.
+    ///
+    /// C: `LUA_API void lua_seti (lua_State *L, int idx, lua_Integer n)`.
+    fn table_set_i(&mut self, idx: i32, n: i64) -> Result<(), LuaError> {
+        LuaState::table_set_i(self, idx, n)
+    }
+
+    /// Allocate a fresh full-userdata, push it on the stack, and return a
+    /// `GcRef` to it. `name` is advisory (callers typically follow up with
+    /// `set_metatable_by_name(name)`).
+    ///
+    /// C-correspondent: `lua_newuserdatauv(L, size, nuvalue)` plus the
+    /// auxiliary `luaL_setmetatable` pattern. The Rust signature carries
+    /// `name` for caller convenience as documented on the inherent method.
+    fn new_userdata_typed(
+        &mut self,
+        name: &[u8],
+        size: usize,
+        nuvalue: i32,
+    ) -> Result<GcRef<LuaUserData>, LuaError> {
+        LuaState::new_userdata_typed(self, name, size, nuvalue)
+    }
 }
 
 /// Copy populated fields from the canonical `lua_vm::debug::LuaDebug` into
@@ -1396,7 +1461,7 @@ impl<'a> std::fmt::Display for StubBStr<'a> {
 //   target_crate:  lua-stdlib
 //   confidence:    high
 //   todos:         0
-//   port_notes:    2
+//   port_notes:    3
 //   unsafe_blocks: 0
 //   notes:         Re-exports lua_vm::state::LuaState (canonical owner per
 //                  harness/type-vocabulary.tsv); the LuaStateStubExt trait

@@ -25,4 +25,9 @@ DBG: after hex/float numerals (line 526)
 DBG: after mod operator tests (line 557)
 DBG: after math fn tests (line 666)
 testing -0 and NaN
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:820: assertion failed!
+testing 'math.random'
+random seeds: 1779136204, 0
+float random range in 31800 calls: [0.000035, 0.999935]
+integer random range in 38400 calls: [minint + 55ppm, maxint - 46ppm]
+OK
+[ok] execution completed, status=Ok

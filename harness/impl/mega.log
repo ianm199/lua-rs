@@ -1172,3 +1172,11 @@
 [2026-05-18T20:13:00Z mega]   skip stuck prog (no progress 2 rounds, sig=unknown): reference/lua-c/testes/files.lua
 [2026-05-18T20:13:00Z mega]   skip stuck prog (no progress 2 rounds, sig=unknown): reference/lua-c/testes/errors.lua
 [2026-05-18T20:19:38Z mega]   → committed ab99dd7 (debug/reference/lua-c/testes/locals.lua )
+[2026-05-18T20:30:04Z mega]   [O3.D2] DEBUG done. iter cost=$[2026-05-18T20:19:38Z  total=$37.9278
+[2026-05-18T20:30:04Z mega]   [O3.D3.1874949999999997] DEBUG done. iter cost=$reference/lua-c/testes/locals.lua  total=$37.9278
+[2026-05-18T20:30:04Z mega]   [O3.D1] DEBUG done. iter cost=$2.9561371499999995  total=$40.8839
+[2026-05-18T20:30:04Z mega] ─── outer round 4 (spent: $40.8839) ───
+[2026-05-18T20:30:20Z mega]   scan: 72/79 programs pass cleanly
+[2026-05-18T20:30:20Z mega]   surface scan returned 1 unique stub blockers
+[2026-05-18T20:30:20Z mega]   grouped into 1 disjoint-file agents (parallel cap 3)
+[2026-05-18T20:30:20Z mega]   [O4.1] dispatch on 'set_hook_full' @ crates/lua-stdlib/src/state_stub.rs:279:108 (budget $20.00) [parallel]

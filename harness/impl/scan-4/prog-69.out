@@ -6,4 +6,8 @@ testing functions and calls
 +
 +
 testing tail calls
-[err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)
++
++
+testing binary chunks
+OK
+[ok] execution completed, status=Ok

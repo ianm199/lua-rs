@@ -1,2 +1,3 @@
 2 [2026-05-18T20:19:38Z mega]   → committed ab99dd7 (debug/reference/lua-c/testes/locals.lua )
 3.1874949999999997 reference/lua-c/testes/locals.lua [opus]
+1 2.9561371499999995 reference/lua-c/testes/strings.lua [sonnet]

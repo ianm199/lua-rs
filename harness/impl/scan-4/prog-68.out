@@ -5,4 +5,9 @@
 testing local variables and environments
 +
 testing to-be-closed variables
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:270: assertion failed!
+testing errors in __close
+
+thread 'main' (13694510) panicked at crates/lua-stdlib/src/state_stub.rs:279:108:
+not yet implemented: phase-b-reconcile: set_hook_full
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[panic] not yet implemented: phase-b-reconcile: set_hook_full

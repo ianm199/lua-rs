@@ -8,4 +8,4 @@ testing scanner
 +
 +
 +
-[err] pcall_k failed: Runtime: coroutines not yet implemented (Phase E)
+lua: pcall_k failed: Runtime: attempt to yield from outside a coroutine

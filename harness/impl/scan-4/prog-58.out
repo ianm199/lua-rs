@@ -3,4 +3,14 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing incremental garbage collection
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:24: assertion failed!
+creating many objects
+functions with errors
+long strings
+steps
+steps (2)
+clearing tables
+weak tables
++
+
+ >>> testC not active: skipping userdata GC tests <<<
+

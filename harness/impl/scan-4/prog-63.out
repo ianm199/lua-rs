@@ -3,4 +3,9 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 testing strings and string library
-[err] pcall_k failed: Runtime: [string "_soft = true..."]:202: assertion failed!
+testing 'format %a %A'
+
+ >>> testC not active: skipping 'pushfstring' tests <<<
+
+OK
+[ok] execution completed, status=Ok
