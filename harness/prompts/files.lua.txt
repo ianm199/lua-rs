@@ -1,0 +1,40 @@
+Finish the remaining io_lib.rs borrow-split stubs using the existing
+LSTREAM_REGISTRY / Rc<RefCell<LStream>> pattern already in tree. Do NOT
+redesign userdata, do NOT touch loadfile/dofile, do NOT change the
+cherry-picked file_open_hook plumbing on GlobalState.
+
+The architectural escape hatch you need is already there:
+  - crates/lua-stdlib/src/io_lib.rs:31  — LSTREAM_REGISTRY: HashMap<usize, Rc<RefCell<LStream>>>
+  - crates/lua-stdlib/src/io_lib.rs:404 — get_lstream(state) -> Rc<RefCell<LStream>>
+  - crates/lua-stdlib/src/io_lib.rs:1096 — io_write — WORKING reference. Copy this pattern.
+
+Implement in this order. Stop and ship whatever compiles even if you don't
+finish all five — each one is independently valuable:
+
+  1. f_seek            (io_lib.rs:1166) — current files.lua blocker
+  2. f_flush + io_flush (io_lib.rs:1223 area)
+  3. f_write           (io_lib.rs:1155) — direct mirror of working io_write at line 1096
+  4. f_read            (io_lib.rs:1019)
+  5. io_read           (io_lib.rs:1009)
+
+The "collect-then-borrow" pattern (from working io_write):
+  a. Parse and convert all stack arguments to owned data BEFORE borrowing the file.
+  b. let p_rc = tofile(state)?;            // returns Rc<RefCell<LStream>>
+     let mut p = p_rc.borrow_mut();        // now you have &mut LStream
+     <do the I/O>
+     drop(p);                              // release before pushing return values
+  c. Push results to the Lua stack only after the file borrow is dropped.
+
+Past agents tried implementing loadfile/dofile (auxlib.rs:1050) which is
+correct but doesn't help files.lua's current failure point. Stay on io_lib.rs.
+
+Test as you go:
+  ./harness/run_official_test.sh reference/lua-c/testes/files.lua
+
+The failure point should move past "TODO(port): borrow split needed for f_seek"
+into actual I/O behavior. Don't try to make the whole test pass — just move
+the goalpost. Future agent rounds will continue.
+
+When you commit, include in the commit message which of the five stubs you
+finished and what the new failure point is (file:line) so the next agent
+can pick up cleanly.

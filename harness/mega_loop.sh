@@ -455,6 +455,19 @@ dispatch_debug() {
     prompt="${prompt//__OUTPUT__/$out_tail}"
     prompt="${prompt//__MODE__/$mode}"
 
+    local prog_basename; prog_basename=$(basename "$prog")
+    local per_test_prompt="$ROOT/harness/prompts/${prog_basename}.txt"
+    if [ -f "$per_test_prompt" ]; then
+        prompt="$prompt
+
+================================================================
+TARGETED GUIDANCE — read this before exploring. Past agents wasted
+budget rediscovering what this section captures. Follow it unless
+the code contradicts it.
+================================================================
+$(cat "$per_test_prompt")"
+    fi
+
     export CLAUDE_CONFIG_DIR="$HOME/.claude-personal"
     unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
     export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-64000}"

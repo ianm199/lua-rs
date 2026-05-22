@@ -1,0 +1,53 @@
+Fix function-name attribution for C/Rust library functions that are
+invoked indirectly as values, so that `bad argument #1 to '?'` becomes
+`bad argument #1 to 'table.sort'` (and similar). Do NOT try to make
+errors.lua pass broadly — just fix this one attribution case. The next
+agent round will handle the next mismatch.
+
+Exact repro (do NOT modify the test file):
+
+  target/debug/lua-rs -e 'table.sort({1,2,3}, table.sort)'
+
+Current actual error message:
+  bad argument #1 to '?' (table expected, got number)
+
+Expected to contain the substring:
+  table.sort
+
+What's happening: `table.sort` is passed as the comparator. When the
+sort engine invokes it as cmp(a, b) with two numbers, arg #1 fails the
+table-type check. The error correctly reports "table expected, got
+number", but reports the function name as '?' instead of 'table.sort'
+because the function was called as a value, not by name.
+
+Fix site (likely):
+  crates/lua-vm/src/debug.rs:118 — arg_error_impl
+
+When get_info(state, b"n", &mut ar) leaves ar.namewhat empty, look up
+the calling function's registered name. Reference C-Lua:
+
+  - lauxlib.c:luaL_argerror
+  - ldblib.c:findfield — walks _G / package.loaded to resolve a
+    function VALUE back to its dotted name
+
+The lookup should:
+  1. Get the function value from the calling frame.
+  2. Walk the global environment / package.loaded tables looking for
+     an entry whose value matches that function value (by identity).
+  3. If found, format the dotted path (e.g. "table.sort") into the
+     error message instead of '?'.
+  4. If not found, fall back to '?' (current behavior).
+
+Related context:
+  - crates/lua-stdlib/src/table_lib.rs:525 sort_comp — call site that
+    pushes the comparator and invokes it as a value.
+
+Smoke-test commands (run both):
+
+  target/debug/lua-rs -e 'table.sort({1,2,3}, table.sort)'
+  # → message must contain "table.sort"
+
+  ./harness/run_official_test.sh reference/lua-c/testes/errors.lua
+  # → failure line should move past line 30
+
+When you commit, note which checkmessage case is the new failure point.
