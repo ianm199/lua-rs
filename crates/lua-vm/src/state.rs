@@ -1227,7 +1227,15 @@ impl LuaState {
     pub fn precall(&mut self, _func: StackIdx, _nresults: i32) -> Result<Option<CallInfoIdx>, LuaError> { todo!("phase-b: precall") }
     pub fn pretailcall<C, F, T, D>(&mut self, _ci: C, _func: F, _top: T, _delta: D) -> Result<i32, LuaError> { todo!("phase-b: pretailcall") }
     pub fn poscall<N>(&mut self, _ci: CallInfoIdx, _nres: N) -> Result<(), LuaError> { todo!("phase-b: poscall") }
-    pub fn adjust_results(&mut self, _nresults: i32) { todo!("phase-b: adjust_results") }
+    pub fn adjust_results(&mut self, nresults: i32) {
+        const LUA_MULTRET: i32 = -1;
+        if nresults <= LUA_MULTRET {
+            let ci_idx = self.ci.as_usize();
+            if self.call_info[ci_idx].top.0 < self.top.0 {
+                self.call_info[ci_idx].top = self.top;
+            }
+        }
+    }
     pub fn adjust_varargs<C, N, CL>(&mut self, _ci: C, _nfixparams: N, _cl: &CL) -> Result<(), LuaError> { todo!("phase-b: adjust_varargs") }
     pub fn get_varargs<C, R, N>(&mut self, _ci: C, _ra: R, _n: N) -> Result<i32, LuaError> { todo!("phase-b: get_varargs") }
 

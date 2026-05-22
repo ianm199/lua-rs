@@ -128,9 +128,9 @@ warning: unused variable: `line`
     |     ^^^^ help: if this is intentional, prefix it with an underscore: `_line`
 
 warning: unused variable: `state`
-    --> crates/lua-vm/src/do_.rs:1508:5
+    --> crates/lua-vm/src/do_.rs:1532:5
      |
-1508 |     state: &mut LuaState,
+1532 |     state: &mut LuaState,
      |     ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `state`
@@ -156,9 +156,9 @@ warning: variable does not need to be mutable
     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
 
 warning: variable does not need to be mutable
-    --> crates/lua-vm/src/state.rs:1990:9
+    --> crates/lua-vm/src/state.rs:2061:9
      |
-1990 |     let mut status = if status == LuaStatus::Yield as i32 {
+2061 |     let mut status = if status == LuaStatus::Yield as i32 {
      |         ----^^^^^^
      |         |
      |         help: remove this `mut`
@@ -496,35 +496,11 @@ warning: function `parse_stub` is never used
 31 | fn parse_stub(
    |    ^^^^^^^^^^
 
-warning: constant `NYCI` is never used
-  --> crates/lua-vm/src/do_.rs:59:7
-   |
-59 | const NYCI: u32 = 0x10001;
-   |       ^^^^
-
-warning: constant `CIST_C` is never used
-  --> crates/lua-vm/src/do_.rs:66:7
-   |
-66 | const CIST_C: u16 = 1 << 1;
-   |       ^^^^^^
-
 warning: constant `CIST_TAIL` is never used
   --> crates/lua-vm/src/do_.rs:70:7
    |
 70 | const CIST_TAIL: u16 = 1 << 5;
    |       ^^^^^^^^^
-
-warning: constant `LUA_MASKCALL` is never used
-  --> crates/lua-vm/src/do_.rs:78:7
-   |
-78 | const LUA_MASKCALL: u8 = 1 << 0;
-   |       ^^^^^^^^^^^^
-
-warning: constant `LUA_HOOKCALL` is never used
-  --> crates/lua-vm/src/do_.rs:82:7
-   |
-82 | const LUA_HOOKCALL: i32 = 0;
-   |       ^^^^^^^^^^^^
 
 warning: constant `LUA_HOOKTAILCALL` is never used
   --> crates/lua-vm/src/do_.rs:84:7
@@ -569,63 +545,57 @@ warning: function `pretailcall` is never used
     |               ^^^^^^^^^^^
 
 warning: function `call` is never used
-   --> crates/lua-vm/src/do_.rs:968:15
+   --> crates/lua-vm/src/do_.rs:992:15
     |
-968 | pub(crate) fn call(
+992 | pub(crate) fn call(
     |               ^^^^
 
-warning: function `callnoyield` is never used
-   --> crates/lua-vm/src/do_.rs:980:15
-    |
-980 | pub(crate) fn callnoyield(
-    |               ^^^^^^^^^^^
-
 warning: struct `CloseP` is never constructed
-    --> crates/lua-vm/src/do_.rs:1391:8
+    --> crates/lua-vm/src/do_.rs:1415:8
      |
-1391 | struct CloseP {
+1415 | struct CloseP {
      |        ^^^^^^
 
 warning: function `close_aux` is never used
-    --> crates/lua-vm/src/do_.rs:1399:4
+    --> crates/lua-vm/src/do_.rs:1423:4
      |
-1399 | fn close_aux(state: &mut LuaState, pcl: &mut CloseP) -> Result<(), LuaError> {
+1423 | fn close_aux(state: &mut LuaState, pcl: &mut CloseP) -> Result<(), LuaError> {
      |    ^^^^^^^^^
 
 warning: function `close_protected` is never used
-    --> crates/lua-vm/src/do_.rs:1410:15
+    --> crates/lua-vm/src/do_.rs:1434:15
      |
-1410 | pub(crate) fn close_protected(
+1434 | pub(crate) fn close_protected(
      |               ^^^^^^^^^^^^^^^
 
 warning: function `pcall` is never used
-    --> crates/lua-vm/src/do_.rs:1442:15
+    --> crates/lua-vm/src/do_.rs:1466:15
      |
-1442 | pub(crate) fn pcall<F>(
+1466 | pub(crate) fn pcall<F>(
      |               ^^^^^
 
 warning: struct `SParser` is never constructed
-    --> crates/lua-vm/src/do_.rs:1491:8
+    --> crates/lua-vm/src/do_.rs:1515:8
      |
-1491 | struct SParser {
+1515 | struct SParser {
      |        ^^^^^^^
 
 warning: function `check_mode` is never used
-    --> crates/lua-vm/src/do_.rs:1507:4
+    --> crates/lua-vm/src/do_.rs:1531:4
      |
-1507 | fn check_mode(
+1531 | fn check_mode(
      |    ^^^^^^^^^^
 
 warning: function `f_parser` is never used
-    --> crates/lua-vm/src/do_.rs:1533:4
+    --> crates/lua-vm/src/do_.rs:1557:4
      |
-1533 | fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
+1557 | fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
      |    ^^^^^^^^
 
 warning: function `protected_parser` is never used
-    --> crates/lua-vm/src/do_.rs:1566:15
+    --> crates/lua-vm/src/do_.rs:1590:15
      |
-1566 | pub(crate) fn protected_parser(
+1590 | pub(crate) fn protected_parser(
      |               ^^^^^^^^^^^^^^^^
 
 warning: constant `LUA_SIGNATURE` is never used
@@ -911,33 +881,27 @@ warning: constant `LUA_EXTRASPACE` is never used
     |       ^^^^^^^^^^^^^^
 
 warning: function `set_debt` is never used
-    --> crates/lua-vm/src/state.rs:1367:15
+    --> crates/lua-vm/src/state.rs:1438:15
      |
-1367 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
+1438 | pub(crate) fn set_debt(g: &mut GlobalState, mut debt: isize) {
      |               ^^^^^^^^
 
-warning: function `extend_ci` is never used
-    --> crates/lua-vm/src/state.rs:1417:15
-     |
-1417 | pub(crate) fn extend_ci(state: &mut LuaState) -> CallInfoIdx {
-     |               ^^^^^^^^^
-
 warning: function `inc_c_stack` is never used
-    --> crates/lua-vm/src/state.rs:1585:15
+    --> crates/lua-vm/src/state.rs:1656:15
      |
-1585 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
+1656 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
      |               ^^^^^^^^^^^
 
 warning: function `free_thread` is never used
-    --> crates/lua-vm/src/state.rs:1930:15
+    --> crates/lua-vm/src/state.rs:2001:15
      |
-1930 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
+2001 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
      |               ^^^^^^^^^^^
 
 warning: function `warn_error` is never used
-    --> crates/lua-vm/src/state.rs:2328:15
+    --> crates/lua-vm/src/state.rs:2399:15
      |
-2328 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
+2399 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
      |               ^^^^^^^^^^
 
 warning: type alias `LocalGcRef` is never used
@@ -1391,9 +1355,9 @@ warning: methods `fill`, `getc`, and `read` are never used
     |                   ^^^^
 
 warning: structure field `nCcalls` should have a snake case name
-   --> crates/lua-vm/src/state.rs:890:9
+   --> crates/lua-vm/src/state.rs:908:9
     |
-890 |     pub nCcalls: u32,
+908 |     pub nCcalls: u32,
     |         ^^^^^^^ help: convert the identifier to snake case: `n_ccalls`
     |
     = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
