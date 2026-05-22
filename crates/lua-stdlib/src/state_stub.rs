@@ -296,6 +296,10 @@ impl LuaStateStubExt for LuaState {
     fn get_field(&mut self, idx: i32, k: &[u8]) -> Result<LuaType, LuaError> {
         lua_vm::api::get_field(self, idx, k)
     }
+
+    fn abs_index(&mut self, idx: i32) -> i32 {
+        lua_vm::api::abs_index(self, idx)
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
