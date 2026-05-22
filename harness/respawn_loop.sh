@@ -38,13 +38,18 @@ for run in $(seq 1 "$OUTER_MAX_RUNS"); do
     rc=$?
     emit "outer run #$run exited rc=$rc"
 
-    TIMEOUT_CMD=""
-    if command -v gtimeout >/dev/null 2>&1; then
-        TIMEOUT_CMD="gtimeout 20"
+    cargo build -q -p lua-cli >/dev/null 2>&1 || true
+    BIN="target/debug/lua-rs"
+    if [ ! -x "$BIN" ]; then
+        TEST_CMD="cargo run -q -p lua-cli -- $TEST_PROG"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        TEST_CMD="gtimeout --signal=KILL 20 $BIN"
     elif command -v timeout >/dev/null 2>&1; then
-        TIMEOUT_CMD="timeout 20"
+        TEST_CMD="timeout --signal=KILL 20 $BIN"
+    else
+        TEST_CMD="$BIN"
     fi
-    if $TIMEOUT_CMD cargo run -q -p lua-cli -- "$TEST_PROG" 2>&1 | grep -qE "$SUCCESS_MARKER"; then
+    if $TEST_CMD "$TEST_PROG" 2>&1 | grep -qE "$SUCCESS_MARKER"; then
         emit "SUCCESS: test program produced expected output. Stopping watchdog."
         break
     fi

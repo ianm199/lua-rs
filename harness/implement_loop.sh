@@ -60,12 +60,20 @@ record() {
 }
 
 run_test() {
+    # Build first so cargo build noise doesn't push the runner past the
+    # 20s budget; then exec the binary directly so we can kill it cleanly.
+    cargo build -q -p lua-cli >/dev/null 2>&1
+    local bin="target/debug/lua-rs"
+    if [ ! -x "$bin" ]; then
+        cargo run -q -p lua-cli -- "$TEST_PROG" 2>&1
+        return
+    fi
     if command -v gtimeout >/dev/null 2>&1; then
-        gtimeout 20 cargo run -q -p lua-cli -- "$TEST_PROG" 2>&1
+        gtimeout --signal=KILL 20 "$bin" "$TEST_PROG" 2>&1
     elif command -v timeout >/dev/null 2>&1; then
-        timeout 20 cargo run -q -p lua-cli -- "$TEST_PROG" 2>&1
+        timeout --signal=KILL 20 "$bin" "$TEST_PROG" 2>&1
     else
-        cargo run -q -p lua-cli -- "$TEST_PROG" 2>&1 &
+        "$bin" "$TEST_PROG" 2>&1 &
         local pid=$!
         ( sleep 20 && kill -9 $pid 2>/dev/null ) &
         local watcher=$!

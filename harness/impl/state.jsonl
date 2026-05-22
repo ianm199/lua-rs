@@ -1170,3 +1170,156 @@
 {"ts":"2026-05-16T22:36:32Z","action":"dispatch_done","detail":"type=debug err=crates/lua-parse/src/lib.rs:3357:5: cost=1.3712267499999997","total_cost":0.00}
 {"ts":"2026-05-16T22:36:33Z","action":"real_error","detail":"err=execution completed with status=Ok but program output did NOT match SUCCESS_MARKER='^3$'. Actual recent output lines (comma-joined): 2941 |     let prep_op = if isgen { OpCode::TForPrep } else { OpCode::ForPrep };,2961 |     let loop_op = if isgen { OpCode::TForLoop } else { OpCode::ForLoop };,3127 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;,3134 |     let pc = ls.fs.as_ref().unwrap().pc;,3143 |         let attr_name = str_check_name(ls, state)?;,3157 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {,3161 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);,3171 |     let mut vidx = 0i32;,3276 |     let first = {,3294 |                     let info = e.u.info as usize;,3282 |         nret = 0;,638 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {,1341 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {,1499 | fn new_upvalue(,1553 | fn markupval(fs: &mut FuncState, level: i32) {,1582 | fn singlevaraux(,1851 |     drop(fs); // release borrow before iterating,1851 -     drop(fs); // release borrow before iterating,1851 +     let _ = fs; // release borrow before iterating,0,. Likely causes: (1) codegen emits incomplete bytecode for an expression — e.g. ARITH ops (OP_ADD/OP_ADDI/OP_ADDK) not wired, or (2) a VM dispatch arm uses todo!() that's being masked. Investigate by reading the proto.code for the test program — if missing OP_ADD or similar, the bug is in lua-parse/codegen; if the bytecode is correct but execution gives wrong result, the bug is in lua-vm/vm.rs dispatch. step=4/4 Executing chunk iter=4","total_cost":0.00}
 {"ts":"2026-05-16T22:36:33Z","action":"dispatch_start","detail":"type=debug err=execution completed with status=Ok but program output did NOT match SUCCESS_MARKER='^3$'. Actual recent output lines (comma-joined): 2941 |     let prep_op = if isgen { OpCode::TForPrep } else { OpCode::ForPrep };,2961 |     let loop_op = if isgen { OpCode::TForLoop } else { OpCode::ForLoop };,3127 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;,3134 |     let pc = ls.fs.as_ref().unwrap().pc;,3143 |         let attr_name = str_check_name(ls, state)?;,3157 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {,3161 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);,3171 |     let mut vidx = 0i32;,3276 |     let first = {,3294 |                     let info = e.u.info as usize;,3282 |         nret = 0;,638 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {,1341 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {,1499 | fn new_upvalue(,1553 | fn markupval(fs: &mut FuncState, level: i32) {,1582 | fn singlevaraux(,1851 |     drop(fs); // release borrow before iterating,1851 -     drop(fs); // release borrow before iterating,1851 +     let _ = fs; // release borrow before iterating,0,. Likely causes: (1) codegen emits incomplete bytecode for an expression — e.g. ARITH ops (OP_ADD/OP_ADDI/OP_ADDK) not wired, or (2) a VM dispatch arm uses todo!() that's being masked. Investigate by reading the proto.code for the test program — if missing OP_ADD or similar, the bug is in lua-parse/codegen; if the bytecode is correct but execution gives wrong result, the bug is in lua-vm/vm.rs dispatch. iter=4","total_cost":0.00}
+{"ts":"2026-05-16T22:40:06Z","action":"dispatch_done","detail":"type=debug err=execution completed with status=Ok but program output did NOT match SUCCESS_MARKER='^3$'. Actual recent output lines (comma-joined): 2941 |     let prep_op = if isgen { OpCode::TForPrep } else { OpCode::ForPrep };,2961 |     let loop_op = if isgen { OpCode::TForLoop } else { OpCode::ForLoop };,3127 |     let fvar = ls.fs.as_ref().unwrap().nactvar as i32;,3134 |     let pc = ls.fs.as_ref().unwrap().pc;,3143 |         let attr_name = str_check_name(ls, state)?;,3157 | fn checktoclose(ls: &mut LexState, state: &mut LuaState, level: i32) -> Result<(), LuaError> {,3161 |         let rl = reg_level(ls, ls.fs.as_ref().unwrap(), level);,3171 |     let mut vidx = 0i32;,3276 |     let first = {,3294 |                     let info = e.u.info as usize;,3282 |         nret = 0;,638 | fn cg_free_exp(fs: &mut FuncState, e: &ExprDesc) {,1341 | fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {,1499 | fn new_upvalue(,1553 | fn markupval(fs: &mut FuncState, level: i32) {,1582 | fn singlevaraux(,1851 |     drop(fs); // release borrow before iterating,1851 -     drop(fs); // release borrow before iterating,1851 +     let _ = fs; // release borrow before iterating,0,. Likely causes: (1) codegen emits incomplete bytecode for an expression — e.g. ARITH ops (OP_ADD/OP_ADDI/OP_ADDK) not wired, or (2) a VM dispatch arm uses todo!() that's being masked. Investigate by reading the proto.code for the test program — if missing OP_ADD or similar, the bug is in lua-parse/codegen; if the bytecode is correct but execution gives wrong result, the bug is in lua-vm/vm.rs dispatch. cost=1.5521275000000003","total_cost":0.00}
+{"ts":"2026-05-16T22:40:07Z","action":"success","detail":"iter=5","total_cost":0.00}
+{"ts":"2026-05-16T22:40:07Z","action":"run_end","detail":"iterations=4 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:12Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:12Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:12Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:17Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:18Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:18Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:23Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:23Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:23Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:28Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:29Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:29Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:34Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:34Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:34Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:39Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:40Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:40Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:45Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:45Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:45Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:50Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:51Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:51Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:40:56Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:40:56Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:40:56Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:01Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:01Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:01Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:07Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:07Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:07Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:12Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:12Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:12Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:18Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:18Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:18Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:23Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:23Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:23Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:29Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:29Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:29Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:34Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:34Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:34Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:40Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:40Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:40Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:45Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:45Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:45Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:51Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:51Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:51Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:41:56Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:41:56Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:41:56Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:02Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:02Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:02Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:07Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:07Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:07Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:13Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:13Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:13Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:18Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:18Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:18Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:24Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:24Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:24Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:29Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:29Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:29Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:35Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:35Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:35Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:40Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:40Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:40Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:46Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:46Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:46Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:51Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:51Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:51Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:42:56Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:42:57Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:42:57Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:02Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:02Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:02Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:07Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:08Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:08Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:13Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:13Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:13Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:18Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:19Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:19Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:24Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:24Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:24Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:29Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:30Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:30Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:35Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:35Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:35Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:40Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:41Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:41Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:46Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:46Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:46Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:51Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:52Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:52Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:43:57Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:43:57Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:43:57Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:44:02Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:44:03Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:44:03Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:44:08Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:44:08Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:44:08Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:44:13Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:44:14Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:44:14Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:44:19Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:44:19Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:44:19Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:44:24Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:44:24Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:44:25Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:44:30Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:44:30Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:44:30Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:44:35Z","action":"run_start","detail":"for i=1,3 do print(i) end","total_cost":0.00}
+{"ts":"2026-05-16T22:44:35Z","action":"success","detail":"iter=1","total_cost":0.00}
+{"ts":"2026-05-16T22:44:35Z","action":"run_end","detail":"iterations=0 total_cost=0.00","total_cost":0.00}
+{"ts":"2026-05-16T22:53:33Z","action":"run_start","detail":"local f = function(x) return x*2 end; print(f(5))","total_cost":0.00}
+{"ts":"2026-05-16T22:53:53Z","action":"no_panic","detail":"iter=1 rc=1","total_cost":0.00}
+{"ts":"2026-05-16T22:53:53Z","action":"dispatch_start","detail":"type=debug err=(unknown failure; see tail above) iter=1","total_cost":0.00}

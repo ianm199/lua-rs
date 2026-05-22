@@ -1965,10 +1965,13 @@ fn add_prototype(ls: &mut LexState, state: &mut LuaState) -> Result<Box<LuaProto
     // C: f->p[fs->np++] = clp = luaF_newproto(L)
     // TODO(port): allocate via state.gc().new_proto() in Phase B
     let new_proto = Box::new(LuaProto::placeholder());
-    // Grow the parent's p array if needed
     while ls.fs.as_ref().unwrap().f.p.len() <= np {
-        // placeholder GcRef — Phase B will use real allocations
-        // TODO(port): ls.fs.as_mut().unwrap().f.p.push(state.new_proto())
+        ls.fs
+            .as_mut()
+            .unwrap()
+            .f
+            .p
+            .push(GcRef::new(LuaProto::placeholder()));
     }
     ls.fs.as_mut().unwrap().np += 1;
     // C: luaC_objbarrier(L, f, clp) — no-op in Phase A
