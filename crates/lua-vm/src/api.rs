@@ -338,6 +338,11 @@ impl LuaState {
         Ok(())
     }
 
+    pub fn push_value_at(&mut self, idx: i32) -> Result<(), LuaError> {
+        push_value(self, idx);
+        Ok(())
+    }
+
     pub fn push_string(&mut self, s: &[u8]) -> Result<(), LuaError> {
         push_lstring(self, s)?;
         Ok(())
