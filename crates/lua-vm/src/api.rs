@@ -343,6 +343,55 @@ impl LuaState {
         Ok(())
     }
 
+    /// Convert the value at `idx` to a display string, push the result onto
+    /// the stack, and return a copy of its bytes. Mirrors `luaL_tolstring`
+    /// from `lauxlib.c`. The default Lua formatting is used for primitives
+    /// (`"true"`/`"false"`/`"nil"`, `%I` integers, `%.14g` floats); for other
+    /// reference types the result is `"<typename>: 0x<hex pointer>"`.
+    ///
+    /// TODO(port): the `__tostring` metamethod path is not yet wired —
+    /// `luaL_callmeta` has no Rust analogue here yet. When it lands, prefer
+    /// the metamethod result over the default formatting below.
+    pub fn to_display_string(&mut self, idx: i32) -> Result<Vec<u8>, LuaError> {
+        let abs = abs_index(self, idx);
+        let v = index_to_value(self, abs);
+        let bytes: Vec<u8> = match &v {
+            LuaValue::Str(s) => {
+                let out = s.as_bytes().to_vec();
+                self.push(LuaValue::Str(s.clone()));
+                out
+            }
+            LuaValue::Int(_) | LuaValue::Float(_) => {
+                let s = crate::object::num_to_string(self, &v)?;
+                let out = s.as_bytes().to_vec();
+                self.push(LuaValue::Str(s));
+                out
+            }
+            LuaValue::Bool(b) => {
+                let lit: &[u8] = if *b { b"true" } else { b"false" };
+                let s = self.intern_str(lit)?;
+                self.push(LuaValue::Str(s));
+                lit.to_vec()
+            }
+            LuaValue::Nil => {
+                let s = self.intern_str(b"nil")?;
+                self.push(LuaValue::Str(s));
+                b"nil".to_vec()
+            }
+            _ => {
+                let kind = crate::tagmethods::obj_type_name(self, &v)?;
+                let ptr = to_pointer(self, abs).unwrap_or(0);
+                let mut buf = kind;
+                buf.extend_from_slice(b": 0x");
+                buf.extend_from_slice(format!("{:x}", ptr).as_bytes());
+                let s = self.intern_str(&buf)?;
+                self.push(LuaValue::Str(s));
+                buf
+            }
+        };
+        Ok(bytes)
+    }
+
     /// C: `lua_gettop(L)` — number of values in the active call frame
     /// (stack top minus the slot just after the frame's `func`).
     ///

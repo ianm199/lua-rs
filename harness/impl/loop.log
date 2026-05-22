@@ -516,3 +516,7 @@ help: use `let _ = ...` to ignore the expression or result
 [2026-05-16T20:24:09Z] ─── iter 11  (spent: $0.00) ───
 [2026-05-16T20:24:10Z]   stub blocker: top
 [2026-05-16T20:24:10Z]   dispatching IMPLEMENT agent for top at crates/lua-stdlib/src/state_stub.rs:105:32 (budget $10)
+[2026-05-16T20:30:35Z]   agent done. iter cost=$2.3329000000000004  total=$0.00
+[2026-05-16T20:30:35Z] ─── iter 12  (spent: $0.00) ───
+[2026-05-16T20:30:35Z]   stub blocker: to_display_string
+[2026-05-16T20:30:35Z]   dispatching IMPLEMENT agent for to_display_string at crates/lua-stdlib/src/state_stub.rs:132:78 (budget $10)
