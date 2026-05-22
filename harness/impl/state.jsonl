@@ -1611,3 +1611,6 @@
 {"ts":"2026-05-17T00:14:30Z","action":"dispatch_done","detail":"type=debug err=Syntax: internal: cg_exp_to_next_reg cannot discharge Call (load_string status=1) cost=0.8506784999999999","total_cost":0.00}
 {"ts":"2026-05-17T00:14:31Z","action":"real_error","detail":"err=crates/lua-parse/src/lib.rs:3704:5: step=3/4 Loading source (parse + compile) iter=3","total_cost":0.00}
 {"ts":"2026-05-17T00:14:31Z","action":"dispatch_start","detail":"type=debug err=crates/lua-parse/src/lib.rs:3704:5: iter=3","total_cost":0.00}
+{"ts":"2026-05-17T00:19:12Z","action":"dispatch_done","detail":"type=debug err=crates/lua-parse/src/lib.rs:3704:5: cost=1.884743","total_cost":0.00}
+{"ts":"2026-05-17T00:19:12Z","action":"real_error","detail":"err=crates/lua-vm/src/state.rs:1300:28: step=4/4 Executing chunk iter=4","total_cost":0.00}
+{"ts":"2026-05-17T00:19:12Z","action":"dispatch_start","detail":"type=debug err=crates/lua-vm/src/state.rs:1300:28: iter=4","total_cost":0.00}

@@ -1775,29 +1775,27 @@ fn singlevaraux(
 ) -> Result<(), LuaError> {
     match fs {
         None => {
-            // C: init_exp(var, VVOID, 0) — default is global
             init_exp(var, ExprKind::Void, 0);
         }
         Some(fs) => {
             let v = searchvar(ls, fs, n, var);
             if v >= 0 {
-                // C: if (v == VLOCAL && !base) markupval(fs, var->u.var.vidx)
                 if v == ExprKind::Local as i32 && !base {
                     markupval(fs, var.u.var_vidx as i32);
                 }
             } else {
-                // C: try existing upvalues
                 let idx = search_upvalue(fs, n);
-                if idx < 0 {
-                    // TODO(port): recursive call needs access to fs.prev
-                    // C: singlevaraux(fs->prev, n, var, 0)
-                    // In Rust, fs.prev is owned by fs; can't easily recurse.
-                    // PORT NOTE: upvalue chain traversal needs restructuring in Phase B.
-                    // For now, set VVOID to indicate "global fallback".
-                    init_exp(var, ExprKind::Void, 0);
-                    return Ok(());
-                }
-                init_exp(var, ExprKind::UpVal, idx);
+                let final_idx = if idx < 0 {
+                    singlevaraux(ls, fs.prev.as_deref_mut(), n, var, false)?;
+                    if var.k == ExprKind::Local || var.k == ExprKind::UpVal {
+                        new_upvalue(ls, fs, n.clone(), var)?
+                    } else {
+                        return Ok(());
+                    }
+                } else {
+                    idx
+                };
+                init_exp(var, ExprKind::UpVal, final_idx);
             }
         }
     }
@@ -1808,24 +1806,10 @@ fn singlevaraux(
 /// Finds the variable named by the next TK_NAME token.
 fn singlevar(ls: &mut LexState, state: &mut LuaState, var: &mut ExprDesc) -> Result<(), LuaError> {
     let varname = str_check_name(ls, state)?;
-    // C: singlevaraux(fs, varname, var, 1)
-    // TODO(port): singlevaraux needs &mut FuncState but fs is inside ls — borrow conflict.
-    // For Phase A, inline the logic with ls.fs extraction.
-    {
-        let fs = ls.fs.as_ref().unwrap();
-        let v = searchvar(ls, fs, &varname, var);
-        if v >= 0 {
-            // found a local — no upvalue marking needed (base = true)
-        } else {
-            let idx = search_upvalue(fs, &varname);
-            if idx >= 0 {
-                init_exp(var, ExprKind::UpVal, idx);
-            } else {
-                // TODO(port): recurse into fs.prev chain for upvalue resolution
-                init_exp(var, ExprKind::Void, 0);
-            }
-        }
-    }
+    let mut fs_box = ls.fs.take();
+    let recurse_result = singlevaraux(ls, fs_box.as_deref_mut(), &varname, var, true);
+    ls.fs = fs_box;
+    recurse_result?;
     if var.k == ExprKind::Void {
         // C: global name — env[varname]
         let envn = ls.envn.clone();

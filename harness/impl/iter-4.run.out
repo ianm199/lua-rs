@@ -3,7 +3,7 @@
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
 
-thread 'main' (5697748) panicked at crates/lua-vm/src/state.rs:1440:89:
-not yet implemented: phase-b: table_ensure_array
+thread 'main' (5767132) panicked at crates/lua-vm/src/state.rs:1300:28:
+index out of bounds: the len is 0 but the index is 0
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-[panic] not yet implemented: phase-b: table_ensure_array
+[panic] index out of bounds: the len is 0 but the index is 0
