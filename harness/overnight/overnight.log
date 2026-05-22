@@ -35,3 +35,4 @@ fanout: mode=files  files=12  workers=6  dry_run=0
   [lauxlib.c] → crates/lua-stdlib/src/auxlib.rs
     status=hooks_failed  cost=$1.6255788500000001  duration=928s  hooks=false  syntax=true (residual=0)
   [linit.c] → crates/lua-stdlib/src/init.rs
+    status=syntax_failed  cost=$0.80223135  duration=282s  hooks=true  syntax=false (residual=2)
