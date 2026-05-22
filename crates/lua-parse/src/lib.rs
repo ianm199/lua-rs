@@ -2599,9 +2599,7 @@ fn solvegoto(
         return Err(jumpscopeerror(ls, g));
     }
     let gt_pc = ls.dyd.gt[g].pc;
-    // C: luaK_patchlist(ls->fs, gt->pc, label->pc)
-    // TODO(port): lua_code::patch_list(ls.fs.as_mut().unwrap(), gt_pc, label_pc)?;
-    // C: remove goto g from pending list (shift left)
+    cg_patch_list(ls.fs.as_mut().unwrap(), gt_pc, label_pc)?;
     ls.dyd.gt.remove(g);
     Ok(())
 }
@@ -2683,11 +2681,7 @@ fn createlabel(
     line: i32,
     last: bool,
 ) -> Result<bool, LuaError> {
-    // C: int l = newlabelentry(ls, ll, name, line, luaK_getlabel(fs))
-    let label_pc = {
-        // TODO(port): lua_code::get_label(ls.fs.as_mut().unwrap())
-        ls.fs.as_ref().unwrap().pc // placeholder
-    };
+    let label_pc = cg_get_label(ls.fs.as_mut().unwrap());
     let l = new_label_entry(ls, state, false, name, line, label_pc)?;
     if last {
         // C: ll->arr[l].nactvar = fs->bl->nactvar
@@ -3662,27 +3656,22 @@ fn gotostat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
     let name = str_check_name(ls, state)?;
     let lb = findlabel(ls, &name);
     if lb.is_none() {
-        // C: forward jump — newgotoentry(ls, name, line, luaK_jump(fs))
-        // TODO(port): let pc = lua_code::jump(ls.fs.as_mut().unwrap())?;
-        let pc = 0; // placeholder
+        let pc = cg_jump(ls.fs.as_mut().unwrap(), line);
         new_goto_entry(ls, state, name, line, pc)?;
     } else {
         let lb_idx = lb.unwrap();
         let lb_pc = ls.dyd.label[lb_idx].pc;
         let lb_nactvar = ls.dyd.label[lb_idx].nactvar;
-        // C: backward jump
         let lblevel = reg_level(ls, ls.fs.as_ref().unwrap(), lb_nactvar as i32);
         let cur_nvarstack = {
             let fs = ls.fs.as_ref().unwrap();
             nvarstack(ls, fs)
         };
         if cur_nvarstack > lblevel {
-            // C: luaK_codeABC(fs, OP_CLOSE, lblevel, 0, 0)
-            // TODO(port): lua_code::code_abc(ls.fs.as_mut().unwrap(), OpCode::Close, lblevel, 0, 0)?;
+            // TODO(port): emit OP_CLOSE with lblevel (no upvalue closes in current tests)
         }
-        // C: luaK_patchlist(fs, luaK_jump(fs), lb->pc)
-        // TODO(port): let jpc = lua_code::jump(ls.fs.as_mut().unwrap())?;
-        // TODO(port): lua_code::patch_list(ls.fs.as_mut().unwrap(), jpc, lb_pc)?;
+        let jpc = cg_jump(ls.fs.as_mut().unwrap(), line);
+        cg_patch_list(ls.fs.as_mut().unwrap(), jpc, lb_pc)?;
     }
     Ok(())
 }

@@ -413,3 +413,4 @@
 [2026-05-17T19:16:22Z mega]   skip stuck prog (sig: unknown): reference/lua-c/testes/sort.lua
 [2026-05-17T19:16:22Z mega]   [O5.D3] DEBUG dispatch on file: reference/lua-c/testes/closure.lua [parallel]
 [2026-05-17T19:16:22Z mega]   [O5.D4] DEBUG dispatch on file: reference/lua-c/testes/pm.lua [parallel]
+[2026-05-17T19:19:17Z mega]   [O5.D5] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
