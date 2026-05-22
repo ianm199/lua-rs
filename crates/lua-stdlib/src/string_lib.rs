@@ -1689,9 +1689,40 @@ pub fn str_format(state: &mut LuaState) -> Result<usize, LuaError> {
                 buf.extend_from_slice(s.as_bytes());
             }
             b'p' => {
-                let ptr = lua_vm::api::to_pointer(state, arg).unwrap_or(0);
-                let s = format!("0x{:x}", ptr);
-                buf.extend_from_slice(s.as_bytes());
+                let spec = &fmt_bytes[spec_start + 1..i - 1];
+                let mut left_align = false;
+                let mut sidx = 0usize;
+                while sidx < spec.len() && b"-+#0 ".contains(&spec[sidx]) {
+                    if spec[sidx] == b'-' {
+                        left_align = true;
+                    }
+                    sidx += 1;
+                }
+                let mut width = 0usize;
+                while sidx < spec.len() && spec[sidx].is_ascii_digit() {
+                    width = width * 10 + (spec[sidx] - b'0') as usize;
+                    sidx += 1;
+                }
+                let s: Vec<u8> = match lua_vm::api::to_pointer(state, arg) {
+                    Some(p) => format!("0x{:x}", p).into_bytes(),
+                    None => b"(null)".to_vec(),
+                };
+                if s.len() >= width {
+                    buf.extend_from_slice(&s);
+                } else {
+                    let pad = width - s.len();
+                    if left_align {
+                        buf.extend_from_slice(&s);
+                        for _ in 0..pad {
+                            buf.push(b' ');
+                        }
+                    } else {
+                        for _ in 0..pad {
+                            buf.push(b' ');
+                        }
+                        buf.extend_from_slice(&s);
+                    }
+                }
             }
             b'q' => {
                 addliteral(state, &mut buf, arg)?;

@@ -553,3 +553,24 @@
 [2026-05-17T20:51:46Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: module 'tracegc' not found:): reference/lua-c/testes/locals.lua
 [2026-05-17T20:52:12Z mega]   [O13.D7] DEBUG dispatch on file: reference/lua-c/testes/calls.lua [parallel]
 [2026-05-17T20:54:39Z mega]   [O13.D8] DEBUG dispatch on file: reference/lua-c/testes/constructs.lua [parallel]
+[2026-05-17T21:07:01Z mega]   [O13.D3] DEBUG done. iter cost=$1.02278325  total=$115.1134
+[2026-05-17T21:07:01Z mega]   [O13.D2] DEBUG done. iter cost=$0.9962505  total=$116.1097
+[2026-05-17T21:07:01Z mega]   [O13.D1] DEBUG done. iter cost=$1.4632495  total=$117.5729
+[2026-05-17T21:07:01Z mega]   [O13.D7] DEBUG done. iter cost=$1.0055972499999999  total=$118.5785
+[2026-05-17T21:07:01Z mega]   [O13.D5] DEBUG done. iter cost=$2.0396130000000006  total=$120.6181
+[2026-05-17T21:07:01Z mega]   [O13.D8] DEBUG done. iter cost=$1.2116579999999997  total=$121.8298
+[2026-05-17T21:07:01Z mega]   [O13.D4] DEBUG done. iter cost=$4.836625249999999  total=$126.6664
+[2026-05-17T21:07:01Z mega]   [O13.D6] DEBUG done. iter cost=$7.588594999999998  total=$134.2550
+[2026-05-17T21:07:01Z mega] ─── outer round 14 (spent: $134.2550) ───
+[2026-05-17T21:07:32Z mega]   scan: 59/75 programs pass cleanly
+[2026-05-17T21:07:32Z mega]   surface scan returned 0 unique stub blockers
+[2026-05-17T21:07:32Z mega]   no stub blockers — falling back to DEBUG agents on failing programs
+[2026-05-17T21:07:33Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: [string "_soft = true..."]:202: assertion failed!): reference/lua-c/testes/goto.lua
+[2026-05-17T21:07:33Z mega]   skip stuck prog (sig: unknown): reference/lua-c/testes/sort.lua
+[2026-05-17T21:07:33Z mega]   skip stuck prog (sig: panicked at crates/lua-vm/src/func.rs:485): reference/lua-c/testes/closure.lua
+[2026-05-17T21:07:33Z mega]   [O14.D1] DEBUG dispatch on file: reference/lua-c/testes/pm.lua [parallel]
+[2026-05-17T21:07:33Z mega]   [O14.D2] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
+[2026-05-17T21:07:33Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: module 'bwcoercion' not found:): reference/lua-c/testes/bitwise.lua
+[2026-05-17T21:07:33Z mega]   [O14.D3] DEBUG dispatch on file: reference/lua-c/testes/math.lua [parallel]
+[2026-05-17T21:07:33Z mega]   [O14.D4] DEBUG dispatch on file: reference/lua-c/testes/literals.lua [parallel]
+[2026-05-17T21:07:33Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: module 'tracegc' not found:): reference/lua-c/testes/locals.lua

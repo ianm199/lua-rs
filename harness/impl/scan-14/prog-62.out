@@ -1,0 +1,16 @@
+[1/4] Creating LuaState...
+[2/4] Opening standard library...
+[3/4] Loading source (parse + compile)...
+[4/4] Executing chunk...
+testing pack/unpack
+platform:
+	short 2, int 4, long 8, size_t 8, float 4, double 8,
+	lua Integer 8, lua Number 8
+	little endian
+	alignment: 8
+testing invalid formats
+testing pack/unpack of floating-point numbers
+testing pack/unpack of strings
+testing alignment
+OK
+[ok] execution completed, status=Ok

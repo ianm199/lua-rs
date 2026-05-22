@@ -5,4 +5,7 @@
 testing numbers and math lib
 64-bit integers, 53-bit (mantissa) floats
 testing order (floats cannot represent all integers)
-[err] pcall_k failed: Runtime: attempt to perform arithmetic on a function value
+fmax=	9.007199254741e+15
+ifmax=	9007199254740992
+ok
+[ok] execution completed, status=Ok

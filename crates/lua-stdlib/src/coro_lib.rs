@@ -126,8 +126,8 @@ fn aux_resume(state: &mut LuaState, _co: GcRef<lua_types::value::LuaThread>, _na
     //
     // All cross-thread operations depend on Phase E / corosensei runtime support.
     let _ = state;
-    panic!(
-        "coroutine.resume is not yet implemented (Phase A–D stub; see PORTING.md §2 #6)"
+    todo!(
+        "phase-e: coroutine_resume — stackful coroutines need corosensei (PORTING.md §2 #6)"
     );
 }
 

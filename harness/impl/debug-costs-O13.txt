@@ -5,3 +5,4 @@
 5 2.0396130000000006 reference/lua-c/testes/tpack.lua
 8 1.2116579999999997 reference/lua-c/testes/constructs.lua
 4 4.836625249999999 reference/lua-c/testes/math.lua
+6 7.588594999999998 reference/lua-c/testes/literals.lua

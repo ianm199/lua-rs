@@ -2,9 +2,5 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-testing pattern matching
-+
-+
-+
-+
-[err] pcall_k failed: Runtime: attempt to call a boolean value
+ne
+[ok] execution completed, status=Ok
