@@ -194,11 +194,11 @@ fn push_global_func_name(
         // C: lua_copy(L, -1, top + 1);
         state.copy_value(-1, top + 1)?;
         // C: lua_settop(L, top + 1);
-        state.set_top(top + 1)?;
+        state.set_top(top + 1);
         Ok(true)
     } else {
         // C: lua_settop(L, top);
-        state.set_top(top)?;
+        state.set_top(top);
         Ok(false)
     }
 }
@@ -1232,7 +1232,7 @@ pub fn set_funcs(
         state.set_field(-(nup + 2), reg.name)?;
     }
     // C: lua_pop(L, nup);
-    state.pop_n(nup);
+    state.pop_n(nup as usize);
     Ok(())
 }
 
@@ -1253,7 +1253,8 @@ pub fn get_subtable(
     state.pop_n(1);
     let idx = state.abs_index(idx);
     // C: lua_newtable(L);
-    state.new_table()?;
+    let new_tbl = state.new_table();
+    state.push(LuaValue::Table(new_tbl));
     // C: lua_pushvalue(L, -1); lua_setfield(L, idx, fname);
     state.push_value(-1)?;
     state.set_field(idx, fname)?;

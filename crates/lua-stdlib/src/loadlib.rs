@@ -633,7 +633,7 @@ fn findfile(state: &mut LuaState, name: &[u8], pname: &[u8], dirsep: u8) -> Resu
 fn checkload(state: &mut LuaState, stat: bool, filename: &[u8]) -> Result<usize, LuaError> {
     if stat {
         // C: lua_pushstring(L, filename);
-        let s = state.intern_str(filename);
+        let s = state.intern_str(filename)?;
         state.push(LuaValue::Str(s));
         // C: return 2;
         Ok(2)
@@ -655,7 +655,7 @@ fn checkload(state: &mut LuaState, stat: bool, filename: &[u8]) -> Result<usize,
         msg.extend_from_slice(&loader_err);
 
         // PERF(port): builds a heap Vec then interns; in Phase B use push_fstring.
-        let s = state.intern_str(&msg);
+        let s = state.intern_str(&msg)?;
         return Err(LuaError::from_value(LuaValue::Str(s)));
     }
 }
@@ -758,7 +758,7 @@ fn searcher_croot(state: &mut LuaState) -> Result<usize, LuaError> {
 
     // C: lua_pushlstring(L, name, p - name);  -- push root portion
     let root = &name[..dot_pos];
-    let root_s = state.intern_str(root);
+    let root_s = state.intern_str(root)?;
     state.push(LuaValue::Str(root_s));
 
     // C: filename = findfile(L, lua_tostring(L, -1), "cpath", LUA_CSUBSEP);
@@ -788,14 +788,14 @@ fn searcher_croot(state: &mut LuaState) -> Result<usize, LuaError> {
             msg.extend_from_slice(b"' in file '");
             msg.extend_from_slice(&filename);
             msg.push(b'\'');
-            let s = state.intern_str(&msg);
+            let s = state.intern_str(&msg)?;
             state.push(LuaValue::Str(s));
             return Ok(1);
         }
     }
 
     // C: lua_pushstring(L, filename);  -- 2nd argument to module
-    let s = state.intern_str(&filename);
+    let s = state.intern_str(&filename)?;
     state.push(LuaValue::Str(s));
     // C: return 2;
     Ok(2)
@@ -817,13 +817,13 @@ fn searcher_preload(state: &mut LuaState) -> Result<usize, LuaError> {
         msg.extend_from_slice(&name);
         msg.push(b'\'');
         msg.push(b']');
-        let s = state.intern_str(&msg);
+        let s = state.intern_str(&msg)?;
         state.push(LuaValue::Str(s));
         // C: return 1;
         return Ok(1);
     }
     // C: lua_pushliteral(L, ":preload:");
-    let tag = state.intern_str(b":preload:");
+    let tag = state.intern_str(b":preload:")?;
     state.push(LuaValue::Str(tag));
     // C: return 2;
     Ok(2)
@@ -881,12 +881,12 @@ fn findloader(state: &mut LuaState, name: &[u8]) -> Result<(), LuaError> {
             err.extend_from_slice(name);
             err.extend_from_slice(b"' not found:");
             err.extend_from_slice(&msg_buf);
-            let err_s = state.intern_str(&err);
+            let err_s = state.intern_str(&err)?;
             return Err(LuaError::from_value(LuaValue::Str(err_s)));
         }
 
         // C: lua_pushstring(L, name);
-        let name_s = state.intern_str(name);
+        let name_s = state.intern_str(name)?;
         state.push(LuaValue::Str(name_s));
 
         // C: lua_call(L, 1, 2);
@@ -1088,7 +1088,7 @@ pub fn luaopen_package(state: &mut LuaState) -> Result<usize, LuaError> {
     config.push(b'\n');
     config.push(LUA_IGMARK);
     config.push(b'\n');
-    let config_s = state.intern_str(&config);
+    let config_s = state.intern_str(&config)?;
     state.push(LuaValue::Str(config_s));
 
     // C: lua_setfield(L, -2, "config");
