@@ -1,0 +1,25 @@
+[1/4] Creating LuaState...
+[2/4] Opening standard library...
+[3/4] Loading source (parse + compile)...
+[4/4] Executing chunk...
+function
+function
+function
+function
+function
+function
+function
+function
+function
+function
+function
+function
+#t	11
+104 101 108 108 111 32 87 111 114 108 100 
+utf8.len(s)	11
+utf8.len(s,1,-1,nil)	11
+len(s)	11
+char unpack	true
+utf8.offset(s, 0)	1
+ok
+[ok] execution completed, status=Ok

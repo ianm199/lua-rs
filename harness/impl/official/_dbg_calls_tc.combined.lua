@@ -13,5 +13,6 @@ do   -- C-stack overflow while handling C-stack overflow
   end
 
   local err, msg = xpcall(loop, loop)
-  print("err=", err, "msg=", msg, "type(msg)=", type(msg))
+  assert(not err and string.find(msg, "error"))
+  print("phase 3 ok")
 end

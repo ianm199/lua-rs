@@ -2,5 +2,9 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-phase 3 ok
+testing UTF-8 library
+before errorcodes 1
+after errorcodes 1
+after errorcodes 2
+after do block
 [ok] execution completed, status=Ok

@@ -1458,19 +1458,19 @@ impl LuaState {
         );
         match status {
             LuaStatus::Ok => Ok(()),
-            LuaStatus::ErrRun => {
-                let err_val = self.get_at(func);
-                self.set_top(func);
-                Err(LuaError::Runtime(err_val))
-            }
             LuaStatus::ErrSyntax => {
                 let err_val = self.get_at(func);
                 self.set_top(func);
                 Err(LuaError::Syntax(err_val))
             }
-            _ => {
+            LuaStatus::Yield => {
                 self.set_top(func);
-                Err(LuaError::with_status(status))
+                Err(LuaError::Yield)
+            }
+            _ => {
+                let err_val = self.get_at(func);
+                self.set_top(func);
+                Err(LuaError::Runtime(err_val))
             }
         }
     }

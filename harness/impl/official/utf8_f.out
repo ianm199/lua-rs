@@ -1,0 +1,28 @@
+[1/4] Creating LuaState...
+[2/4] Opening standard library...
+[3/4] Loading source (parse + compile)...
+[4/4] Executing chunk...
+step 1: l=	11
+step 2: ok
+step 3: ok
+step 4: ok
+loading: 	return '\u{68}\u{65}\u{6c}\u{6c}\u{6f}\u{20}\u{57}\u{6f}\u{72}\u{6c}\u{64}'
+loaded:	function: 0x60000225a650	nil
+call result	true
+step 5: checksyntax done
+step 6: t1 #	11
+step 7: codepoints match
+i=	1	pi=	1	pi1=	2
+i=	2	pi=	2	pi1=	3
+i=	3	pi=	3	pi1=	4
+i=	4	pi=	4	pi1=	5
+i=	5	pi=	5	pi1=	6
+i=	6	pi=	6	pi1=	7
+i=	7	pi=	7	pi1=	8
+i=	8	pi=	8	pi1=	9
+i=	9	pi=	9	pi1=	10
+i=	10	pi=	10	pi1=	11
+i=	11	pi=	11	pi1=	12
+step 8: per-char loop done
+step 9: codes iter done
+[err] pcall_k failed: Runtime: attempt to call a nil value

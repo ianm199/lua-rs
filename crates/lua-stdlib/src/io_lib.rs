@@ -20,10 +20,36 @@
 //! for interior mutability, or extract the file handle via a separate borrow
 //! scope.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{self, SeekFrom};
+use std::rc::Rc;
 
 use lua_types::{LuaError, LuaType, LuaValue};
 use crate::state_stub::{LuaState, LuaStateStubExt as _, lua_CFunction, upvalue_index, CompareOp, LuaDebug};
+
+thread_local! {
+    /// Side-table mapping userdata identity (the `Rc` pointer address from
+    /// `GcRef::identity()`) to its associated `LStream`. The C port stores
+    /// `LStream` directly inside the userdata payload; Rust cannot do that
+    /// safely because `LStream` carries heap pointers (a `Box<dyn LuaFileOps>`
+    /// and a fn pointer). Entries are inserted by `new_pre_file` and never
+    /// removed in Phase A-C — leak is intentional per `PORTING.md` §2 #4.
+    static LSTREAM_REGISTRY: RefCell<HashMap<usize, Rc<RefCell<LStream>>>>
+        = RefCell::new(HashMap::new());
+}
+
+fn register_lstream(ud_id: usize, lstream: LStream) -> Rc<RefCell<LStream>> {
+    let cell = Rc::new(RefCell::new(lstream));
+    LSTREAM_REGISTRY.with(|reg| {
+        reg.borrow_mut().insert(ud_id, cell.clone());
+    });
+    cell
+}
+
+fn lookup_lstream(ud_id: usize) -> Option<Rc<RefCell<LStream>>> {
+    LSTREAM_REGISTRY.with(|reg| reg.borrow().get(&ud_id).cloned())
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
