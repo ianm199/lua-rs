@@ -399,16 +399,29 @@ Same shape for D-1c through D-1f.
 
 4. **The Weak refs problem.** I deferred them but if the string intern table actually NEEDS weak refs (i.e. strings should be collectible), we have to either implement Gc weak refs or rethink. Investigation needed before D-1e.
 
-## Open Design Questions (for the user)
+## Locked Decisions (D-1 scope)
 
-These are decisions I'd want to lock down before D-1c/e:
+1. **Multi-GlobalState support: YES, v1.** Single-slot HeapGuard is a footgun. The bridge is a `Vec<NonNull<Heap>>` push/pop from day one — one extra line and zero downside.
 
-1. **Multi-GlobalState support** — embedders sometimes create multiple `lua_State`s. Our `HeapGuard` is single-slot; nesting would need a stack. Is multi-state-per-thread a goal for v1?
+2. **Generational mode: DEFER to D-2.** D-1 ships stop-the-world mark-sweep. `gengc.lua` is known-fail in D-1.
 
-2. **Generational mode** — gengc.lua requires it. Skip in D-1, add in D-2? Or never (incremental mode covers most real workloads)?
+3. **Finalizers (`__gc`): DEFER to D-2, marked required for full compat.** Pending-queue + resurrection semantics are too much overhead to land alongside the allocator migration. Userdata-with-`__gc` tests are known-fail in D-1.
 
-3. **Finalizers (`__gc`)** — userdata with `__gc` metamethods need post-sweep callbacks. Defer to D-2 (after D-1 done)?
+4. **Weak refs: DEFER full design to D-2.** D-1 accepts strong interned strings (memory leak, not semantic gap — matches C-Lua's "fixed strings never collected" for short strings). Weak tables are a semantic-compat gap; mark known-fail in D-1.
 
-4. **Weak refs** — needed for the string intern table to release fixed strings. Defer if we accept "strings never collected" as the v1 semantics?
+## Correction to D-1c (the bridge)
 
-My defaults (if you don't override): single-state, no generational, no finalizers, no weak refs in v1. Each is a clear D-2 followup.
+The earlier D-1c sketch implied allocation routing during the migration window. **That was wrong.** If `GcRef::new` calls `heap.allocate(value)` AND `Rc::new(value)`, you get:
+- A move conflict (value consumed twice), OR
+- A clone that creates two distinct allocations with no shared identity, so the real graph stays in Rc-land and the `allgc` chain holds ghost objects that sweep clean every cycle. Looks like GC is working; isn't.
+
+**Corrected D-1c scope:** Just the infrastructure.
+
+- Add `HeapGuard` as a stack-based TLS guard (Vec of NonNull<Heap>). Push on `state.run()`, pop on drop.
+- Add `current_heap() -> Option<&Heap>` accessor.
+- DO NOT change `GcRef::new` behavior. It stays `Rc::new`.
+- Wire `HeapGuard::install` into `state.run()`, `state.protected_call()`, `state.load()`.
+
+The bridge becomes load-bearing only at D-1e, when `GcRef<T>` is aliased to `Gc<T>` and `GcRef::new`'s body switches to `current_heap().expect(...).allocate(value)`. Until then, the bridge is dormant — just a pointer set/cleared.
+
+This also means D-1c is even cheaper than estimated: ~30 min static, zero risk of phantom-allocation behavior.
