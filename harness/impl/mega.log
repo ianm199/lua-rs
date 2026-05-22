@@ -548,3 +548,6 @@
 [2026-05-17T20:48:43Z mega]   [O13.D3] DEBUG dispatch on file: reference/lua-c/testes/strings.lua [parallel]
 [2026-05-17T20:48:43Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: module 'bwcoercion' not found:): reference/lua-c/testes/bitwise.lua
 [2026-05-17T20:48:43Z mega]   [O13.D4] DEBUG dispatch on file: reference/lua-c/testes/math.lua [parallel]
+[2026-05-17T20:51:46Z mega]   [O13.D5] DEBUG dispatch on file: reference/lua-c/testes/tpack.lua [parallel]
+[2026-05-17T20:51:46Z mega]   [O13.D6] DEBUG dispatch on file: reference/lua-c/testes/literals.lua [parallel]
+[2026-05-17T20:51:46Z mega]   skip stuck prog (sig: [err] pcall_k failed: Runtime: module 'tracegc' not found:): reference/lua-c/testes/locals.lua
