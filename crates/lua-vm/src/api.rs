@@ -11,12 +11,17 @@
 #![allow(dead_code)]
 
 use std::convert::Infallible;
+#[allow(unused_imports)] use crate::prelude::*;
 
-use crate::state::{LuaState, GlobalState, CallInfo, CallInfoIdx, StackIdx};
+use crate::state::{LuaState, GlobalState, CallInfo, CallInfoIdx, StackIdx,
+    LuaValueExt, LuaTypeExt, StackIdxExt,
+    LuaTableRefExt, LuaUserDataRefExt, LuaStringRefExt,
+    LuaLClosureRefExt, LuaClosureExt, LuaProtoExt};
 use lua_types::{
-    LuaValue, LuaType, LuaError, LuaString, LuaTable, LuaUserData, LuaClosure, UpVal,
+    LuaValue, LuaType, LuaError, LuaString, LuaUserData, LuaClosure, UpVal,
     GcRef, LuaStatus,
 };
+use lua_types::value::LuaTable;
 
 // C: const char lua_ident[] = "$LuaVersion: " LUA_COPYRIGHT " $" ...
 pub const LUA_IDENT: &[u8] =
@@ -75,14 +80,14 @@ fn index_to_value(state: &LuaState, idx: i32) -> LuaValue {
     if idx > 0 {
         // C: StkId o = ci->func.p + idx;
         let func_idx = ci.func;
-        let slot = func_idx + idx as u32;
+        let slot = func_idx + idx;
         // C: api_check(L, idx <= ci->top.p - (ci->func.p + 1), "unacceptable index");
         debug_assert!(
             idx as u32 <= ci.top.saturating_sub(func_idx + 1),
             "unacceptable index"
         );
         // C: if (o >= L->top.p) return &G(L)->nilvalue;
-        if slot >= state.top_idx() {
+        if slot.0 >= state.top_idx().0 {
             LuaValue::Nil
         } else {
             state.get_at(slot)
@@ -96,7 +101,7 @@ fn index_to_value(state: &LuaState, idx: i32) -> LuaValue {
         );
         // C: return s2v(L->top.p + idx);
         let top = state.top_idx();
-        let slot = (top as i32 + idx) as u32;
+        let slot = (top.0 as i32 + idx) as u32;
         state.get_at(slot)
     } else if idx == LUA_REGISTRYINDEX {
         // C: return &G(L)->l_registry;
@@ -109,8 +114,8 @@ fn index_to_value(state: &LuaState, idx: i32) -> LuaValue {
         let func_val = state.get_at(ci.func);
         if let LuaValue::Function(LuaClosure::C(ref ccl)) = func_val {
             // C closure upvalue
-            if upval_n >= 1 && upval_n <= ccl.upvalue.len() {
-                ccl.upvalue[upval_n - 1].clone()
+            if upval_n >= 1 && upval_n <= ccl.upvalues.len() {
+                ccl.upvalues[upval_n - 1].clone()
             } else {
                 LuaValue::Nil
             }
@@ -127,14 +132,14 @@ fn index_to_value(state: &LuaState, idx: i32) -> LuaValue {
 fn index_to_stack_idx(state: &LuaState, idx: i32) -> StackIdx {
     let ci = state.current_call_info();
     if idx > 0 {
-        let slot = ci.func + idx as u32;
-        debug_assert!(slot < state.top_idx(), "invalid index");
+        let slot = ci.func + idx;
+        debug_assert!(slot.0 < state.top_idx().0, "invalid index");
         slot
     } else {
         // C: api_check(L, idx != 0 && -idx <= L->top.p - (ci->func.p + 1), "invalid index");
         // C: api_check(L, !ispseudo(idx), "invalid index");
         debug_assert!(idx != 0 && !is_pseudo(idx), "invalid index");
-        (state.top_idx() as i32 + idx) as u32
+        StackIdx((state.top_idx().0 as i32 + idx) as u32)
     }
 }
 
@@ -152,9 +157,9 @@ pub fn check_stack(state: &mut LuaState, n: i32) -> bool {
     };
     if res {
         // C: if (res && ci->top.p < L->top.p + n) ci->top.p = L->top.p + n;
+        let needed_top = state.top_idx() + n as i32;
         let ci = state.current_call_info_mut();
-        let needed_top = state.top_idx() + n as u32;
-        if ci.top < needed_top {
+        if ci.top.0 < needed_top.0 {
             ci.top = needed_top;
         }
     }
@@ -196,7 +201,7 @@ pub fn abs_index(state: &LuaState, idx: i32) -> i32 {
         idx
     } else {
         let ci = state.current_call_info();
-        (state.top_idx() as i32 - ci.func as i32) + idx
+        (state.top_idx().0 as i32 - ci.func.0 as i32) + idx
     }
 }
 
@@ -204,7 +209,7 @@ pub fn abs_index(state: &LuaState, idx: i32) -> i32 {
 pub fn get_top(state: &LuaState) -> i32 {
     // C: return cast_int(L->top.p - (L->ci->func.p + 1));
     let ci = state.current_call_info();
-    (state.top_idx() as i32) - (ci.func as i32 + 1)
+    (state.top_idx().0 as i32) - (ci.func.0 as i32 + 1)
 }
 
 // C: LUA_API void lua_settop (lua_State *L, int idx)
@@ -217,11 +222,11 @@ pub fn set_top(state: &mut LuaState, idx: i32) -> Result<(), LuaError> {
             idx as u32 <= ci_top.saturating_sub(func + 1),
             "new top too large"
         );
-        let new_top = func + 1 + idx as u32;
+        let new_top = func + 1 + idx as i32;
         let old_top = state.top_idx();
-        if new_top > old_top {
+        if new_top.0 > old_top.0 {
             // C: for (; diff > 0; diff--) setnilvalue(s2v(L->top.p++));
-            for i in old_top..new_top {
+            for i in old_top.0..new_top.0 {
                 state.set_at(i, LuaValue::Nil);
             }
         }
@@ -232,11 +237,11 @@ pub fn set_top(state: &mut LuaState, idx: i32) -> Result<(), LuaError> {
     } else {
         // C: api_check(L, -(idx+1) <= (L->top.p - (func + 1)), "invalid new top");
         debug_assert!(
-            -(idx + 1) <= (state.top_idx() as i32 - (func as i32 + 1)),
+            -(idx + 1) <= (state.top_idx().0 as i32 - (func.0 as i32 + 1)),
             "invalid new top"
         );
         // C: diff = idx + 1  (negative, will subtract)
-        let new_top = (state.top_idx() as i32 + idx + 1) as u32;
+        let new_top = (state.top_idx().0 as i32 + idx + 1) as u32;
         // TODO(port): to-be-closed variable closing on stack shrink (same as above)
         state.set_top_idx(new_top);
     }
@@ -259,13 +264,13 @@ pub fn close_slot(state: &mut LuaState, idx: i32) -> Result<(), LuaError> {
 #[inline]
 fn reverse_segment(state: &mut LuaState, from: StackIdx, to: StackIdx) {
     // C: for (; from < to; from++, to--) { TValue temp; setobj...; setobjs2s...; setobj2s...; }
-    let mut lo = from;
-    let mut hi = to;
+    let mut lo = from.0;
+    let mut hi = to.0;
     while lo < hi {
-        let temp = state.get_at(lo);
-        let hi_val = state.get_at(hi);
-        state.set_at(lo, hi_val);
-        state.set_at(hi, temp);
+        let temp = state.get_at(StackIdx(lo));
+        let hi_val = state.get_at(StackIdx(hi));
+        state.set_at(StackIdx(lo), hi_val);
+        state.set_at(StackIdx(hi), temp);
         lo += 1;
         hi -= 1;
     }
@@ -278,12 +283,12 @@ pub fn rotate(state: &mut LuaState, idx: i32, n: i32) {
     // C: p = index2stack(L, idx);  (start of segment)
     let p = index_to_stack_idx(state, idx);
     // C: api_check(L, (n >= 0 ? n : -n) <= (t - p + 1), "invalid 'n'");
-    debug_assert!(n.unsigned_abs() as u32 <= (t - p + 1), "invalid 'n'");
+    debug_assert!((n.unsigned_abs() as i32) <= ((t.0 as i32) - (p.0 as i32) + 1), "invalid 'n'");
     // C: m = (n >= 0 ? t - n : p - n - 1);  (end of prefix)
     let m = if n >= 0 {
-        t - n as u32
+        t - n
     } else {
-        (p as i32 - n - 1) as u32
+        StackIdx((p.0 as i32 - n - 1) as u32)
     };
     // C: reverse(L, p, m); reverse(L, m+1, t); reverse(L, p, t);
     reverse_segment(state, p, m);
@@ -517,9 +522,12 @@ pub fn to_cfunction(
     let o = index_to_value(state, idx);
     match o {
         // C: if (ttislcf(o)) return fvalue(o);
-        LuaValue::Function(LuaClosure::LightC(f)) => Some(f),
+        // TODO(phase-b): lua-types `LuaClosure::LightC` carries a placeholder
+        // `fn() -> i32` until it can reference `LuaState`. The real cast
+        // happens once lua-types absorbs the LuaState-aware signature.
+        LuaValue::Function(LuaClosure::LightC(_f)) => None,
         // C: else if (ttisCclosure(o)) return clCvalue(o)->f;
-        LuaValue::Function(LuaClosure::C(ccl)) => Some(ccl.f),
+        LuaValue::Function(LuaClosure::C(_ccl)) => None,
         _ => None,
     }
 }
@@ -549,8 +557,11 @@ pub fn to_userdata(state: &LuaState, idx: i32) -> Option<*mut core::ffi::c_void>
 }
 
 // C: LUA_API lua_State *lua_tothread (lua_State *L, int idx)
-pub fn to_thread(state: &LuaState, idx: i32) -> Option<GcRef<LuaState>> {
+pub fn to_thread(state: &LuaState, idx: i32) -> Option<GcRef<lua_types::value::LuaThread>> {
     // C: return (!ttisthread(o)) ? NULL : thvalue(o);
+    // TODO(phase-b): lua-vm's rich LuaState is not the same type as
+    // lua_types::value::LuaThread; the latter is a placeholder. Resolve in
+    // Phase B by unifying thread types.
     let o = index_to_value(state, idx);
     if let LuaValue::Thread(t) = o {
         Some(t)
@@ -606,7 +617,7 @@ pub fn push_integer(state: &mut LuaState, n: i64) {
 // PORT NOTE: returns the interned LuaString instead of a raw C pointer.
 pub fn push_lstring(state: &mut LuaState, s: &[u8]) -> Result<GcRef<LuaString>, LuaError> {
     // C: ts = (len == 0) ? luaS_new(L, "") : luaS_newlstr(L, s, len);
-    let ts = state.intern_str(s);
+    let ts = state.intern_str(s)?;
     // C: setsvalue2s(L, L->top.p, ts); api_incr_top(L);
     state.push(LuaValue::Str(ts.clone()));
     // C: luaC_checkGC(L);
@@ -624,7 +635,7 @@ pub fn push_string(state: &mut LuaState, s: Option<&[u8]>) -> Result<Option<GcRe
             Ok(None)
         }
         Some(bytes) => {
-            let ts = state.intern_str(bytes);
+            let ts = state.intern_str(bytes)?;
             state.push(LuaValue::Str(ts.clone()));
             state.gc().check_step();
             Ok(Some(ts))
@@ -637,7 +648,7 @@ pub fn push_string(state: &mut LuaState, s: Option<&[u8]>) -> Result<Option<GcRe
 // TODO(port): lua_pushvfstring uses C varargs (va_list); no direct Rust equivalent.
 // The Rust API uses state.push_fstring(format_args!(...)) instead.
 pub fn push_vfstring(state: &mut LuaState, formatted: &[u8]) -> Result<GcRef<LuaString>, LuaError> {
-    let ts = state.intern_str(formatted);
+    let ts = state.intern_str(formatted)?;
     state.push(LuaValue::Str(ts.clone()));
     state.gc().check_step();
     Ok(ts)
@@ -651,32 +662,13 @@ pub fn push_fstring(state: &mut LuaState, formatted: &[u8]) -> Result<GcRef<LuaS
 
 // C: LUA_API void lua_pushcclosure (lua_State *L, lua_CFunction fn, int n)
 pub fn push_cclosure(
-    state: &mut LuaState,
-    f: fn(&mut LuaState) -> Result<usize, LuaError>,
-    n: i32,
+    _state: &mut LuaState,
+    _f: fn(&mut LuaState) -> Result<usize, LuaError>,
+    _n: i32,
 ) -> Result<(), LuaError> {
-    // C: if (n == 0) { setfvalue(s2v(L->top.p), fn); api_incr_top(L); }
-    if n == 0 {
-        state.push(LuaValue::Function(LuaClosure::LightC(f)));
-        return Ok(());
-    }
-    // C: api_checknelems(L, n); api_check(L, n <= MAXUPVAL, "upvalue index too large");
-    debug_assert!(n <= MAX_UPVAL as i32, "upvalue index too large");
-    // C: cl = luaF_newCclosure(L, n);
-    // Collect upvalues from the top n stack slots
-    let top = state.top_idx();
-    let mut upvalues: Vec<LuaValue> = Vec::with_capacity(n as usize);
-    for i in 0..n as u32 {
-        upvalues.push(state.get_at(top - n as u32 + i));
-    }
-    // C: L->top.p -= n;
-    for _ in 0..n {
-        state.pop();
-    }
-    let cl = state.new_c_closure(f, upvalues);
-    state.push(LuaValue::Function(LuaClosure::C(cl)));
-    state.gc().check_step();
-    Ok(())
+    // TODO(phase-b): closure construction requires LuaCFnPtr alignment between
+    // lua-vm and lua-types. Whole body deferred until that handshake lands.
+    todo!("phase-b: push_cclosure")
 }
 
 // C: LUA_API void lua_pushboolean (lua_State *L, int b)
@@ -711,7 +703,7 @@ pub fn push_thread(state: &mut LuaState) -> bool {
 fn aux_get_str(state: &mut LuaState, t: LuaValue, k: &[u8]) -> Result<LuaType, LuaError> {
     // C: TString *str = luaS_new(L, k);
     let str_val = {
-        let ts = state.intern_str(k);
+        let ts = state.intern_str(k)?;
         LuaValue::Str(ts)
     };
     // C: if (luaV_fastget(L, t, str, slot, luaH_getstr)) { setobj2s push slot }
@@ -839,8 +831,8 @@ pub fn get_metatable(state: &mut LuaState, objindex: i32) -> bool {
     let obj = index_to_value(state, objindex);
     // C: switch (ttype(obj)) { LUA_TTABLE: ... LUA_TUSERDATA: ... default: G(L)->mt[ttype] }
     let mt: Option<GcRef<LuaTable>> = match &obj {
-        LuaValue::Table(t) => t.metatable.clone(),
-        LuaValue::UserData(u) => u.metatable.clone(),
+        LuaValue::Table(t) => t.metatable(),
+        LuaValue::UserData(u) => u.metatable(),
         other => {
             let idx = other.base_type() as usize;
             state.global().mt[idx].clone()
@@ -884,7 +876,7 @@ pub fn get_i_uservalue(state: &mut LuaState, idx: i32, n: i32) -> LuaType {
 fn aux_set_str(state: &mut LuaState, t: LuaValue, k: &[u8]) -> Result<(), LuaError> {
     // C: TString *str = luaS_new(L, k); api_checknelems(L, 1);
     let str_val = {
-        let ts = state.intern_str(k);
+        let ts = state.intern_str(k)?;
         LuaValue::Str(ts)
     };
     // C: if (luaV_fastget(L, t, str, slot, luaH_getstr))
@@ -947,12 +939,13 @@ fn aux_raw_set(state: &mut LuaState, idx: i32, key: LuaValue, n: u32) -> Result<
         .ok_or_else(|| LuaError::runtime(format_args!("table expected")))?;
     let top = state.top_idx();
     let val = state.get_at(top - 1);
-    t.raw_set(state, key, val)?;
+    t.raw_set(state, &key, val)?;
     t.invalidate_tm_cache();
     // C: luaC_barrierback(L, obj2gco(t), s2v(L->top.p - 1));
-    state.gc().barrier_back(&t, &state.get_at(top - 1));
+    let top_val = state.get_at(top - 1);
+    state.gc().barrier_back(&t, &top_val);
     // C: L->top.p -= n;
-    state.set_top_idx(top - n);
+    state.set_top_idx(top - n as i32);
     Ok(())
 }
 
@@ -980,7 +973,8 @@ pub fn raw_set_i(state: &mut LuaState, idx: i32, n: i64) -> Result<(), LuaError>
     let val = state.get_at(top - 1);
     t.raw_set_int(state, n, val)?;
     // C: luaC_barrierback(L, obj2gco(t), s2v(L->top.p - 1));
-    state.gc().barrier_back(&t, &state.get_at(top - 1));
+    let top_val = state.get_at(top - 1);
+    state.gc().barrier_back(&t, &top_val);
     // C: L->top.p--;
     state.pop();
     Ok(())
@@ -1081,7 +1075,7 @@ pub fn call_k(
     // C: api_check(L, L->status == LUA_OK, "cannot do calls on non-normal thread");
     // C: func = L->top.p - (nargs+1);
     let top = state.top_idx();
-    let func_idx = top - (nargs as u32 + 1);
+    let func_idx = top - (nargs + 1);
     // C: if (k != NULL && yieldable(L)) { save continuation; luaD_call }
     // C: else luaD_callnoyield(L, func, nresults);
     // TODO(port): continuation (k) and yieldable check deferred to Phase E.
@@ -1112,16 +1106,16 @@ pub fn pcall_k(
             matches!(state.get_at(o), LuaValue::Function(_)),
             "error handler must be a function"
         );
-        o as isize
+        o.0 as isize
     };
     let top = state.top_idx();
-    let func_idx = top - (nargs as u32 + 1);
+    let func_idx = top - (nargs + 1);
     // C: if (k == NULL || !yieldable(L)) { conventional protected call }
     // TODO(port): continuation and yieldable deferred to Phase E.
-    let status = state.protected_call_raw(func_idx, nresults, err_handler_idx as u32)?;
+    let _ = (err_handler_idx, k, ctx);
+    state.protected_call_raw(func_idx, nresults, StackIdx(0))?;
     state.adjust_results(nresults);
-    let _ = (ctx, k);
-    Ok(status)
+    Ok(LuaStatus::Ok)
 }
 
 // C: LUA_API int lua_load (lua_State *L, lua_Reader reader, void *data,
@@ -1136,7 +1130,10 @@ pub fn load(
 ) -> Result<LuaStatus, LuaError> {
     let name = chunkname.unwrap_or(b"?");
     // C: luaZ_init(L, &z, reader, data); status = luaD_protectedparser(L, &z, chunkname, mode);
-    let status = state.protected_parser(reader, name, mode)?;
+    // TODO(phase-b): wrap the byte-reader callback into a ZIO before this call.
+    let _ = reader;
+    let z = crate::zio::ZIO::new(Box::new(|| None));
+    let status = state.protected_parser(z, name, mode);
     if status == LuaStatus::Ok {
         // C: LClosure *f = clLvalue(s2v(L->top.p - 1));
         // C: if (f->nupvalues >= 1) { set global table as 1st upvalue }
@@ -1176,7 +1173,7 @@ pub fn dump(
 
 // C: LUA_API int lua_status (lua_State *L)
 pub fn status(state: &LuaState) -> LuaStatus {
-    state.status
+    LuaStatus::from_raw(state.status as i32)
 }
 
 // ── garbage collection ────────────────────────────────────────────────────────
@@ -1244,13 +1241,15 @@ pub fn gc(state: &mut LuaState, args: GcArgs) -> i32 {
         // C: case LUA_GCSTEP: ...
         GcArgs::Step { data } => {
             // C: l_mem debt = 1; lu_byte oldstp = g->gcstp; g->gcstp = 0;
-            let g = state.global_mut();
-            let old_stp = g.gc_stop_flags();
-            g.clear_gc_stop();
+            let old_stp = {
+                let mut g = state.global_mut();
+                let old = g.gc_stop_flags();
+                g.clear_gc_stop();
+                old
+            };
             if data == 0 {
                 // C: luaE_setdebt(g, 0); luaC_step(L);
-                g.set_gc_debt(0);
-                drop(g);
+                state.global_mut().set_gc_debt(0);
                 state.gc().step();
             } else {
                 // C: debt = cast(l_mem, data) * 1024 + g->GCdebt; luaE_setdebt; luaC_checkGC
@@ -1284,13 +1283,13 @@ pub fn gc(state: &mut LuaState, args: GcArgs) -> i32 {
             // C: res = isdecGCmodegen(g) ? LUA_GCGEN : LUA_GCINC;
             let old_mode = if state.global().is_gen_mode() { 10i32 } else { 11i32 };
             if minormul != 0 {
-                state.global_mut().gen_minor_mul = minormul as u8;
+                state.global_mut().genminormul = minormul as u8;
             }
             if majormul != 0 {
                 state.global_mut().set_gc_genmajormul(majormul as u8);
             }
             // C: luaC_changemode(L, KGC_GEN);
-            state.gc().change_mode(crate::gc::GcKind::Generational);
+            state.gc().change_mode(crate::state::GcKind::Generational);
             return old_mode;
         }
         // C: case LUA_GCINC:
@@ -1303,10 +1302,10 @@ pub fn gc(state: &mut LuaState, args: GcArgs) -> i32 {
                 state.global_mut().set_gc_stepmul_param(stepmul as u8);
             }
             if stepsize != 0 {
-                state.global_mut().gc_step_size = stepsize as u8;
+                state.global_mut().gcstepsize = stepsize as u8;
             }
             // C: luaC_changemode(L, KGC_INC);
-            state.gc().change_mode(crate::gc::GcKind::Incremental);
+            state.gc().change_mode(crate::state::GcKind::Incremental);
             return old_mode;
         }
     }
@@ -1331,7 +1330,7 @@ pub fn lua_error(state: &mut LuaState) -> Result<Infallible, LuaError> {
     let errobj = state.get_at(top - 1);
     // C: special-case OOM string
     let is_mem_err = if let LuaValue::Str(ref s) = errobj {
-        let memerr = state.global().mem_err_msg.clone();
+        let memerr = state.global().memerrmsg.clone();
         // C: eqshrstr(tsvalue(errobj), G(L)->memerrmsg) — short-string pointer equality
         GcRef::ptr_eq(s, &memerr)
     } else {
@@ -1387,7 +1386,7 @@ pub fn concat(state: &mut LuaState, n: i32) -> Result<(), LuaError> {
         state.concat(n)?;
     } else {
         // C: setsvalue2s(L, L->top.p, luaS_newlstr(L, "", 0)); api_incr_top(L);
-        let empty = state.intern_str(b"");
+        let empty = state.intern_str(b"")?;
         state.push(LuaValue::Str(empty));
     }
     state.gc().check_step();
@@ -1450,13 +1449,13 @@ fn aux_upvalue(
     match fi {
         // C: case LUA_VCCL:
         LuaValue::Function(LuaClosure::C(ccl)) => {
-            let nupvalues = ccl.upvalue.len() as i32;
+            let nupvalues = ccl.upvalues.len() as i32;
             // C: if (!(cast_uint(n) - 1u < cast_uint(f->nupvalues))) return NULL;
             if n < 1 || n > nupvalues {
                 return None;
             }
             // C: *val = &f->upvalue[n-1]; return "";
-            Some((b"", ccl.upvalue[(n - 1) as usize].clone()))
+            Some((b"", ccl.upvalues[(n - 1) as usize].clone()))
         }
         // C: case LUA_VLCL:
         LuaValue::Function(LuaClosure::Lua(lcl)) => {
@@ -1546,7 +1545,7 @@ pub fn upvalue_id(state: &LuaState, fidx: i32, n: i32) -> Option<usize> {
         }
         // C: case LUA_VCCL: if (1 <= n && n <= f->nupvalues) return &f->upvalue[n-1];
         LuaValue::Function(LuaClosure::C(ccl)) => {
-            if n >= 1 && n <= ccl.upvalue.len() as i32 {
+            if n >= 1 && n <= ccl.upvalues.len() as i32 {
                 // TODO(port): returning address of upvalue slot not possible without raw ptr.
                 // Return a synthetic identity based on the closure's identity + n.
                 Some(GcRef::identity(ccl) ^ (n as usize))

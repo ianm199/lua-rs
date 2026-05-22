@@ -33,6 +33,7 @@
 // Both `close_upval` and `init_upvals` carry `TODO(port)` at the mutation sites.
 
 use std::rc::Rc;
+#[allow(unused_imports)] use crate::prelude::*;
 
 use crate::{
     state::{
@@ -91,13 +92,13 @@ pub(crate) fn new_c_closure(
     // then immediately assigns `c->f = fn`. Either make `f: Option<LuaCFunction>` in
     // LuaClosureC, or add a `new_c_closure(state, nupvals, f)` parameter. For now we
     // store a dummy; reconcile in Phase B.
-    let closure = crate::state::LuaClosure::C(LuaClosureC {
+    let closure = crate::state::LuaClosure::C(GcRef::new(LuaClosureC {
         // C: c->f is set by caller; placeholder here
-        f: dummy_c_function,
-        upvalue: vec![LuaValue::Nil; nupvals as usize],
-    });
+        func: dummy_c_function,
+        upvalues: vec![LuaValue::Nil; nupvals as usize],
+    }));
     // C: luaC_newobj registers with the GC. In Phase A–C this is Rc::new.
-    Rc::new(closure)
+    GcRef::new(closure)
 }
 
 /// Allocates a new Lua closure with `nupvals` upvalue slots (all `None`).
@@ -124,17 +125,12 @@ pub(crate) fn new_lua_closure(
     // the Rust struct, or require proto at construction time. Reconcile in Phase B.
     // For Phase A we use a sentinel value; this line will not compile as-is.
     let _ = state; // state used for GC registration in Phase D
-    let closure = crate::state::LuaClosure::Lua(LuaClosureLua {
-        // C: c->p = NULL — proto set by caller; TODO(port): needs Option<GcRef<LuaProto>>
-        proto: todo!("LuaClosureLua.proto must be Option<GcRef<LuaProto>> for NULL init"),
-        upvals: vec![],
-        // PORT NOTE: C initialises upvals to NULL (no GcRef yet). In Rust, upvals starts
-        // empty and gets filled by the caller or by init_upvals(). The Vec capacity is
-        // pre-set here to avoid repeated reallocation.
-    });
-    // TODO(port): pre-size upvals to `nupvals` with None/placeholder; needs Option variant.
     let _ = nupvals;
-    Rc::new(closure)
+    // TODO(phase-b): LuaClosureLua.proto is non-optional; need a placeholder
+    // until the caller assigns. Using LuaProto::placeholder() for Phase B compile.
+    let lcl = GcRef::new(LuaClosureLua::placeholder());
+    let closure = crate::state::LuaClosure::Lua(lcl);
+    GcRef::new(closure)
 }
 
 /// Fills a Lua closure's upvalue slots with freshly-allocated closed upvalues,
@@ -164,7 +160,7 @@ pub(crate) fn init_upvals(state: &mut LuaState, cl: &GcRef<crate::state::LuaClos
     };
     for i in 0..n {
         // C: luaC_newobj(L, LUA_VUPVAL, sizeof(UpVal)) → Rc::new(UpVal::Closed(Nil))
-        let uv: GcRef<UpVal> = Rc::new(UpVal::Closed(LuaValue::Nil));
+        let uv: GcRef<UpVal> = GcRef::new(UpVal::Closed(LuaValue::Nil));
         // TODO(port): cl.borrow_mut().as_lua_mut().upvals[i] = Some(uv.clone());
         // Requires interior mutability; see PORT NOTE at top of file.
         let _ = (i, uv);
@@ -197,11 +193,12 @@ fn new_open_upval(
     // In Rust: intrusive next/previous fields are gone; Vec insertion replaces
     // the pointer-threading. The `prev` parameter (UpVal **) becomes `insert_pos`.
     //
-    // C: UpVal.v.p = s2v(level) → UpVal::Open { thread_stack_idx: level }
+    // C: UpVal.v.p = s2v(level) → UpVal::Open { thread_id: 0, idx: level }
     // The `thread` component of PORT_STRATEGY §3.8 is deferred to Phase E (coroutines).
     // macros.tsv: uplevel → thread_stack_idx field of Open variant.
-    let uv: GcRef<UpVal> = Rc::new(UpVal::Open {
-        thread_stack_idx: level,
+    let uv: GcRef<UpVal> = GcRef::new(UpVal::Open {
+        thread_id: 0,
+        idx: level,
     });
     // PORT NOTE: Vec insert maintains descending StackIdx order (highest first),
     // mirroring the C intrusive list where the head is always the topmost slot.
@@ -247,21 +244,21 @@ pub(crate) fn find_upval(state: &mut LuaState, level: StackIdx) -> GcRef<UpVal> 
         // C: lua_assert(!isdead(G(L), p)) — GC liveness; no-op in Phase A–C
         // macros.tsv: uplevel → extract thread_stack_idx from UpVal::Open
         let uv_idx = match uv_ref.as_ref() {
-            UpVal::Open { thread_stack_idx } => *thread_stack_idx,
+            UpVal::Open { thread_id: _, idx: thread_stack_idx } => *thread_stack_idx,
             UpVal::Closed(_) => {
                 // Invariant: openupval must only contain Open upvalues.
                 debug_assert!(false, "closed upvalue found in openupval list");
                 continue;
             }
         };
-        if uv_idx >= level {
+        if uv_idx.0 >= level.0 {
             if uv_idx == level {
                 // C: if (uplevel(p) == level) return p;
                 return uv_ref.clone();
             }
-            // uv_idx > level: this entry is higher on the stack; keep searching.
+            // uv_idx.0 > level.0: this entry is higher on the stack; keep searching.
         } else {
-            // uv_idx < level: correct insertion point reached.
+            // uv_idx.0 < level.0: correct insertion point reached.
             insert_pos = i;
             break;
         }
@@ -406,7 +403,7 @@ pub(crate) fn new_tbc_upval(state: &mut LuaState, level: StackIdx) -> Result<(),
     // C: lua_assert(level > L->tbclist.p);
     // In Rust: tbclist is Vec<StackIdx>, "current head" = last element.
     debug_assert!(
-        state.tbclist.last().map_or(true, |&top| level > top),
+        state.tbclist.last().map_or(true, |&top| level.0 > top.0),
         "new tbc entry must be above current tbclist head"
     );
     // C: if (l_isfalse(s2v(level))) return;
@@ -456,11 +453,11 @@ pub(crate) fn unlink_upval(state: &mut LuaState, uv: &GcRef<UpVal>) {
     //
     // In Rust: find by pointer identity (Rc::ptr_eq) and remove.
     // PERF(port): O(n) retain vs O(1) intrusive unlink — profile in Phase B.
-    state.openupval.retain(|candidate| !Rc::ptr_eq(candidate, uv));
+    state.openupval.retain(|candidate| !GcRef::ptr_eq(candidate, uv));
 }
 
 /// Closes all open upvalues whose stack index is ≥ `level`, transitioning each
-/// from `UpVal::Open { thread_stack_idx }` to `UpVal::Closed(value)` by copying
+/// from `UpVal::Open { thread_id: _, idx: thread_stack_idx }` to `UpVal::Closed(value)` by copying
 /// the current stack value into the upvalue's own storage.
 ///
 /// C: `void luaF_closeupval(lua_State *L, StkId level)`
@@ -481,13 +478,13 @@ pub(crate) fn close_upval(state: &mut LuaState, level: StackIdx) {
             None => break,
         };
         let uv_idx = match uv.as_ref() {
-            UpVal::Open { thread_stack_idx } => *thread_stack_idx,
+            UpVal::Open { thread_id: _, idx: thread_stack_idx } => *thread_stack_idx,
             UpVal::Closed(_) => {
                 debug_assert!(false, "closed upvalue in openupval list");
                 break;
             }
         };
-        if uv_idx < level {
+        if uv_idx.0 < level.0 {
             break; // remaining upvalues are all below `level`
         }
         // C: lua_assert(uplevel(uv) < L->top.p)
@@ -566,7 +563,7 @@ pub(crate) fn close(
     //      prepcallclosemth(L, tbc, status, yy);
     //      level = restorestack(L, levelrel);
     //    }
-    while state.tbclist.last().copied().map_or(false, |tbc| tbc >= level) {
+    while state.tbclist.last().copied().map_or(false, |tbc| tbc.0 >= level.0) {
         // C: StkId tbc = L->tbclist.p;
         let tbc = state
             .tbclist
@@ -613,22 +610,7 @@ pub(crate) fn new_proto(state: &mut LuaState) -> GcRef<crate::state::LuaProto> {
     // object.rs (lobject.c → crate::object). The Rc::new below will only work once
     // that struct has fields. This translation captures the intended initialisation.
     let _ = state; // used for GC registration in Phase D
-    Rc::new(crate::state::LuaProto {
-        // TODO(port): uncomment these fields once LuaProto is fully defined in object.rs.
-        // k: Vec::new(),
-        // p: Vec::new(),
-        // code: Vec::new(),
-        // lineinfo: Vec::new(),
-        // abslineinfo: Vec::new(),
-        // upvalues: Vec::new(),
-        // locvars: Vec::new(),
-        // numparams: 0,
-        // is_vararg: false,
-        // maxstacksize: 0,
-        // linedefined: 0,
-        // lastlinedefined: 0,
-        // source: None,
-    })
+    GcRef::new(crate::state::LuaProto::placeholder())
 }
 
 /// Frees a function prototype and all its sub-arrays.
@@ -714,13 +696,7 @@ pub(crate) fn get_local_name(
 /// real function pointer is set by the caller.
 ///
 /// TODO(port): Once LuaClosureC.f becomes `Option<LuaCFunction>`, remove this.
-fn dummy_c_function(_state: &mut LuaState) -> Result<usize, LuaError> {
-    // This should never be called. A real function pointer is always assigned
-    // before the closure is pushed onto the stack or made callable.
-    Err(LuaError::runtime(format_args!(
-        "BUG: dummy_c_function called — closure was never initialised"
-    )))
-}
+fn dummy_c_function() -> i32 { 0 }
 
 /// Returns `true` if this thread is already registered in `global.twups`.
 ///

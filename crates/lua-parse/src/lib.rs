@@ -807,7 +807,10 @@ fn adjust_local_vars(ls: &mut LexState, state: &mut LuaState, nvars: i32) -> Res
         ls.dyd.actvar[(first_local + vidx) as usize].ridx = reglevel_val as u8;
         reglevel_val += 1;
         if let Some(vn) = var_name {
-            let pidx = register_local_var(ls, state, ls.fs.as_mut().unwrap(), vn)?;
+            let mut fs_box = ls.fs.take().unwrap();
+            let pidx_result = register_local_var(ls, state, &mut fs_box, vn);
+            ls.fs = Some(fs_box);
+            let pidx = pidx_result?;
             ls.dyd.actvar[(first_local + vidx) as usize].pidx = pidx as i16;
         } else {
             // TODO(port): variable has no name — shouldn't happen in valid source
@@ -1280,8 +1283,10 @@ fn leave_block(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> 
     let previous = bl.previous.take();
 
     let stklevel = reg_level(ls, ls.fs.as_ref().unwrap(), bl.nactvar as i32);
-    remove_vars(ls, ls.fs.as_mut().unwrap(), bl.nactvar as i32);
-    debug_assert!(bl.nactvar == ls.fs.as_ref().unwrap().nactvar);
+    let mut fs_box = ls.fs.take().unwrap();
+    remove_vars(ls, &mut fs_box, bl.nactvar as i32);
+    debug_assert!(bl.nactvar == fs_box.nactvar);
+    ls.fs = Some(fs_box);
 
     let hasclose = if bl.isloop {
         // C: createlabel(ls, luaS_newliteral(ls->L, "break"), 0, 0)
@@ -2496,7 +2501,8 @@ fn localstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
     let mut nvars: i32 = 0;
     let mut vidx = 0i32;
     loop {
-        vidx = new_local_var(ls, state, str_check_name(ls, state)?)? ;
+        let name = str_check_name(ls, state)?;
+        vidx = new_local_var(ls, state, name)?;
         let kind = getlocalattribute(ls, state)?;
         get_local_var_desc_mut(ls, ls.fs.as_ref().unwrap().firstlocal, vidx).kind = kind;
         if kind == VarKind::ToBeClosed {

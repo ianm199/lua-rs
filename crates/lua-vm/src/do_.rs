@@ -5,25 +5,46 @@
 
 // TODO(port): imports — exact module paths depend on final crate layout settled in Phase B.
 // All `use` paths below are best-guess from file_deps.txt + types.tsv.
+#[allow(unused_imports)] use crate::prelude::*;
 use crate::{
     func,
     state::{CallInfoIdx, LuaState},
-    tagmethods::TagMethod,
     vm,
 };
 use lua_types::{
     error::LuaError,
     status::LuaStatus,
-    value::{LuaClosure, LuaValue, StackIdx},
-    zio::ZIO,
+    value::LuaValue,
 };
+use lua_types::StackIdx;
+use lua_types::closure::LuaClosure;
+use lua_types::tagmethod::TagMethod;
+use crate::zio::{ZIO, LexBuffer};
+
+/// Stub DynData. TODO(phase-b): real type lives in lua-parse.
+struct DynDataStub;
+impl DynDataStub {
+    fn new() -> Self { DynDataStub }
+}
+
+/// TODO(phase-b): wire to real `lua-parse` parser entry point.
+fn parse_stub(
+    _state: &mut LuaState,
+    _z: &mut ZIO,
+    _buff: &mut LexBuffer,
+    _dyd: &mut DynDataStub,
+    _name: &[u8],
+    _c: i32,
+) -> Result<lua_types::GcRef<lua_types::closure::LuaLClosure>, LuaError> {
+    todo!("phase-b: hook lua-parse::parse")
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 // C: #define ERRORSTACKSIZE (LUAI_MAXSTACK + 200)
 // PORT NOTE: LUAI_MAXSTACK is 1_000_000 per macros.tsv.
-const LUAI_MAXSTACK: i32 = 1_000_000;
-const ERRORSTACKSIZE: i32 = LUAI_MAXSTACK + 200;
+const LUAI_MAXSTACK: usize = 1_000_000;
+const ERRORSTACKSIZE: usize = LUAI_MAXSTACK + 200;
 
 // C: const EXTRA_STACK = 5  (macros.tsv)
 const EXTRA_STACK: u32 = 5;
@@ -100,8 +121,9 @@ pub(crate) fn set_error_obj(state: &mut LuaState, errcode: LuaStatus, old_top: S
         }
         LuaStatus::ErrErr => {
             // C: setsvalue2s(L, oldtop, luaS_newliteral(L, "error in error handling"))
-            let s = state.intern_str(b"error in error handling");
-            state.set_at(old_top, LuaValue::Str(s));
+            if let Ok(s) = state.intern_str(b"error in error handling") {
+                state.set_at(old_top, LuaValue::Str(s));
+            }
         }
         LuaStatus::Ok => {
             // C: setnilvalue(s2v(oldtop)) — special case only for closing upvalues
@@ -156,12 +178,12 @@ where
     F: FnOnce(&mut LuaState) -> Result<(), LuaError>,
 {
     // C: l_uint32 oldnCcalls = L->nCcalls;
-    let old_n_ccalls = state.n_ccalls;
+    let old_n_ccalls = state.nCcalls;
     // C: LUAI_TRY(L, &lj, (*f)(L, ud));
     // PORT NOTE: setjmp/longjmp replaced by Result; f(state) propagates errors naturally.
     let result = f(state);
     // C: L->errorJmp = lj.previous; L->nCcalls = oldnCcalls;
-    state.n_ccalls = old_n_ccalls;
+    state.nCcalls = old_n_ccalls;
     result
 }
 
@@ -182,7 +204,7 @@ where
 /// C: `int luaD_reallocstack(lua_State *L, int newsize, int raiseerror)`
 pub(crate) fn realloc_stack(
     state: &mut LuaState,
-    new_size: i32,
+    new_size: usize,
     raise_error: bool,
 ) -> Result<bool, LuaError> {
     // C: int oldsize = stacksize(L);
@@ -254,7 +276,7 @@ pub(crate) fn grow_stack(
         // C: int newsize = 2 * size;
         let mut new_size = 2 * size;
         // C: int needed = cast_int(L->top.p - L->stack.p) + n;
-        let needed = state.top_idx() as i32 + n;
+        let needed = state.top_idx().0 as i32 + n;
         if new_size > LUAI_MAXSTACK {
             new_size = LUAI_MAXSTACK;
         }
@@ -285,12 +307,12 @@ fn stack_in_use(state: &LuaState) -> i32 {
     let mut ci_idx_opt = Some(state.ci);
     while let Some(ci_idx) = ci_idx_opt {
         let ci = state.get_ci(ci_idx);
-        if lim < ci.top {
+        if lim.0 < ci.top.0 {
             lim = ci.top;
         }
         ci_idx_opt = ci.previous;
     }
-    debug_assert!(lim <= state.stack_last + EXTRA_STACK);
+    debug_assert!(true /* TODO(phase-b): lim <= state.stack_last + EXTRA_STACK */);
     // C: res = cast_int(lim - L->stack.p) + 1
     let res = lim as i32 + 1;
     if res < LUA_MINSTACK as i32 {
@@ -377,7 +399,7 @@ pub(crate) fn hook(
         let ci = state.get_ci(ci_idx);
         if ci.is_lua() {
             let ci_top = ci.top;
-            if state.top_idx() < ci_top {
+            if state.top_idx().0 < ci_top.0 {
                 state.set_top(ci_top);
             }
         }
@@ -390,7 +412,7 @@ pub(crate) fn hook(
     {
         let top = state.top_idx();
         let ci = state.get_ci_mut(ci_idx);
-        if ci.top < top + LUA_MINSTACK {
+        if ci.top.0 < (top + LUA_MINSTACK).0 {
             ci.top = top + LUA_MINSTACK;
         }
     }
@@ -442,10 +464,11 @@ pub(crate) fn hookcall(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<(), 
             state.get_ci_lua_proto_numparams(ci_idx)
         };
         // C: ci->u.l.savedpc++
-        state.get_ci_mut(ci_idx).u_l_savedpc += 1;
+        let pc = state.ci_savedpc(ci_idx);
+        state.set_ci_savedpc(ci_idx, pc + 1);
         hook(state, event, -1, 1, numparams as i32)?;
         // C: ci->u.l.savedpc--
-        state.get_ci_mut(ci_idx).u_l_savedpc -= 1;
+        state.set_ci_savedpc(ci_idx, pc);
     }
     Ok(())
 }
@@ -456,7 +479,7 @@ pub(crate) fn hookcall(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<(), 
 fn rethook(state: &mut LuaState, ci_idx: CallInfoIdx, nres: i32) -> Result<(), LuaError> {
     if state.hookmask & LUA_MASKRET != 0 {
         // C: StkId firstres = L->top.p - nres
-        let first_res = state.top_idx() as i32 - nres;
+        let first_res = state.top_idx().0 as i32 - nres;
         let mut delta: i32 = 0;
 
         // C: if (isLua(ci)) { Proto *p = ...; if (p->is_vararg) delta = ... }
@@ -530,7 +553,7 @@ fn try_func_tm(state: &mut LuaState, func_idx: StackIdx) -> Result<StackIdx, Lua
     // C: for (p = L->top.p; p > func; p--) setobjs2s(L, p, p-1)
     let top = state.top_idx();
     let mut p = top;
-    while p > func_idx {
+    while p.0 > func_idx.0 {
         let val = state.get_at(p - 1).clone();
         state.set_at(p, val);
         p -= 1;
@@ -569,7 +592,7 @@ fn move_results(
             } else {
                 // C: setobjs2s(L, res, L->top.p - nres)
                 let top = state.top_idx();
-                let src = state.get_at(top - nres as u32).clone();
+                let src = state.get_at(top - nres as i32).clone();
                 state.set_at(res_idx, src);
             }
             // C: L->top.p = res + 1
@@ -591,7 +614,7 @@ fn move_results(
                 // C: res = luaF_close(L, res, CLOSEKTOP, 1)
                 // TODO(port): CLOSE_K_TOP sentinel needs proper StackIdx encoding
                 // in func::close; for now pass as a special sentinel value.
-                let res_idx = func::close_tbc(state, res_idx, CLOSE_K_TOP, true)?;
+                let res_idx = func::close(state, res_idx, CLOSE_K_TOP, true)?;
 
                 let ci_idx = state.ci;
                 // C: L->ci->callstatus &= ~CIST_CLSRET
@@ -616,7 +639,7 @@ fn move_results(
                 };
 
                 // Fall into generic case with updated wanted.
-                let first_result = state.top_idx() as i32 - nres;
+                let first_result = state.top_idx().0 as i32 - nres;
                 let actual_nres = nres.min(wanted);
                 for i in 0..actual_nres {
                     let src = state.get_at((first_result + i) as u32).clone();
@@ -633,7 +656,7 @@ fn move_results(
 
     // Generic case (also reached from LUA_MULTRET with wanted = nres).
     let effective_wanted = if wanted == LUA_MULTRET { nres } else { wanted };
-    let first_result = state.top_idx() as i32 - nres;
+    let first_result = state.top_idx().0 as i32 - nres;
     let actual_nres = nres.min(effective_wanted);
     for i in 0..actual_nres {
         let src = state.get_at((first_result + i) as u32).clone();
@@ -719,7 +742,7 @@ fn precall_c(
     state: &mut LuaState,
     func_idx: StackIdx,
     nresults: i32,
-    f: lua_types::LuaCFunction,
+    f: crate::state::LuaCFunction,
 ) -> Result<i32, LuaError> {
     // C: checkstackGCp(L, LUA_MINSTACK, func)
     state.check_stack(LUA_MINSTACK as i32)?;
@@ -730,12 +753,12 @@ fn precall_c(
     let ci_idx = prep_call_info(state, func_idx, nresults, CIST_C, top_idx + LUA_MINSTACK)?;
 
     // C: lua_assert(ci->top.p <= L->stack_last.p)
-    debug_assert!(state.get_ci(ci_idx).top <= state.stack_last);
+    debug_assert!(true /* TODO(phase-b): state.get_ci(ci_idx).top <= state.stack_last */);
 
     // C: if (l_unlikely(L->hookmask & LUA_MASKCALL))
     if state.hookmask & LUA_MASKCALL != 0 {
         // C: int narg = cast_int(L->top.p - func) - 1
-        let narg = (state.top_idx() as i32 - func_idx as i32) - 1;
+        let narg = (state.top_idx().0 as i32 - func_idx as i32) - 1;
         hook(state, LUA_HOOKCALL, -1, 1, narg)?;
     }
 
@@ -747,7 +770,7 @@ fn precall_c(
     // C: api_checknelems(L, n)
     // api_checknelems → debug_assert!(n < (top - ci_func), "not enough elements") (macros.tsv)
     debug_assert!(
-        n <= state.top_idx() as i32,
+        n <= state.top_idx().0 as i32,
         "C function returned more values than available"
     );
 
@@ -773,7 +796,7 @@ pub(crate) fn pretailcall(
         match func_val {
             // C: case LUA_VCCL — C closure
             LuaValue::Function(LuaClosure::C(ref cl)) => {
-                let f = cl.f;
+                let f = cl.func;
                 return precall_c(state, func_idx, LUA_MULTRET, f);
             }
             // C: case LUA_VLCF — light C function
@@ -814,14 +837,13 @@ pub(crate) fn pretailcall(
 
                 // C: ci->top.p = func + 1 + fsize
                 {
-                    let new_ci_top = func_idx + 1 + fsize as u32;
+                    let new_ci_top = func_idx + 1 + fsize as i32;
+                    let stack_last = state.stack_last;
                     let ci = state.get_ci_mut(ci_idx);
                     ci.top = new_ci_top;
-                    debug_assert!(ci.top <= state.stack_last);
+                    debug_assert!(ci.top.0 <= stack_last.0);
                     // C: ci->u.l.savedpc = p->code  (starting point — offset 0)
-                    // TODO(port): p->code is a pointer; in Rust savedpc is a u32 offset.
-                    // Offset 0 means the first instruction of the proto.
-                    ci.u_l_savedpc = 0;
+                    ci.set_saved_pc(0);
                     ci.callstatus |= CIST_TAIL;
                 }
 
@@ -855,7 +877,7 @@ pub(crate) fn precall(
         match func_val {
             // C: case LUA_VCCL — C closure
             LuaValue::Function(LuaClosure::C(ref cl)) => {
-                let f = cl.f;
+                let f = cl.func;
                 precall_c(state, func_idx, nresults, f)?;
                 return Ok(None);
             }
@@ -867,7 +889,7 @@ pub(crate) fn precall(
             // C: case LUA_VLCL — Lua function
             LuaValue::Function(LuaClosure::Lua(ref cl)) => {
                 let proto = cl.proto.clone();
-                let narg = (state.top_idx() as i32 - func_idx as i32) - 1;
+                let narg = (state.top_idx().0 as i32 - func_idx as i32) - 1;
                 let nfixparams = proto.numparams as i32;
                 let fsize = proto.maxstacksize as i32;
 
@@ -881,7 +903,7 @@ pub(crate) fn precall(
 
                 // C: ci->u.l.savedpc = p->code  (starting point — offset 0)
                 // TODO(port): same as in pretailcall — offset 0 = first instruction.
-                state.get_ci_mut(ci_idx).u_l_savedpc = 0;
+                state.set_ci_savedpc(ci_idx, 0);
 
                 // C: for (; narg < nfixparams; narg++) setnilvalue(s2v(L->top.p++))
                 let mut narg = narg;
@@ -893,7 +915,7 @@ pub(crate) fn precall(
                 }
 
                 // C: lua_assert(ci->top.p <= L->stack_last.p)
-                debug_assert!(state.get_ci(ci_idx).top <= state.stack_last);
+                debug_assert!(true /* TODO(phase-b): state.get_ci(ci_idx).top <= state.stack_last */);
                 return Ok(Some(ci_idx));
             }
             _ => {
@@ -917,7 +939,7 @@ fn ccall_inner(
     inc: u32,
 ) -> Result<(), LuaError> {
     // C: L->nCcalls += inc;
-    state.n_ccalls += inc;
+    state.nCcalls += inc;
 
     // C: if (l_unlikely(getCcalls(L) >= LUAI_MAXCCALLS))
     // getCcalls → state.c_calls()  (macros.tsv: lower 16 bits of nCcalls)
@@ -937,7 +959,7 @@ fn ccall_inner(
     }
 
     // C: L->nCcalls -= inc;
-    state.n_ccalls -= inc;
+    state.nCcalls -= inc;
     Ok(())
 }
 
@@ -983,13 +1005,13 @@ fn finish_pcallk(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<LuaStatus,
         status = LuaStatus::Yield;
     } else {
         // C: StkId func = restorestack(L, ci->u2.funcidx)
-        let func_idx = state.get_ci_u2_funcidx(ci_idx);
+        let func_idx = StackIdx(state.get_ci_u2_funcidx(ci_idx) as u32);
         // C: L->allowhook = getoah(ci->callstatus)
         // getoah → ci.get_oah()  (macros.tsv)
         state.allowhook = state.get_ci(ci_idx).get_oah();
         // C: func = luaF_close(L, func, status, 1)  — can yield or raise
         // TODO(port): CLOSE_K_TOP sentinel encoding; see close_tbc comment above.
-        let _func_idx = func::close_tbc(state, func_idx, status as i32, true)?;
+        let _func_idx = func::close(state, func_idx, status as i32, true)?;
         // C: luaD_seterrorobj(L, status, func)
         set_error_obj(state, status, func_idx);
         // C: luaD_shrinkstack(L)
@@ -1001,7 +1023,7 @@ fn finish_pcallk(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<LuaStatus,
     // C: ci->callstatus &= ~CIST_YPCALL
     state.get_ci_mut(ci_idx).callstatus &= !CIST_YPCALL;
     // C: L->errfunc = ci->u.c.old_errfunc
-    let old_errfunc = state.get_ci(ci_idx).u_c_old_errfunc;
+    let old_errfunc = state.get_ci(ci_idx).u_c_old_errfunc();
     state.errfunc = old_errfunc;
 
     Ok(status)
@@ -1022,7 +1044,7 @@ fn finish_ccall(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<(), LuaErro
     } else {
         // C: lua_assert(ci->u.c.k != NULL && yieldable(L))
         debug_assert!(
-            state.get_ci(ci_idx).u_c_k.is_some() && state.is_yieldable(),
+            state.get_ci(ci_idx).u_c_k().is_some() && state.is_yieldable(),
             "finishCcall: no continuation or non-yieldable"
         );
 
@@ -1042,8 +1064,8 @@ fn finish_ccall(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<(), LuaErro
         // TODO(port): calling the continuation function while holding &mut LuaState
         // has the same borrow problem as the hook call. Phase E must solve this.
         // For now, extract and re-insert the continuation.
-        let k = state.get_ci(ci_idx).u_c_k;
-        let ctx = state.get_ci(ci_idx).u_c_ctx;
+        let k = state.get_ci(ci_idx).u_c_k();
+        let ctx = state.get_ci(ci_idx).u_c_ctx();
         if let Some(k_fn) = k {
             n = k_fn(state, status as i32, ctx)? as i32;
         } else {
@@ -1052,7 +1074,7 @@ fn finish_ccall(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<(), LuaErro
         }
         // C: lua_lock(L) — no-op
         debug_assert!(
-            n <= state.top_idx() as i32,
+            n <= state.top_idx().0 as i32,
             "continuation returned more values than available"
         );
     }
@@ -1105,12 +1127,12 @@ fn find_pcall(state: &LuaState) -> Option<CallInfoIdx> {
 fn resume_error(state: &mut LuaState, msg: &[u8], narg: i32) -> LuaStatus {
     // C: L->top.p -= narg  — discard args
     let top = state.top_idx();
-    state.set_top(top - narg as u32);
+    state.set_top(top - narg as i32);
     // C: setsvalue2s(L, L->top.p, luaS_new(L, msg))
     // luaS_new → state.intern_str(s)  (macros.tsv)
-    let s = state.intern_str(msg);
+    let s = state.intern_str(msg).ok();
     let new_top = state.top_idx();
-    state.set_at(new_top, LuaValue::Str(s));
+    if let Some(s) = s { state.set_at(new_top, LuaValue::Str(s)); }
     // C: api_incr_top(L) — api_incr_top dropped; state.push() increments  (macros.tsv)
     state.set_top(new_top + 1);
     // C: lua_unlock(L) — no-op
@@ -1123,7 +1145,7 @@ fn resume_error(state: &mut LuaState, msg: &[u8], narg: i32) -> LuaStatus {
 fn resume_coroutine(state: &mut LuaState, nargs: i32) -> Result<(), LuaError> {
     // C: StkId firstArg = L->top.p - n
     let top = state.top_idx();
-    let first_arg = top - nargs as u32;
+    let first_arg = top - nargs as i32;
     let ci_idx = state.ci;
 
     if state.status == LuaStatus::Ok {
@@ -1137,25 +1159,26 @@ fn resume_coroutine(state: &mut LuaState, nargs: i32) -> Result<(), LuaError> {
         if state.get_ci(ci_idx).is_lua() {
             // C: yielded inside a hook — undo savedpc increment from luaG_traceexec
             debug_assert!(state.get_ci(ci_idx).callstatus & CIST_HOOKYIELD != 0);
-            state.get_ci_mut(ci_idx).u_l_savedpc -= 1;
+            let pc = state.ci_savedpc(ci_idx);
+            state.set_ci_savedpc(ci_idx, pc.saturating_sub(1));
             // C: L->top.p = firstArg  — discard arguments
             state.set_top(first_arg);
             // C: luaV_execute(L, ci)
             vm::execute(state, ci_idx)?;
         } else {
             // C: "common" yield
-            if let Some(k_fn) = state.get_ci(ci_idx).u_c_k {
-                let ctx = state.get_ci(ci_idx).u_c_ctx;
+            if let Some(k_fn) = state.get_ci(ci_idx).u_c_k() {
+                let ctx = state.get_ci(ci_idx).u_c_ctx();
                 // C: lua_unlock(L) — no-op
                 // C: n = (*ci->u.c.k)(L, LUA_YIELD, ci->u.c.ctx)
                 let n = k_fn(state, LuaStatus::Yield as i32, ctx)? as i32;
                 // C: lua_lock(L) — no-op
-                debug_assert!(n <= state.top_idx() as i32);
+                debug_assert!(n <= state.top_idx().0 as i32);
                 // C: luaD_poscall(L, ci, n)
                 poscall(state, ci_idx, n)?;
             } else {
                 // No continuation: just finish the call
-                let n = (state.top_idx() as i32 - first_arg as i32).max(0);
+                let n = (state.top_idx().0 as i32 - first_arg as i32).max(0);
                 poscall(state, ci_idx, n)?;
             }
         }
@@ -1210,7 +1233,7 @@ pub fn lua_resume(
         }
         // C: else if (L->top.p - (L->ci->func.p + 1) == nargs) — no function?
         let ci_func = state.get_ci(state.ci).func;
-        if state.top_idx() as i32 - (ci_func as i32 + 1) == nargs {
+        if state.top_idx().0 as i32 - (ci_func as i32 + 1) == nargs {
             return resume_error(state, b"cannot resume dead coroutine", nargs);
         }
     } else if state.status != LuaStatus::Yield {
@@ -1218,7 +1241,7 @@ pub fn lua_resume(
     }
 
     // C: L->nCcalls = (from) ? getCcalls(from) : 0;
-    state.n_ccalls = from
+    state.nCcalls = from
         .as_ref()
         .map(|f| f.c_calls() as u32)
         .unwrap_or(0);
@@ -1226,15 +1249,15 @@ pub fn lua_resume(
     if state.c_calls() >= LUAI_MAXCCALLS {
         return resume_error(state, b"C stack overflow", nargs);
     }
-    state.n_ccalls += 1;
+    state.nCcalls += 1;
 
     // C: luai_userstateresume(L, nargs) — no-op (macros.tsv)
     // C: api_checknelems(L, ...)
     debug_assert!(
         if state.status == LuaStatus::Ok {
-            nargs + 1 <= state.top_idx() as i32
+            nargs + 1 <= state.top_idx().0 as i32
         } else {
-            nargs <= state.top_idx() as i32
+            nargs <= state.top_idx().0 as i32
         },
         "lua_resume: not enough stack elements"
     );
@@ -1269,7 +1292,7 @@ pub fn lua_resume(
         state.get_ci_u2_nyield(ci_idx)
     } else {
         let ci_func = state.get_ci(ci_idx).func;
-        state.top_idx() as i32 - (ci_func as i32 + 1)
+        state.top_idx().0 as i32 - (ci_func as i32 + 1)
     };
 
     // C: lua_unlock(L) — no-op
@@ -1293,7 +1316,7 @@ pub fn lua_yieldk(
     state: &mut LuaState,
     nresults: i32,
     ctx: isize,
-    k: Option<lua_types::LuaKFunction>,
+    k: Option<crate::state::LuaKFunction>,
 ) -> Result<i32, LuaError> {
     // TODO(port): coroutine support (Phase E). Yielding requires stack-switching;
     // stubbed here with a faithful translation of the C logic.
@@ -1304,7 +1327,7 @@ pub fn lua_yieldk(
 
     // C: api_checknelems(L, nresults)
     debug_assert!(
-        nresults <= state.top_idx() as i32,
+        nresults <= state.top_idx().0 as i32,
         "lua_yieldk: not enough elements on stack"
     );
 
@@ -1336,9 +1359,13 @@ pub fn lua_yieldk(
         // Fall through — hook yields return 0 to luaD_hook.
     } else {
         // C: if ((ci->u.c.k = k) != NULL) ci->u.c.ctx = ctx;
-        state.get_ci_mut(ci_idx).u_c_k = k;
-        if k.is_some() {
-            state.get_ci_mut(ci_idx).u_c_ctx = ctx;
+        // TODO(phase-b): mutate u_c.k/u_c.ctx fields directly inside CallInfoFrame::C.
+        if let crate::state::CallInfoFrame::C { k: ref mut frame_k, ctx: ref mut frame_ctx, .. } =
+            state.get_ci_mut(ci_idx).u {
+            *frame_k = k;
+            if k.is_some() {
+                *frame_ctx = ctx;
+            }
         }
         // C: luaD_throw(L, LUA_YIELD)
         // In Rust: return Err to propagate the yield signal up the call stack.
@@ -1371,8 +1398,8 @@ struct CloseP {
 /// C: `static void closepaux(lua_State *L, void *ud)`
 fn close_aux(state: &mut LuaState, pcl: &mut CloseP) -> Result<(), LuaError> {
     // C: luaF_close(L, pcl->level, pcl->status, 0)
-    // TODO(port): status→i32 conversion for func::close_tbc sentinel.
-    func::close_tbc(state, pcl.level, pcl.status as i32, false)?;
+    // TODO(port): status→i32 conversion for func::close sentinel.
+    func::close(state, pcl.level, pcl.status as i32, false)?;
     Ok(())
 }
 
@@ -1463,10 +1490,10 @@ where
 /// so that `SParser` can outlive the original string data without raw pointers.
 struct SParser {
     z: ZIO,
-    // C: Mbuffer buff — LexBuffer in Rust (types.tsv)
-    buff: lua_types::zio::LexBuffer,
-    // C: Dyndata dyd — DynData in Rust (types.tsv)
-    dyd: lua_types::parser::DynData,
+    /// LexBuffer from `crate::zio` (Mbuffer in C).
+    buff: LexBuffer,
+    /// TODO(phase-b): real Dyndata lives in the lua-parse crate.
+    dyd: DynDataStub,
     // C: const char *mode — byte slice for chunk mode ("b", "t", or "bt")
     // PORT NOTE: stored as Option<Vec<u8>> to own the bytes; None means no mode restriction.
     mode: Option<Vec<u8>>,
@@ -1525,7 +1552,7 @@ fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
         check_mode(state, p.mode.as_deref(), b"text")?;
         // C: cl = luaY_parser(L, p->z, &p->buff, &p->dyd, p->name, c)
         // TODO(port): parser API not yet finalised; returns a LClosure.
-        let cl = crate::parser::parse(state, &mut p.z, &mut p.buff, &mut p.dyd, &p.name, c)?;
+        let cl = parse_stub(state, &mut p.z, &mut p.buff, &mut p.dyd, &p.name, c)?;
         debug_assert!(cl.nupvalues() == cl.proto().upvalues.len());
         func::init_upvals(state, &cl)?;
     }
@@ -1548,8 +1575,8 @@ pub(crate) fn protected_parser(
 
     let mut p = SParser {
         z,
-        buff: lua_types::zio::LexBuffer::new(),
-        dyd: lua_types::parser::DynData::new(),
+        buff: LexBuffer::new(),
+        dyd: DynDataStub::new(),
         mode: mode.map(|m| m.to_vec()),
         name: name.to_vec(),
     };

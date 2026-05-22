@@ -2,7 +2,7 @@
 //!
 //! Provides two key abstractions:
 //!
-//! - [`LuaString`]: the Lua string value, stored as a reference-counted byte slice.
+//! - [`LuaStringImpl`]: the Lua string value, stored as a reference-counted byte slice.
 //!   Short strings (`<= MAX_SHORT_LEN` bytes) are interned in the process-global
 //!   [`StringPool`]; long strings are heap-allocated on each creation and never
 //!   interned.
@@ -20,6 +20,7 @@
 //! - `reference/lua-5.4.7/src/lstring.h`  (57 lines; merged here)
 
 use std::cell::Cell;
+#[allow(unused_imports)] use crate::prelude::*;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -28,11 +29,19 @@ use std::rc::Rc;
 // `LuaValue` and `LuaError` live in lua_types (crates/lua-types/src/).
 use crate::state::{GlobalState, LuaState};
 
-// PORT NOTE: `GcRef<T>` is `Rc<T>` in Phases A–C per PORTING.md §2 #4.
-// Phase D replaces this with a real tracing GC pointer.  Every use of
-// `GcRef<LuaString>` in this file is a cheap reference-count bump.
-// TODO(port): move this typedef to lua-types or lua-gc once GcRef is formally defined.
-type GcRef<T> = Rc<T>;
+// PORT NOTE: `GcRef<T>` is the lua-types newtype around `Rc<T>` per PORT_STRATEGY §3.4.
+// Re-imported here so all string-pool entries share identity with state.rs / api.rs.
+use lua_types::GcRef;
+/// Local alias retained while string.rs's own `LuaStringImpl` is still in use; will
+/// merge with `lua_types::LuaString` in Phase B's string-pool consolidation.
+type LocalGcRef<T> = Rc<T>;
+
+/// Phase-B bridge: converts a lua-vm rich `LuaStringImpl` into a `lua_types::LuaString`.
+/// The two types track different metadata (short/long flag, extra byte) and a real
+/// merge belongs in Phase B once `lua-types::LuaString` grows the needed fields.
+fn impl_to_lt(s: &GcRef<LuaStringImpl>) -> GcRef<lua_types::LuaString> {
+    GcRef::new(lua_types::LuaString::from_bytes(s.as_bytes().to_vec()))
+}
 
 // ── Constants (lstring.h macros → macros.tsv) ─────────────────────────────────
 
@@ -82,16 +91,16 @@ const MAX_STR_TAB: usize = i32::MAX as usize / std::mem::size_of::<usize>();
 
 // C: #define isreserved(s)  ((s)->tt == LUA_VSHRSTR && (s)->extra > 0)
 // macros.tsv: isreserved → ts.is_reserved_word()
-// PORT NOTE: translated at call sites as the `LuaString::is_reserved_word()` method.
+// PORT NOTE: translated at call sites as the `LuaStringImpl::is_reserved_word()` method.
 
 // C: #define eqshrstr(a,b)  check_exp((a)->tt == LUA_VSHRSTR, (a) == (b))
 // macros.tsv: eqshrstr → Rc::ptr_eq(a, b)
 // PORT NOTE: short strings are interned so pointer equality suffices.
 // Translated at call sites as `Rc::ptr_eq(a, b)`.
 
-// ── LuaString (was TString in lobject.h) ─────────────────────────────────────
+// ── LuaStringImpl (was TString in lobject.h) ─────────────────────────────────────
 
-// PORT NOTE: `LuaString` corresponds to `TString` from `lobject.h`, which maps to
+// PORT NOTE: `LuaStringImpl` corresponds to `TString` from `lobject.h`, which maps to
 // `src/object.rs` per file_deps.txt.  It is defined here (in `string.rs`) because
 // `lstring.c` owns the string-table internals and most of the type's behaviour.
 // Phase B should reconcile: either keep it here and re-export from `object.rs`,
@@ -103,8 +112,8 @@ const MAX_STR_TAB: usize = i32::MAX as usize / std::mem::size_of::<usize>();
 ///
 /// # C mapping (types.tsv)
 /// ```text
-/// LUA_VSHRSTR → LuaString::Short  (shrlen holds length 0..=40)
-/// LUA_VLNGSTR → LuaString::Long   (shrlen = 0xFF sentinel; u.lnglen holds length)
+/// LUA_VSHRSTR → LuaStringImpl::Short  (shrlen holds length 0..=40)
+/// LUA_VLNGSTR → LuaStringImpl::Long   (shrlen = 0xFF sentinel; u.lnglen holds length)
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StringKind {
@@ -126,7 +135,7 @@ pub enum StringKind {
 ///
 /// # C mapping (types.tsv)
 /// ```text
-/// TString             → LuaString
+/// TString             → LuaStringImpl
 /// TString.extra       → extra: Cell<u8>   (reserved-word idx for Short; hash-ready flag for Long)
 /// TString.shrlen      → kind: StringKind   (0xFF sentinel replaced by enum variant)
 /// TString.hash        → hash: Cell<u32>
@@ -134,7 +143,7 @@ pub enum StringKind {
 /// TString.u.hnext     → (removed)          (intrusive chain gone; StringPool uses HashMap)
 /// TString.contents    → bytes: Rc<[u8]>
 /// ```
-pub struct LuaString {
+pub struct LuaStringImpl {
     // C: char contents[];  (flexible array member)
     bytes: Rc<[u8]>,
 
@@ -144,7 +153,7 @@ pub struct LuaString {
 
     // C: unsigned int hash;
     // Using Cell<u32> so that `hash_long_str` can cache the hash through a
-    // shared `&LuaString` reference (interior mutability, single-threaded).
+    // shared `&LuaStringImpl` reference (interior mutability, single-threaded).
     hash: Cell<u32>,
 
     // C: lu_byte extra;
@@ -153,7 +162,7 @@ pub struct LuaString {
     extra: Cell<u8>,
 }
 
-impl LuaString {
+impl LuaStringImpl {
     /// Returns the string's bytes.
     ///
     /// C: `getstr(ts)` / `getlngstr(ts)` / `getshrstr(ts)` — all map to this.
@@ -214,7 +223,7 @@ impl LuaString {
     }
 }
 
-impl PartialEq for LuaString {
+impl PartialEq for LuaStringImpl {
     /// Equality for Lua strings.
     ///
     /// For short strings (interned), pointer equality via `Rc::ptr_eq` is sufficient
@@ -231,7 +240,7 @@ impl PartialEq for LuaString {
     }
 }
 
-impl Eq for LuaString {}
+impl Eq for LuaStringImpl {}
 
 // ── StringPool (was stringtable in lstate.h) ──────────────────────────────────
 
@@ -253,14 +262,14 @@ impl Eq for LuaString {}
 /// # C mapping (types.tsv)
 /// ```text
 /// stringtable        → StringPool
-/// stringtable.hash   → map: HashMap<Box<[u8]>, GcRef<LuaString>>
+/// stringtable.hash   → map: HashMap<Box<[u8]>, GcRef<LuaStringImpl>>
 /// stringtable.nuse   → nuse: usize
 /// stringtable.size   → size: usize
 /// ```
 pub struct StringPool {
     // C: TString **hash;  (array of chain heads — replaced by HashMap)
     // PORT NOTE: keyed by owned byte slice; lookup by `&[u8]` via Borrow<[u8]>.
-    map: HashMap<Box<[u8]>, GcRef<LuaString>>,
+    map: HashMap<Box<[u8]>, GcRef<LuaStringImpl>>,
 
     // C: int nuse;  (live entry count)
     // PERF(port): redundant with map.len() in Rust — keep for C-parity; remove in Phase B
@@ -311,7 +320,7 @@ impl Default for StringPool {
 ///                          array member laid out past the Udata header via
 ///                          `udatamemoffset` alignment math.
 /// ```
-pub struct LuaUserData {
+pub struct LuaUserDataImpl {
     // C: size_t len;
     pub len: usize,
     // C: unsigned short nuvalue;
@@ -347,7 +356,7 @@ pub struct LuaUserData {
 /// //      (memcmp(getlngstr(a), getlngstr(b), len) == 0));
 /// // }
 /// ```
-pub(crate) fn eq_long_str(a: &LuaString, b: &LuaString) -> bool {
+pub(crate) fn eq_long_str(a: &LuaStringImpl, b: &LuaStringImpl) -> bool {
     // C: lua_assert(a->tt == LUA_VLNGSTR && b->tt == LUA_VLNGSTR);
     // macros.tsv: lua_assert → debug_assert!
     debug_assert!(a.is_long() && b.is_long(), "eq_long_str: both arguments must be long strings");
@@ -414,8 +423,8 @@ pub(crate) fn hash_bytes(bytes: &[u8], seed: u32) -> u32 {
 /// return the cached value directly.
 ///
 /// Interior mutability (`Cell<u32>` / `Cell<u8>`) allows mutation through a
-/// shared `&LuaString` reference, which is necessary because `GcRef<LuaString>`
-/// is `Rc<LuaString>` and there is no safe way to get `&mut` through an `Rc`.
+/// shared `&LuaStringImpl` reference, which is necessary because `GcRef<LuaStringImpl>`
+/// is `Rc<LuaStringImpl>` and there is no safe way to get `&mut` through an `Rc`.
 ///
 /// # C source
 /// ```c
@@ -429,7 +438,7 @@ pub(crate) fn hash_bytes(bytes: &[u8], seed: u32) -> u32 {
 /// //   return ts->hash;
 /// // }
 /// ```
-pub(crate) fn hash_long_str(ts: &LuaString) -> u32 {
+pub(crate) fn hash_long_str(ts: &LuaStringImpl) -> u32 {
     // C: lua_assert(ts->tt == LUA_VLNGSTR);
     debug_assert!(ts.is_long(), "hash_long_str: argument must be a long string");
 
@@ -587,14 +596,15 @@ pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
     // macros.tsv: luaC_fix — not listed; it marks the object as fixed (non-collectable)
     // TODO(port): call state.gc().fix(memerrmsg.clone()) when GC is wired in Phase D;
     // in Phases A–C the Rc keeps it alive as long as GlobalState holds the clone
-    state.global_mut().memerrmsg = memerrmsg.clone();
+    let memerrmsg_lt = impl_to_lt(&memerrmsg);
+    state.global_mut().memerrmsg = memerrmsg_lt.clone();
 
     // C: for (i = 0; i < STRCACHE_N; i++)
     //      for (j = 0; j < STRCACHE_M; j++)
     //        g->strcache[i][j] = g->memerrmsg;
     for i in 0..STRCACHE_N {
         for j in 0..STRCACHE_M {
-            state.global_mut().strcache[i][j] = memerrmsg.clone();
+            state.global_mut().strcache[i][j] = memerrmsg_lt.clone();
         }
     }
 
@@ -622,7 +632,7 @@ pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
 /// PORT NOTE: `ts->u.lnglen = l` and `ts->shrlen = 0xFF` are replaced by the
 /// `StringKind::Long` variant which carries the length implicitly through
 /// `Rc<[u8]>::len()`.  The `0xFF` sentinel is no longer needed.
-pub(crate) fn create_long_str(state: &mut LuaState, l: usize) -> GcRef<LuaString> {
+pub(crate) fn create_long_str(state: &mut LuaState, l: usize) -> GcRef<LuaStringImpl> {
     // C: TString *ts = createstrobj(L, l, LUA_VLNGSTR, G(L)->seed);
     let seed = state.global().seed;
     // PORT NOTE: C's createstrobj allocates uninitialised storage then the caller
@@ -653,7 +663,7 @@ pub(crate) fn create_long_str(state: &mut LuaState, l: usize) -> GcRef<LuaString
 /// `ts`.  In Rust the chain does not exist; `HashMap::remove` is O(1) average.
 /// `lmod(ts->hash, tb->size)` (the bucket index) is not needed; the map keys by
 /// byte content.
-pub(crate) fn remove_str(state: &mut LuaState, ts: &LuaString) {
+pub(crate) fn remove_str(state: &mut LuaState, ts: &LuaStringImpl) {
     let strt = &mut state.global_mut().strt;
 
     // C: TString **p = &tb->hash[lmod(ts->hash, tb->size)];
@@ -692,7 +702,7 @@ pub(crate) fn remove_str(state: &mut LuaState, ts: &LuaString) {
 /// //   }
 /// // }
 /// ```
-pub(crate) fn new_lstr(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> {
+pub(crate) fn new_lstr(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaStringImpl>, LuaError> {
     // C: if (l <= LUAI_MAXSHORTLEN)
     if bytes.len() <= MAX_SHORT_LEN {
         intern_short_str(state, bytes)
@@ -709,7 +719,7 @@ pub(crate) fn new_lstr(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaSt
         // C: ts = luaS_createlngstrobj(L, l);
         //    memcpy(getlngstr(ts), str, l * sizeof(char));
         // PORT NOTE: Rather than creating a zeroed buffer and then copying,
-        // we construct the LuaString directly from `bytes`.
+        // we construct the LuaStringImpl directly from `bytes`.
         let seed = state.global().seed;
         let h = hash_bytes(bytes, seed);
         let ts = create_str_obj(state, bytes, StringKind::Long, h);
@@ -751,7 +761,7 @@ pub(crate) fn new_lstr(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaSt
 /// In Rust we use `hash_bytes(bytes, seed) % STRCACHE_N` instead.  The replacement
 /// is fully safe and has identical semantics (but different cache behaviour for
 /// calls from different `&[u8]` slices with identical content).
-pub(crate) fn new(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaString>, LuaError> {
+pub(crate) fn new(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaStringImpl>, LuaError> {
     // C: unsigned int i = point2uint(str) % STRCACHE_N;
     // PORT NOTE: pointer hash replaced by content hash (see doc above)
     let seed = state.global().seed;
@@ -762,7 +772,15 @@ pub(crate) fn new(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaString>
     for j in 0..STRCACHE_M {
         if state.global().strcache[i][j].as_bytes() == bytes {
             // C: return p[j];
-            return Ok(state.global().strcache[i][j].clone());
+            // TODO(phase-b): strcache currently holds lua_types::LuaString; rebuild
+            // a rich LuaStringImpl from the bytes. Phase B should unify the types.
+            let cached_bytes = state.global().strcache[i][j].as_bytes().to_vec();
+            return Ok(GcRef::new(LuaStringImpl {
+                bytes: cached_bytes.into(),
+                kind: if bytes.len() <= MAX_SHORT_LEN { StringKind::Short } else { StringKind::Long },
+                hash: Cell::new(hash_bytes(bytes, seed)),
+                extra: Cell::new(0),
+            }));
         }
     }
 
@@ -779,7 +797,7 @@ pub(crate) fn new(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaString>
     }
 
     // C: p[0] = luaS_newlstr(L, str, strlen(str));
-    state.global_mut().strcache[i][0] = new_str.clone();
+    state.global_mut().strcache[i][0] = impl_to_lt(&new_str);
 
     Ok(new_str)
 }
@@ -813,7 +831,7 @@ pub(crate) fn new_userdata(
     state: &mut LuaState,
     s: usize,
     nuvalue: usize,
-) -> Result<GcRef<LuaUserData>, LuaError> {
+) -> Result<GcRef<LuaUserDataImpl>, LuaError> {
     // C: if (l_unlikely(s > MAX_SIZE - udatamemoffset(nuvalue)))
     //        luaM_toobig(L);
     // macros.tsv: luaM_toobig → return Err(LuaError::Memory)
@@ -829,7 +847,7 @@ pub(crate) fn new_userdata(
     //    u = gco2u(o);
     // TODO(port): register with GC tracking (state.gc().new_obj(...));
     // Phase A–C stub: allocate via Rc without GC registration.
-    let u = Rc::new(LuaUserData {
+    let u = GcRef::new(LuaUserDataImpl {
         // C: u->len = s;
         len: s,
         // C: u->nuvalue = nuvalue;
@@ -851,7 +869,7 @@ pub(crate) fn new_userdata(
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 // C: static TString *createstrobj(lua_State *L, size_t l, int tag, unsigned int h)
-/// Allocate and initialise a new `LuaString` with the given bytes, kind, and hash.
+/// Allocate and initialise a new `LuaStringImpl` with the given bytes, kind, and hash.
 ///
 /// In C, `createstrobj` allocated uninitialised memory via `luaC_newobj` and set
 /// the header fields; the caller then filled the content via `memcpy`.  In Rust
@@ -882,13 +900,13 @@ fn create_str_obj(
     bytes: &[u8],
     kind: StringKind,
     hash: u32,
-) -> GcRef<LuaString> {
+) -> GcRef<LuaStringImpl> {
     // C: o = luaC_newobj(L, tag, totalsize);
     // macros.tsv: luaM_newobject → state.gc().new_obj(tag, sz)
     // TODO(port): register with GC tracking list (state.global_mut().allgc)
     // in Phase D; Phase A–C creates a bare Rc
     let _ = state; // state needed for GC registration in Phase D
-    Rc::new(LuaString {
+    GcRef::new(LuaStringImpl {
         // C: ts->hash = h;
         hash: Cell::new(hash),
         // C: ts->extra = 0;
@@ -985,7 +1003,7 @@ fn grow_str_tab(state: &mut LuaState) -> Result<(), LuaError> {
 fn intern_short_str(
     state: &mut LuaState,
     bytes: &[u8],
-) -> Result<GcRef<LuaString>, LuaError> {
+) -> Result<GcRef<LuaStringImpl>, LuaError> {
     // C: lua_assert(str != NULL);
     // In Rust, &[u8] slices are never null; the assertion is trivially satisfied.
 
@@ -995,7 +1013,7 @@ fn intern_short_str(
 
     // C: for (ts = *list; ...) { if (memcmp matches) { if (isdead) changewhite; return ts; } }
     // PORT NOTE: intrusive hnext chain replaced by HashMap lookup
-    // Clone the existing GcRef<LuaString> so the immutable borrow on `state` ends
+    // Clone the existing GcRef<LuaStringImpl> so the immutable borrow on `state` ends
     // before any mutable access below.
     let existing = state.global().strt.map.get(bytes).cloned();
     if let Some(ts) = existing {
@@ -1064,6 +1082,6 @@ use lua_types::LuaError;
 //                  LuaValue in LuaUserData.uv (Phase B), LuaError import path
 //                  (Phase B), GcRef typedef (Phase B).  Phase B priority: wire
 //                  import paths for LuaState, GlobalState, LuaError, LuaValue,
-//                  and move LuaString/StringPool/LuaUserData to their canonical
+//                  and move LuaStringImpl/StringPool/LuaUserData to their canonical
 //                  modules (object.rs / state.rs).
 // ──────────────────────────────────────────────────────────────────────────────

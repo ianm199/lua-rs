@@ -14,10 +14,11 @@
 //   LuaValue     — lua_types
 //   LuaState     — lua-vm (this crate)
 use std::mem::size_of;
+#[allow(unused_imports)] use crate::prelude::*;
 
 use crate::state::LuaState;
 use lua_types::{GcRef, LuaError, LuaString, LuaValue};
-use crate::object::LuaProto;
+use lua_types::proto::LuaProto;
 
 // ── Constants from lundump.h ─────────────────────────────────────────────────
 
@@ -295,7 +296,7 @@ impl DumpState {
             // C: dumpFunction(D, f->p[i], f->source);
             // sub: &GcRef<LuaProto>; deref coercion (&GcRef<LuaProto> → &LuaProto) expected
             // when GcRef<T>: Deref<Target=T> (true for Rc<T> in Phase A).
-            self.dump_function(sub, Some(&proto.source))?;
+            self.dump_function(sub, proto.source.as_ref())?;
         }
         Ok(())
     }
@@ -385,7 +386,7 @@ impl DumpState {
             // in bytecode compiled without debug info). Verify whether UpvalDesc.name should be
             // `Option<GcRef<LuaString>>` in the Rust model; if so, change call to pass the Option
             // directly instead of wrapping in Some.
-            self.dump_string(Some(&upval.name))?;
+            self.dump_string(upval.name.as_ref())?;
         }
         Ok(())
     }
@@ -410,13 +411,15 @@ impl DumpState {
     ) -> Result<(), LuaError> {
         // C: if (D->strip || f->source == psource) dumpString(D, NULL); else dumpString(D, f->source);
         // Pointer-equality check: same interned string object means same source file.
-        let same_source = psource
-            .map_or(false, |ps| GcRef::ptr_eq(&proto.source, ps));
+        let same_source = match (psource, proto.source.as_ref()) {
+            (Some(ps), Some(src)) => GcRef::ptr_eq(src, ps),
+            _ => false,
+        };
 
         if self.strip || same_source {
             self.dump_string(None)?;
         } else {
-            self.dump_string(Some(&proto.source))?;
+            self.dump_string(proto.source.as_ref())?;
         }
 
         // C: dumpInt(D, f->linedefined);

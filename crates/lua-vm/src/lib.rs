@@ -19,6 +19,21 @@ pub mod undump;
 pub mod vm;
 pub mod zio;
 
+/// Glob-imported by every module so the Phase-B extension traits resolve
+/// without each module having to list them individually.
+///
+/// TODO(phase-b): once the canonical types in `lua-types` grow these methods
+/// natively, this prelude can shrink to just the LuaState helpers.
+pub mod prelude {
+    pub use crate::state::{
+        LuaValueExt, LuaTypeExt, StackIdxExt,
+        LuaTableRefExt, LuaUserDataRefExt, LuaStringRefExt,
+        LuaLClosureRefExt, LuaClosureExt, LuaProtoExt,
+    };
+    pub use crate::vm::{InstructionExt, OpCode};
+    pub(crate) use crate::tagmethods::TagMethod;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // PORT STATUS
 //   source:        (module aggregator; see individual files for C sources)

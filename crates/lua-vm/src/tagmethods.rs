@@ -6,6 +6,7 @@
 //! `value.is_nil()` (the `notm` macro in C).
 
 use crate::state::LuaState;
+#[allow(unused_imports)] use crate::prelude::*;
 use lua_types::{CallInfoIdx, GcRef, LuaError, LuaType, LuaValue, StackIdx};
 
 // ── TagMethod enum (from ltm.h `TMS`) ────────────────────────────────────────
@@ -181,7 +182,7 @@ pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
         // C: luaC_fix(L, obj2gco(...))
         // Pin the string so the GC never collects it.
         // TODO(port): luaC_fix API on gc() is TBD; no-op in Phase A–C (Rc keeps it alive)
-        state.gc().fix_object(interned.as_gc_ref());
+        state.gc().fix_object(&interned);
     }
     Ok(())
 }
@@ -199,12 +200,13 @@ pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
 /// Precondition: `event <= TagMethod::Eq` (only fast-access metamethods use
 /// the flags cache).
 pub(crate) fn get_tm(
-    events: &mut lua_types::LuaTable,
+    events: &mut lua_types::value::LuaTable,
     event: TagMethod,
     ename: &GcRef<lua_types::LuaString>,
 ) -> Option<LuaValue> {
     // C: const TValue *tm = luaH_getshortstr(events, ename);
-    let tm = events.get_short_str(ename);
+    let _ = (events, ename);
+    let tm: LuaValue = todo!("phase-b: LuaTable::get_short_str");
     // C: lua_assert(event <= TM_EQ);
     debug_assert!((event as u8) <= (TagMethod::Eq as u8));
     // C: if (notm(tm)) {
@@ -215,7 +217,7 @@ pub(crate) fn get_tm(
         // TODO(port): `flags_set_absent_bit(event as u8)` — exact LuaTable
         // method name for setting the fast-access absence bit is TBD; the bit
         // is `1 << event` in the flags byte per ltm.h `maskflags` definition.
-        events.flags_set_absent_bit(event as u8);
+        let _ = (events, event); // todo!("phase-b: LuaTable::flags_set_absent_bit")
         None
     } else {
         // C: else return tm;
@@ -247,7 +249,7 @@ pub(crate) fn get_tm_by_obj(
     // TODO(port): `GcRef<LuaTable>` access pattern (direct field vs borrow) is
     // TBD pending the GcRef/RefCell decision in Phase B; using `.metatable()`
     // accessor here as a placeholder.
-    let mt: Option<GcRef<lua_types::LuaTable>> = match o {
+    let mt: Option<GcRef<lua_types::value::LuaTable>> = match o {
         LuaValue::Table(t) => t.metatable(),
         LuaValue::UserData(u) => u.metatable(),
         _ => {
@@ -289,7 +291,7 @@ pub(crate) fn obj_type_name(state: &mut LuaState, o: &LuaValue) -> Result<Vec<u8
     //        (ttisfulluserdata(o) && (mt = uvalue(o)->metatable) != NULL)) {
     //
     // TODO(port): same GcRef accessor TBD as in get_tm_by_obj.
-    let mt: Option<GcRef<lua_types::LuaTable>> = match o {
+    let mt: Option<GcRef<lua_types::value::LuaTable>> = match o {
         LuaValue::Table(t) => t.metatable(),
         LuaValue::UserData(u) => u.metatable(),
         _ => None,
@@ -707,20 +709,24 @@ pub(crate) fn adjust_varargs(
     proto: &GcRef<lua_types::LuaProto>,
 ) -> Result<(), LuaError> {
     // C: int actual = cast_int(L->top.p - ci->func.p) - 1;  /* number of arguments */
-    let ci_func: StackIdx = state.call_stack[ci_idx as usize].func;
-    let actual = (state.top_idx() as i32) - (ci_func as i32) - 1;
+    let ci_func: StackIdx = state.call_info[ci_idx.as_usize()].func;
+    let actual = (state.top_idx().0 as i32) - (ci_func.0 as i32) - 1;
     // C: int nextra = actual - nfixparams;  /* number of extra arguments */
     let nextra = actual - nfixparams;
     // C: ci->u.l.nextraargs = nextra;
-    state.call_stack[ci_idx as usize].nextraargs = nextra;
+    // TODO(phase-b): nextraargs lives inside CallInfoFrame::Lua; needs proper
+    // pattern-match write through state.call_info[..].u.
+    if let crate::state::CallInfoFrame::Lua { ref mut nextraargs, .. } = state.call_info[ci_idx.as_usize()].u {
+        *nextraargs = nextra;
+    }
 
     // C: luaD_checkstack(L, p->maxstacksize + 1);
-    let maxstacksize = proto.borrow().maxstacksize as i32;
-    state.check_stack((maxstacksize + 1) as usize)?;
+    let maxstacksize = proto.maxstacksize as i32;
+    state.check_stack(maxstacksize + 1)?;
 
     // Re-read ci_func after check_stack (stack may have reallocated, but
     // StackIdx is index-based so the value is still correct).
-    let ci_func: StackIdx = state.call_stack[ci_idx as usize].func;
+    let ci_func: StackIdx = state.call_info[ci_idx.as_usize()].func;
 
     // C: setobjs2s(L, L->top.p++, ci->func.p);  /* copy function to the top */
     let func_val = state.get_at(ci_func).clone();
@@ -734,7 +740,7 @@ pub(crate) fn adjust_varargs(
         // TODO(port): StackIdx is u32; if ci_func + i overflows the u32 range
         // this panics in debug.  In practice `i` is small (≤ 255 params), but
         // add a saturating or checked add in Phase B.
-        let src: StackIdx = ci_func + i as StackIdx;
+        let src: StackIdx = ci_func + i as i32;
         let param_val = state.get_at(src).clone();
         state.push(param_val);
         // C: setnilvalue(s2v(ci->func.p + i))  →  *o = LuaValue::Nil
@@ -746,12 +752,12 @@ pub(crate) fn adjust_varargs(
     // TODO(port): `actual + 1` may be negative if `actual < -1` (malformed call);
     // casting to StackIdx (u32) would underflow.  In practice Lua guarantees
     // actual >= 0 at this point, but add a debug_assert in Phase B.
-    let offset = (actual + 1) as StackIdx;
-    state.call_stack[ci_idx as usize].func += offset;
-    state.call_stack[ci_idx as usize].top += offset;
+    let offset = (actual + 1) as i32;
+    state.call_info[ci_idx.as_usize()].func = state.call_info[ci_idx.as_usize()].func + offset;
+    state.call_info[ci_idx.as_usize()].top = state.call_info[ci_idx.as_usize()].top + offset;
 
     // C: lua_assert(L->top.p <= ci->top.p && ci->top.p <= L->stack_last.p);
-    debug_assert!(state.top_idx() <= state.call_stack[ci_idx as usize].top);
+    debug_assert!(state.top_idx().0 <= state.call_info[ci_idx.as_usize()].top.0);
     Ok(())
 }
 
@@ -772,7 +778,7 @@ pub(crate) fn get_varargs(
     wanted: i32,
 ) -> Result<(), LuaError> {
     // C: int nextra = ci->u.l.nextraargs;
-    let nextra: i32 = state.call_stack[ci_idx as usize].nextraargs;
+    let nextra: i32 = if let crate::state::CallInfoFrame::Lua { nextraargs, .. } = state.call_info[ci_idx.as_usize()].u { nextraargs } else { 0 };
 
     // C: if (wanted < 0) {
     //      wanted = nextra;  /* get all extra arguments available */
@@ -781,12 +787,12 @@ pub(crate) fn get_varargs(
     //    }
     let wanted: i32 = if wanted < 0 {
         // C: checkstackGCp(L, nextra, where)  →  check_stack + gc step
-        state.check_stack(nextra as usize)?;
+        state.check_stack(nextra)?;
         state.gc().check_step();
         // C: L->top.p = where + nextra
-        // TODO(port): `where_idx + nextra as StackIdx` may overflow if nextra
+        // TODO(port): `where_idx + nextra as i32` may overflow if nextra
         // is very large; checked add in Phase B.
-        state.set_top(where_idx + nextra as StackIdx);
+        state.set_top(where_idx + nextra as i32);
         nextra
     } else {
         wanted
@@ -797,23 +803,23 @@ pub(crate) fn get_varargs(
     //
     // After adjustvarargs, the extra args live at positions
     // ci->func - nextra .. ci->func - 1.
-    let ci_func: StackIdx = state.call_stack[ci_idx as usize].func;
+    let ci_func: StackIdx = state.call_info[ci_idx.as_usize()].func;
     let copy_count = wanted.min(nextra);
     for i in 0..copy_count {
         // C: ci->func.p - nextra + i
         // TODO(port): subtraction on StackIdx (u32) underflows if nextra > ci_func.
         // Invariant: ci_func >= nextra (enforced by adjustvarargs), but add
         // a debug_assert in Phase B.
-        let src: StackIdx = ci_func - nextra as StackIdx + i as StackIdx;
+        let src: StackIdx = ci_func - nextra as i32 + i as i32;
         let val = state.get_at(src).clone();
-        state.set_at(where_idx + i as StackIdx, val);
+        state.set_at(where_idx + i as i32, val);
     }
 
     // C: for (; i < wanted; i++)   /* complete required results with nil */
     //      setnilvalue(s2v(where + i));
     for i in copy_count..wanted {
         // C: setnilvalue(s2v(where + i))  →  *o = LuaValue::Nil
-        state.set_at(where_idx + i as StackIdx, LuaValue::Nil);
+        state.set_at(where_idx + i as i32, LuaValue::Nil);
     }
     Ok(())
 }

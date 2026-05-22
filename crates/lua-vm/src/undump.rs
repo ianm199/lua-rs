@@ -9,6 +9,7 @@
 // TODO(port): resolve import paths once the crate module graph is settled
 // in Phase B.  These are best-guess paths based on other translated files.
 use crate::state::LuaState;
+#[allow(unused_imports)] use crate::prelude::*;
 use crate::zio::ZIO;
 use lua_types::error::LuaError;
 use lua_types::value::LuaValue;
@@ -379,7 +380,7 @@ fn load_string_n(
     // C: ts = luaS_newlstr(L, buff, size) / luaS_createlngstrobj(L, size)
     // macros.tsv: luaS_newlstr → state.intern_str(&s[..n])
     // TODO(port): long strings should not be interned; see doc-comment above.
-    let ts = s.state.intern_str(&buf);
+    let ts = s.state.intern_str(&buf)?;
 
     // C: luaC_objbarrier(L, p, ts);
     // macros.tsv: luaC_objbarrier → state.gc().obj_barrier(p, o)  no-op Phase A
@@ -566,7 +567,7 @@ fn load_protos(s: &mut LoadState<'_>, f: &mut LuaProto) -> Result<(), LuaError> 
 
     for _ in 0..n {
         // C: f->p[i] = luaF_newproto(S->L);
-        let mut sub = LuaProto::default();
+        let mut sub = LuaProto::placeholder();
 
         // C: luaC_objbarrier(S->L, f, f->p[i]);
         // macros.tsv: luaC_objbarrier → state.gc().obj_barrier(p, o)  no-op Phase A
@@ -727,6 +728,7 @@ fn load_debug(s: &mut LoadState<'_>, f: &mut LuaProto) -> Result<(), LuaError> {
         let startpc = load_int(s)?;
         // C: f->locvars[i].endpc = loadInt(S);
         let endpc = load_int(s)?;
+        let varname = varname.unwrap_or_else(|| GcRef::new(LuaString::placeholder()));
         locvars.push(LocalVar { varname, startpc, endpc });
     }
     f.locvars = locvars;
@@ -1040,7 +1042,7 @@ pub(crate) fn undump(
     // GcRef wrapping happens after the proto is loaded.
     // TODO(port): use the proper lfunc::new_lua_closure(state, nupvalues) API
     // once lfunc.rs is translated and the API is settled.
-    let mut cl = LuaLClosure::new(nupvalues);
+    let mut cl = LuaLClosure::placeholder();
 
     // C: setclLvalue2s(L, L->top.p, cl);  luaD_inctop(L);
     // macros.tsv: setclLvalue2s → state.set_at(o, LuaValue::Function(LuaClosure::Lua(cl)))
@@ -1055,7 +1057,7 @@ pub(crate) fn undump(
     s.state.push(LuaValue::Nil); // placeholder; replaced below
 
     // C: cl->p = luaF_newproto(L);
-    let mut proto = LuaProto::default();
+    let mut proto = LuaProto::placeholder();
 
     // C: luaC_objbarrier(L, cl, cl->p);
     // macros.tsv: luaC_objbarrier → state.gc().obj_barrier(p, o)  no-op Phase A
@@ -1079,7 +1081,7 @@ pub(crate) fn undump(
     // The macro is defined as `/* empty */` in the default build; dropped.
 
     // Attach the loaded proto to the closure.
-    cl.p = proto_ref;
+    cl.proto = proto_ref;
 
     // Wrap the closure in GcRef.
     let cl_ref = GcRef::new(cl);

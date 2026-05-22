@@ -42,11 +42,12 @@
 // C: #define LUA_CORE
 
 use std::rc::Rc;
+#[allow(unused_imports)] use crate::prelude::*;
 
 // TODO(port): import paths will stabilize in Phase B once the crate graph is wired.
 use crate::object::ceil_log2;
 use crate::state::{GcRef, LuaState, LuaValue, LuaClosure};
-use crate::string::LuaString;
+use lua_types::LuaString;
 use lua_types::error::LuaError;
 use lua_types::StackIdx;
 
@@ -415,23 +416,23 @@ impl LuaTable {
             }
             LuaValue::Table(t) => {
                 // C: hashpointer(t, gcvalue(key))
-                let h = (Rc::as_ptr(t) as usize as u32) as usize;
+                let h = (GcRef::identity(t) as u32) as usize;
                 self.hashmod_idx(h)
             }
             LuaValue::Function(LuaClosure::Lua(cl)) => {
-                let h = (Rc::as_ptr(cl) as usize as u32) as usize;
+                let h = (GcRef::identity(cl) as u32) as usize;
                 self.hashmod_idx(h)
             }
             LuaValue::Function(LuaClosure::C(cl)) => {
-                let h = (Rc::as_ptr(cl) as usize as u32) as usize;
+                let h = (GcRef::identity(cl) as u32) as usize;
                 self.hashmod_idx(h)
             }
             LuaValue::UserData(u) => {
-                let h = (Rc::as_ptr(u) as usize as u32) as usize;
+                let h = (GcRef::identity(u) as u32) as usize;
                 self.hashmod_idx(h)
             }
             LuaValue::Thread(th) => {
-                let h = (Rc::as_ptr(th) as usize as u32) as usize;
+                let h = (GcRef::identity(th) as u32) as usize;
                 self.hashmod_idx(h)
             }
             LuaValue::Nil => {
@@ -501,7 +502,7 @@ impl LuaTable {
             }
             _ => {
                 // C: default (short strings + all GC objects): pointer equality
-                // eqshrstr for short strings: Rc::ptr_eq (they are interned)
+                // eqshrstr for short strings: GcRef::ptr_eq (they are interned)
                 // gcvalue equality: pointer identity
                 Self::gc_ptr_eq(k1, &n2.key)
             }
@@ -530,16 +531,16 @@ impl LuaTable {
     /// this is correct for them; other GC types also use pointer identity.
     fn gc_ptr_eq(a: &LuaValue, b: &LuaValue) -> bool {
         match (a, b) {
-            (LuaValue::Str(sa), LuaValue::Str(sb)) => Rc::ptr_eq(sa, sb),
-            (LuaValue::Table(ta), LuaValue::Table(tb)) => Rc::ptr_eq(ta, tb),
+            (LuaValue::Str(sa), LuaValue::Str(sb)) => GcRef::ptr_eq(sa, sb),
+            (LuaValue::Table(ta), LuaValue::Table(tb)) => GcRef::ptr_eq(ta, tb),
             (LuaValue::Function(LuaClosure::Lua(fa)), LuaValue::Function(LuaClosure::Lua(fb))) => {
-                Rc::ptr_eq(fa, fb)
+                GcRef::ptr_eq(fa, fb)
             }
             (LuaValue::Function(LuaClosure::C(fa)), LuaValue::Function(LuaClosure::C(fb))) => {
-                Rc::ptr_eq(fa, fb)
+                GcRef::ptr_eq(fa, fb)
             }
-            (LuaValue::UserData(ua), LuaValue::UserData(ub)) => Rc::ptr_eq(ua, ub),
-            (LuaValue::Thread(ta), LuaValue::Thread(tb)) => Rc::ptr_eq(ta, tb),
+            (LuaValue::UserData(ua), LuaValue::UserData(ub)) => GcRef::ptr_eq(ua, ub),
+            (LuaValue::Thread(ta), LuaValue::Thread(tb)) => GcRef::ptr_eq(ta, tb),
             _ => false,
         }
     }
@@ -999,7 +1000,7 @@ impl LuaTable {
             lastfree: None,
             metatable: None,
         };
-        Rc::new(t)
+        GcRef::new(t)
     }
 
     /// Construct an empty `LuaTable` (not GC-wrapped).
@@ -1222,7 +1223,7 @@ impl LuaTable {
             if self.node[n].key_is_short_str() {
                 let ks = self.node[n].key_string();
                 // C: eqshrstr = pointer equality (interned)
-                if Rc::ptr_eq(ks, key) {
+                if GcRef::ptr_eq(ks, key) {
                     return TableSlotRef::Hash(n);
                 }
             }

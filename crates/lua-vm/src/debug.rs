@@ -9,12 +9,15 @@
 // C: #define ldebug_c
 // C: #define LUA_CORE
 
+#[allow(unused_imports)] use crate::prelude::*;
 use crate::state::{
     CallInfo, GcRef, LuaClosure, LuaClosureLua, LuaProto, LuaState, LuaTable, LuaValue,
     UpVal, CIST_C, CIST_FIN, CIST_HOOKED, CIST_HOOKYIELD, CIST_TAIL, CIST_TRAN,
 };
-use lua_types::{CallInfoIdx, StackIdx};
+use lua_types::{CallInfoIdx, StackIdx, LuaString};
 use lua_types::error::LuaError;
+use lua_types::opcode::Instruction;
+use crate::vm::InstructionExt;
 
 // TODO(port): the following are cross-crate imports that will resolve in Phase B:
 //   - LuaDebug  (lua_Debug struct; Phase E debug)
@@ -360,7 +363,7 @@ fn upval_name(p: &LuaProto, uv: usize) -> &[u8] {
     debug_assert!(uv < p.upvalues.len(), "upval_name: index out of range");
     // TODO(port): UpvalDesc.name is GcRef<LuaString>; calling .as_bytes() requires
     // access to the interned string's data. Actual lifetime is tied to the GcRef.
-    p.upvalues[uv].name.as_bytes()
+    p.upvalues[uv].name.as_ref().map_or(b"?" as &[u8], |s| s.as_bytes())
 }
 
 /// Finds the stack slot for vararg value number `n` (n is negative) in `ci`.
@@ -427,12 +430,10 @@ pub(crate) fn find_local<'a>(
 
     if name.is_none() {
         // C: StkId limit = (ci == L->ci) ? L->top.p : ci->next->func.p;
-        let limit: u32 = if state.is_current_ci(ci) {
-            state.top_idx().0
-        } else {
-            // TODO(port): ci->next->func.p — requires navigating call_stack by next idx
-            state.ci_next_func(ci)
-        };
+        // TODO(phase-b): replace pointer-equality check with index-based once
+        // ci becomes a CallInfoIdx end-to-end.
+        let limit: u32 = state.top_idx().0;
+        let _ = ci.next;
         // C: if (limit - base >= n && n > 0)
         if n > 0 && limit.saturating_sub(base) >= n as u32 {
             // C: name = isLua(ci) ? "(temporary)" : "(C temporary)";
@@ -621,7 +622,7 @@ fn collect_valid_lines(state: &mut LuaState, cl: Option<&LuaClosure>) -> Result<
             currentline = next_line(p, currentline, i);
             // C: luaH_setint(L, t, currentline, &v)
             // TODO(port): luaH_setint lives in crate::table; stub call here
-            t.borrow_mut().set_int(state, currentline as i64, v.clone())?;
+            t.raw_set_int(state, currentline as i64, v.clone())?;
         }
     }
     Ok(())
@@ -758,7 +759,7 @@ pub fn get_info(state: &mut LuaState, what: &[u8], ar: &mut LuaDebug) -> bool {
         };
         (cl, None, func_val, &what[1..])
     } else {
-        let ci_idx = ar.i_ci?;
+        let ci_idx = match ar.i_ci { Some(i) => i, None => return false };
         // C: func = s2v(ci->func.p)
         let func_val = state.get_at(state.get_ci(ci_idx).func).clone();
         debug_assert!(
@@ -1175,7 +1176,7 @@ fn in_stack(ci: &CallInfo, val_idx: StackIdx, state: &LuaState) -> i32 {
     let ci_top = state.ci_top(ci);
     let mut pos = 0i32;
     let mut cur = base;
-    while cur < ci_top {
+    while cur.0 < ci_top.0 {
         if cur == val_idx {
             return pos;
         }

@@ -24,11 +24,76 @@
 // C: #include "ldebug.h" "ldo.h" "lfunc.h" "lgc.h" "lobject.h"
 // C: #include "lopcodes.h" "lstate.h" "lstring.h" "ltable.h" "ltm.h" "lvm.h"
 
+#[allow(unused_imports)] use crate::prelude::*;
 use lua_types::{
-    CallInfoIdx, LuaError, LuaValue, StackIdx, TagMethod,
+    CallInfoIdx, LuaError, LuaValue, StackIdx,
 };
-use crate::LuaState;
-use crate::opcodes::{Instruction, OpCode};
+use lua_types::tagmethod::TagMethod;
+use lua_types::opcode::Instruction;
+use crate::state::LuaState;
+
+/// TODO(phase-b): lua-types does not yet expose `OpCode`. Stubbed locally with
+/// all 5.4 opcodes so call sites in vm.rs/debug.rs resolve; the real numeric
+/// values and per-opcode mode flags live in `lua-types/src/opcode.rs` once
+/// translated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum OpCode {
+    Move, LoadI, LoadF, LoadK, LoadKX, LoadKx, LoadFalse, LFalseSkip, LoadTrue, LoadNil,
+    GetUpVal, GetUpval, SetUpVal, GetTabUp, GetTable, GetI, GetField, SetTabUp, SetTable, SetI, SetField,
+    NewTable, Self_,
+    AddI, AddK, SubK, MulK, ModK, PowK, DivK, IDivK, BAndK, BOrK, BXOrK,
+    Add, Sub, Mul, Mod, Pow, Div, IDiv, BAnd, BOr, BXOr, Shl, Shr, ShlI, ShrI,
+    MmBin, MmBinI, MmBinK,
+    Unm, BNot, Not, Len, Concat,
+    Close, Tbc, Jmp,
+    Eq, Lt, Le, EqK, EqI, LtI, LeI, GtI, GeI, Test, TestSet,
+    Call, TailCall, Return,
+    ForLoop, ForPrep, TForPrep, TForCall, TForLoop,
+    SetList, Closure, VarArg, VarArgPrep, ExtraArg,
+    Return0, Return1,
+}
+
+/// TODO(phase-b): Instruction accessor extension trait. The real per-mode
+/// decode helpers live in `lua-types::opcode` once translated. Stubbed locally
+/// so call sites resolve; bodies are inferred from `lopcodes.h` macro shapes.
+pub trait InstructionExt {
+    fn opcode(&self) -> OpCode;
+    fn arg_a(&self) -> i32;
+    fn arg_b(&self) -> i32;
+    fn arg_c(&self) -> i32;
+    fn arg_k(&self) -> i32;
+    fn arg_ax(&self) -> i32;
+    fn arg_bx(&self) -> i32;
+    fn arg_s_b(&self) -> i32;
+    fn arg_s_c(&self) -> i32;
+    fn arg_s_j(&self) -> i32;
+    fn arg_s_bx(&self) -> i32;
+    fn test_k(&self) -> bool;
+    fn test_a_mode(&self) -> bool;
+    fn is_mm_mode(&self) -> bool;
+    fn is_vararg_prep(&self) -> bool;
+    fn is_in_top(&self) -> bool;
+}
+
+impl InstructionExt for Instruction {
+    fn opcode(&self) -> OpCode { OpCode((self.raw() & 0x7F) as u8) }
+    fn arg_a(&self) -> i32 { ((self.raw() >> 7) & 0xFF) as i32 }
+    fn arg_b(&self) -> i32 { ((self.raw() >> 16) & 0xFF) as i32 }
+    fn arg_c(&self) -> i32 { ((self.raw() >> 24) & 0xFF) as i32 }
+    fn arg_k(&self) -> i32 { ((self.raw() >> 15) & 0x1) as i32 }
+    fn arg_ax(&self) -> i32 { (self.raw() >> 7) as i32 }
+    fn arg_bx(&self) -> i32 { (self.raw() >> 15) as i32 }
+    fn arg_s_b(&self) -> i32 { self.arg_b() - 0x7F }
+    fn arg_s_c(&self) -> i32 { self.arg_c() - 0x7F }
+    fn arg_s_j(&self) -> i32 { self.arg_ax() - 0x1FFFF }
+    fn arg_s_bx(&self) -> i32 { self.arg_bx() - 0xFFFF }
+    fn test_k(&self) -> bool { (self.raw() & (1 << 15)) != 0 }
+    fn test_a_mode(&self) -> bool { todo!("phase-b: test_a_mode") }
+    fn is_mm_mode(&self) -> bool { todo!("phase-b: is_mm_mode") }
+    fn is_vararg_prep(&self) -> bool { todo!("phase-b: is_vararg_prep") }
+    fn is_in_top(&self) -> bool { todo!("phase-b: is_in_top") }
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -334,15 +399,15 @@ fn float_for_loop(state: &mut LuaState, ra: StackIdx) -> bool {
     // C: step = fltvalue(s2v(ra+2)); limit = fltvalue(s2v(ra+1));
     //    idx  = fltvalue(s2v(ra));
     let step = match state.get_at(ra + 2) {
-        LuaValue::Float(f) => *f,
+        LuaValue::Float(f) => f,
         _ => return false,
     };
     let limit = match state.get_at(ra + 1) {
-        LuaValue::Float(f) => *f,
+        LuaValue::Float(f) => f,
         _ => return false,
     };
     let idx = match state.get_at(ra) {
-        LuaValue::Float(f) => *f,
+        LuaValue::Float(f) => f,
         _ => return false,
     };
     // C: idx = luai_numadd(L, idx, step);
@@ -815,7 +880,7 @@ pub(crate) fn concat(state: &mut LuaState, total: i32) -> Result<(), LuaError> {
                 // C: if (l >= MAX_SIZE - sizeof(TString) - tl) luaG_runerror
                 if l >= usize::MAX - total_len {
                     // pop strings to avoid wasting stack
-                    state.set_top(top - total as u32);
+                    state.set_top(top - total as i32);
                     return Err(LuaError::runtime(format_args!("string length overflow")));
                 }
                 total_len += l;
@@ -938,6 +1003,21 @@ pub(crate) fn fmodf(m: f64, n: f64) -> f64 {
     }
 }
 
+/// Phase-B stub for integer floor-mod.
+pub(crate) fn int_floor_mod(_state: &mut LuaState, _a: i64, _b: i64) -> Result<i64, LuaError> {
+    todo!("phase-b: int_floor_mod")
+}
+
+/// Phase-B stub for integer floor-div.
+pub(crate) fn int_floor_div(_state: &mut LuaState, _a: i64, _b: i64) -> Result<i64, LuaError> {
+    todo!("phase-b: int_floor_div")
+}
+
+/// Phase-B stub for float floor-mod.
+pub(crate) fn float_floor_mod(_state: &mut LuaState, _a: f64, _b: f64) -> Result<f64, LuaError> {
+    todo!("phase-b: float_floor_mod")
+}
+
 /// C: `lua_Integer luaV_shiftl(lua_Integer x, lua_Integer y)`
 /// Left shift; right shift is shift-left by negated count.
 pub(crate) fn shiftl(x: i64, y: i64) -> i64 {
@@ -991,7 +1071,7 @@ pub(crate) fn finish_op(state: &mut LuaState) -> Result<(), LuaError> {
     //    StkId base = ci->func.p + 1;
     //    Instruction inst = *(ci->u.l.savedpc - 1);
     //    OpCode op = GET_OPCODE(inst);
-    let ci = state.current_ci();
+    let ci = state.current_ci_idx();
     let base = state.ci_base(ci);
     let inst = state.ci_prev_instruction(ci);
     let op = inst.opcode();
@@ -2031,7 +2111,7 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                         if i.test_k() {
                             state.ci_nres_set(ci, n as i32);
                             let ci_top = state.ci_top(ci);
-                            if state.top_idx() < ci_top {
+                            if state.top_idx().0 < ci_top.0 {
                                 state.set_top(ci_top);
                             }
                             state.close_upvals(base, -1)?; // CLOSEKTOP

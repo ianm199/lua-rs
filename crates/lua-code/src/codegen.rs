@@ -26,18 +26,269 @@ use crate::opcodes::{
     NO_REG, MAXINDEXRK, LFIELDS_PER_FLUSH,
 };
 
-// Cross-crate types — unresolved until Phase B; expected E0432 errors.
 use lua_types::error::LuaError;
 use lua_types::value::LuaValue;
 use lua_types::string::LuaString;
 use lua_types::gc::GcRef;
-// TODO(port): exact module paths for these depend on crate layout finalized in Phase B
-use lua_parse::parser::{FuncState, ExprDesc, ExprKind};
-use lua_parse::lexer::LexState;
-use lua_vm::state::LuaState;
-use lua_vm::proto::LuaProto;
-use lua_vm::tagmethods::TagMethod;
-use lua_vm::table::LuaTable;
+use lua_types::tagmethod::TagMethod;
+
+// ─── PHASE B PLACEHOLDERS ─────────────────────────────────────────────────────
+//
+// The following types live in `lua-parse` (`FuncState`, `ExprDesc`, `ExprKind`,
+// `LexState`) and `lua-vm` (`LuaState`, `LuaTable`).  Importing them from those
+// crates would create a dependency cycle (`lua-vm` depends on `lua-code`), so
+// we keep stub shapes here in Phase B.  The real definitions land when those
+// crates fully exist; the field/method signatures below are inferred from the
+// concrete usage in `codegen.rs`.
+
+/// PHASE B: real definition lives in lua-types (`lua_types::proto::LuaProto`),
+/// but it stores `Vec<lua_types::opcode::Instruction>` — a barebones u32 wrapper
+/// without the `arg_a` / `set_opcode` / `is_in_top` / etc. methods that the
+/// code generator calls.  Those methods live on the local
+/// `crate::opcodes::Instruction` type.  Until the two `Instruction` types are
+/// unified (Phase B), `FuncState` carries a local proto shape that uses the
+/// methodful local `Instruction`.
+pub struct LuaProto {
+    pub numparams: u8,
+    pub is_vararg: bool,
+    pub maxstacksize: u8,
+    pub k: Vec<LuaValue>,
+    pub code: Vec<Instruction>,
+    pub lineinfo: Vec<i8>,
+    pub abslineinfo: Vec<AbsLineInfo>,
+}
+
+/// PHASE B: mirrors `lua_types::proto::AbsLineInfo`; kept local so it pairs
+/// with the local `LuaProto` placeholder above.
+#[derive(Clone, Copy)]
+pub struct AbsLineInfo {
+    pub pc: i32,
+    pub line: i32,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.
+pub struct FuncState {
+    pub f: LuaProto,
+    pub pc: i32,
+    pub lasttarget: i32,
+    pub previousline: i32,
+    pub iwthabs: u8,
+    pub nabslineinfo: i32,
+    pub nactvar: u8,
+    pub freereg: u8,
+    pub nk: i32,
+    pub needclose: bool,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.  Mirrors the C `expdesc` struct (a tagged kind plus a
+/// payload union); the union becomes a plain struct here so every variant's
+/// fields are addressable.
+pub struct ExprDesc {
+    pub k: ExprKind,
+    pub t: i32,
+    pub f: i32,
+    pub u: ExprDescU,
+}
+
+impl Clone for ExprDesc {
+    fn clone(&self) -> Self {
+        ExprDesc {
+            k: self.k,
+            t: self.t,
+            f: self.f,
+            u: ExprDescU {
+                info: self.u.info,
+                ival: self.u.ival,
+                nval: self.u.nval,
+                strval: self.u.strval.clone(),
+                var: self.u.var,
+                ind: self.u.ind,
+            },
+        }
+    }
+}
+
+impl ExprDesc {
+    /// C: `static const expdesc ef = {VKINT, {0}, NO_JUMP, NO_JUMP};`
+    /// PHASE B: a zero `VKINT` literal used as a synthetic operand by the
+    /// constant-folding helpers in `prefix()`.
+    pub fn const_zero() -> Self {
+        todo!("PHASE B: ExprDesc::const_zero — real shape requires GcRef<LuaString> default")
+    }
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.  The C union becomes a struct: simultaneous fields are
+/// harmless because Phase B will gate them by `ExprKind`.
+pub struct ExprDescU {
+    pub info: i32,
+    pub ival: i64,
+    pub nval: f64,
+    pub strval: GcRef<LuaString>,
+    pub var: ExprDescVar,
+    pub ind: ExprDescInd,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.
+#[derive(Clone, Copy)]
+pub struct ExprDescVar {
+    pub ridx: u8,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.
+#[derive(Clone, Copy)]
+pub struct ExprDescInd {
+    pub t: u8,
+    pub idx: i16,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.  Variant set comes from the `ExprKind::V*` literals
+/// referenced in `codegen.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExprKind {
+    VCall,
+    VConst,
+    VFalse,
+    VIndexI,
+    VIndexStr,
+    VIndexUp,
+    VIndexed,
+    VJmp,
+    VK,
+    VKFlt,
+    VKInt,
+    VKStr,
+    VLocal,
+    VNil,
+    VNonReloc,
+    VReloc,
+    VTrue,
+    VUpVal,
+    VVarArg,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.
+pub struct LexState {
+    pub t: LexToken,
+    pub dyd: Dyndata,
+    pub lastline: i32,
+    pub h: GcRef<LuaTable>,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.
+pub struct LexToken {
+    pub token: i32,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.
+pub struct Dyndata {
+    pub actvar: Vec<ActvarEntry>,
+}
+
+/// PHASE B: real definition lives in lua-parse; placeholder shape inferred
+/// from codegen usage.
+pub struct ActvarEntry {
+    pub k: LuaValue,
+}
+
+/// PHASE B: real definition lives in lua-vm; placeholder shape inferred from
+/// codegen usage (only `equal_obj` and `raw_arith` are called here).
+pub struct LuaState {
+    _private: (),
+}
+
+impl LuaState {
+    pub fn equal_obj(&self, _mt: Option<()>, _a: &LuaValue, _b: &LuaValue) -> bool {
+        todo!("PHASE B: LuaState::equal_obj — lives in lua-vm")
+    }
+
+    pub fn raw_arith(
+        &mut self,
+        _op: i32,
+        _a: &LuaValue,
+        _b: &LuaValue,
+    ) -> Result<LuaValue, LuaError> {
+        todo!("PHASE B: LuaState::raw_arith — lives in lua-vm")
+    }
+}
+
+/// PHASE B: the runtime table type lives in lua-vm; the existing
+/// `lua_types::value::LuaTable` is a forward-decl with no methods.  We re-use
+/// that type for `ls.h` so it can be `clone()`d into `LuaValue::Table`; the
+/// `get` / `finish_set` operations are exposed here as free-function shims
+/// (they will become real method calls in Phase B).
+pub use lua_types::value::LuaTable;
+
+/// PHASE B: real impl lives in lua-vm (`LuaTable::get`).
+fn lex_h_get(_table: &GcRef<LuaTable>, _state: &LuaState, _key: &LuaValue) -> LuaValue {
+    todo!("PHASE B: LuaTable::get — lives in lua-vm")
+}
+
+/// PHASE B: real impl lives in lua-vm (`LuaTable::finish_set`).
+fn lex_h_finish_set(
+    _table: &GcRef<LuaTable>,
+    _state: &mut LuaState,
+    _key: &LuaValue,
+    _val: &LuaValue,
+) -> Result<(), LuaError> {
+    todo!("PHASE B: LuaTable::finish_set — lives in lua-vm")
+}
+
+/// PHASE B: real definition for `TagMethod::from_delta` lives in lua-vm; this
+/// shim performs the offset math locally so codegen can keep its
+/// `binopr2_tm`-style ports.
+#[inline]
+fn tag_method_from_delta(base: TagMethod, delta: i32) -> TagMethod {
+    let raw = (base as i32 + delta) as u8;
+    use TagMethod::*;
+    match raw {
+        0  => Index,
+        1  => NewIndex,
+        2  => Gc,
+        3  => Mode,
+        4  => Len,
+        5  => Eq,
+        6  => Add,
+        7  => Sub,
+        8  => Mul,
+        9  => Mod,
+        10 => Pow,
+        11 => Div,
+        12 => Idiv,
+        13 => Band,
+        14 => Bor,
+        15 => Bxor,
+        16 => Shl,
+        17 => Shr,
+        18 => Unm,
+        19 => Bnot,
+        20 => Lt,
+        21 => Le,
+        22 => Concat,
+        23 => Call,
+        24 => Close,
+        _  => todo!("PHASE B: TagMethod::from_delta out-of-range"),
+    }
+}
+
+/// PHASE B: real definition for `OpCode::from_delta` lives in lua-code/opcodes
+/// but isn't wired up yet; this shim performs the offset cast.
+#[inline]
+fn opcode_from_delta(base: OpCode, delta: i32) -> OpCode {
+    let raw = (base as i32 + delta) as u32;
+    match OpCode::from_u32(raw) {
+        Some(op) => op,
+        None => todo!("PHASE B: OpCode::from_delta out-of-range"),
+    }
+}
 
 // ─── Constants (lcode.h + local) ──────────────────────────────────────────────
 
@@ -263,7 +514,7 @@ pub(crate) fn nil(
     let mut l = from + n - 1; // last register to set nil
     if let Some(prev_idx) = previous_instruction_idx(fs) {
         let prev = fs.f.code[prev_idx];
-        if prev.opcode() == OpCode::LoadNil {
+        if prev.opcode() == Some(OpCode::LoadNil) {
             // C: int pfrom = GETARG_A(*previous); int pl = pfrom + GETARG_B(*previous);
             let pfrom = prev.arg_a() as i32;
             let pl = pfrom + prev.arg_b() as i32;
@@ -301,7 +552,7 @@ fn fixjump(fs: &mut FuncState, ls: &LexState, pc: i32, dest: i32) -> Result<(), 
     if !((-OFFSET_S_J <= offset) && (offset <= MAXARG_S_J as i32 - OFFSET_S_J)) {
         return Err(LuaError::syntax(format_args!("control structure too long")));
     }
-    debug_assert!(fs.f.code[pc as usize].opcode() == OpCode::Jmp);
+    debug_assert!(fs.f.code[pc as usize].opcode() == Some(OpCode::Jmp));
     fs.f.code[pc as usize].set_arg_s_j(offset);
     Ok(())
 }
@@ -378,10 +629,11 @@ pub(crate) fn getlabel(fs: &mut FuncState) -> i32 {
 fn getjumpcontrol(fs: &FuncState, pc: i32) -> usize {
     let pi = pc as usize;
     if pi >= 1 {
-        let prev_op = fs.f.code[pi - 1].opcode();
-        // C: testTMode(GET_OPCODE(*(pi-1)))
-        if (crate::opcodes::lua_p_opmodes(prev_op as usize) & (1 << 4)) != 0 {
-            return pi - 1;
+        if let Some(prev_op) = fs.f.code[pi - 1].opcode() {
+            // C: testTMode(GET_OPCODE(*(pi-1)))
+            if crate::opcodes::test_t_mode(prev_op) {
+                return pi - 1;
+            }
         }
     }
     pi
@@ -390,7 +642,7 @@ fn getjumpcontrol(fs: &FuncState, pc: i32) -> usize {
 // C: static int patchtestreg (FuncState *fs, int node, int reg) { ... }
 fn patchtestreg(fs: &mut FuncState, node: i32, reg: u32) -> bool {
     let ctrl = getjumpcontrol(fs, node);
-    if fs.f.code[ctrl].opcode() != OpCode::TestSet {
+    if fs.f.code[ctrl].opcode() != Some(OpCode::TestSet) {
         return false;
     }
     if reg != NO_REG && reg != fs.f.code[ctrl].arg_b() {
@@ -475,7 +727,7 @@ fn savelineinfo(
     if need_abs {
         // C: luaM_growvector(fs->ls->L, f->abslineinfo, fs->nabslineinfo, ...)
         // PERF(port): reserve_or_grow call omitted; Vec::push handles growth
-        fs.f.abslineinfo.push(lua_vm::proto::AbsLineInfo { pc, line });
+        fs.f.abslineinfo.push(AbsLineInfo { pc, line });
         fs.nabslineinfo += 1;
         linedif = ABS_LINE_INFO;
         fs.iwthabs = 1;
@@ -636,7 +888,7 @@ fn code_no_state(
         fs.iwthabs += 1;
     } else {
         fs.f.lineinfo[pc] = ABS_LINE_INFO;
-        fs.f.abslineinfo.push(lua_vm::proto::AbsLineInfo { pc: pc as i32, line: ls.lastline });
+        fs.f.abslineinfo.push(AbsLineInfo { pc: pc as i32, line: ls.lastline });
         fs.nabslineinfo += 1;
         fs.iwthabs = 1;
     }
@@ -750,7 +1002,7 @@ fn addk(
     key: LuaValue,
     v: LuaValue,
 ) -> Result<i32, LuaError> {
-    let idx = ls.h.get(state, &key);
+    let idx = lex_h_get(&ls.h, state, &key);
     let mut k: i32;
     if let LuaValue::Int(ki) = idx {
         k = ki as i32;
@@ -765,7 +1017,7 @@ fn addk(
     }
     k = fs.nk;
     let val = LuaValue::Int(k as i64);
-    ls.h.finish_set(state, &key, &val)?;
+    lex_h_finish_set(&ls.h, state, &key, &val)?;
     while fs.f.k.len() <= k as usize {
         fs.f.k.push(LuaValue::Nil);
     }
@@ -1083,7 +1335,7 @@ fn need_value(fs: &FuncState, list: i32) -> bool {
     let mut list = list;
     while list != NO_JUMP {
         let ctrl = getjumpcontrol(fs, list);
-        if fs.f.code[ctrl].opcode() != OpCode::TestSet {
+        if fs.f.code[ctrl].opcode() != Some(OpCode::TestSet) {
             return true;
         }
         list = getjump(fs, list);
@@ -1307,7 +1559,7 @@ fn jumponcond(
 ) -> Result<i32, LuaError> {
     if e.k == ExprKind::VReloc {
         let ie = fs.f.code[e.u.info as usize];
-        if ie.opcode() == OpCode::Not {
+        if ie.opcode() == Some(OpCode::Not) {
             removelastinstruction(fs);
             let b = ie.arg_b();
             return condjump(fs, ls, OpCode::Test, b, 0, 0, !cond as u32);
@@ -1549,7 +1801,7 @@ fn binopr2op(opr: BinOpr, baser: BinOpr, base: OpCode) -> OpCode {
     let delta = (opr as u8 - baser as u8) as i32;
     // TODO(port): OpCode::from_u8 or similar cast needed; using transmute-equivalent
     // SAFETY: not applicable (no unsafe); Phase B must implement OpCode::from_i32
-    OpCode::from_delta(base, delta)
+    opcode_from_delta(base, delta)
 }
 
 // C: l_sinline OpCode unopr2op (UnOpr opr) { ... }
@@ -1557,7 +1809,7 @@ fn binopr2op(opr: BinOpr, baser: BinOpr, base: OpCode) -> OpCode {
 fn unopr2op(opr: UnOpr) -> OpCode {
     // C: cast(OpCode, (cast_int(opr) - cast_int(OPR_MINUS)) + cast_int(OP_UNM))
     let delta = opr as i32 - UnOpr::Minus as i32;
-    OpCode::from_delta(OpCode::Unm, delta)
+    opcode_from_delta(OpCode::Unm, delta)
 }
 
 // C: l_sinline TMS binopr2TM (BinOpr opr) { ... }
@@ -1566,7 +1818,7 @@ fn binopr2_tm(opr: BinOpr) -> TagMethod {
     // C: cast(TMS, (cast_int(opr) - cast_int(OPR_ADD)) + cast_int(TM_ADD))
     let delta = opr as i32 - BinOpr::Add as i32;
     debug_assert!(delta >= 0);
-    TagMethod::from_delta(TagMethod::Add, delta)
+    tag_method_from_delta(TagMethod::Add, delta)
 }
 
 // ─── Binary / unary code emission ────────────────────────────────────────────
@@ -1923,7 +2175,7 @@ fn codeconcat(
 ) -> Result<(), LuaError> {
     let nv = fs.nactvar as i32;
     if let Some(ie2_idx) = previous_instruction_idx(fs) {
-        if fs.f.code[ie2_idx].opcode() == OpCode::Concat {
+        if fs.f.code[ie2_idx].opcode() == Some(OpCode::Concat) {
             let n = fs.f.code[ie2_idx].arg_b() as i32;
             debug_assert_eq!(e1.u.info + 1, fs.f.code[ie2_idx].arg_a() as i32);
             // C: freeexp(fs, e2)
@@ -2044,7 +2296,7 @@ pub(crate) fn fixline(
         fs.iwthabs += 1;
     } else {
         fs.f.lineinfo[pc] = ABS_LINE_INFO;
-        fs.f.abslineinfo.push(lua_vm::proto::AbsLineInfo { pc: pc as i32, line });
+        fs.f.abslineinfo.push(AbsLineInfo { pc: pc as i32, line });
         fs.nabslineinfo += 1;
         fs.iwthabs = 1;
     }
@@ -2104,7 +2356,7 @@ fn finaltarget(code: &[Instruction], mut i: i32) -> i32 {
     // avoid infinite loops: cap at 100 iterations
     for _ in 0..100 {
         let pc = code[i as usize];
-        if pc.opcode() != OpCode::Jmp { break; }
+        if pc.opcode() != Some(OpCode::Jmp) { break; }
         i += pc.arg_s_j() + 1;
     }
     i
@@ -2124,7 +2376,7 @@ pub(crate) fn finish(
                     == fs.f.code[i as usize].is_in_top()
         );
         match opcode {
-            OpCode::Return0 | OpCode::Return1 => {
+            Some(OpCode::Return0) | Some(OpCode::Return1) => {
                 if !fs.needclose && !fs.f.is_vararg {
                     continue; // no extra work
                 }
@@ -2135,12 +2387,12 @@ pub(crate) fn finish(
                 if fs.needclose { pc.set_arg_k(1); }
                 if fs.f.is_vararg { pc.set_arg_c(fs.f.numparams as u32 + 1); }
             }
-            OpCode::Return | OpCode::TailCall => {
+            Some(OpCode::Return) | Some(OpCode::TailCall) => {
                 let pc = &mut fs.f.code[i as usize];
                 if fs.needclose { pc.set_arg_k(1); }
                 if fs.f.is_vararg { pc.set_arg_c(fs.f.numparams as u32 + 1); }
             }
-            OpCode::Jmp => {
+            Some(OpCode::Jmp) => {
                 let target = {
                     let code_slice = &fs.f.code[..];
                     finaltarget(code_slice, i)

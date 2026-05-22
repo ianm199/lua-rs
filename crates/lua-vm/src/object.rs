@@ -5,6 +5,7 @@
 // TODO(port): resolve import paths — all `crate::*` paths below are speculative;
 // Phase B will reconcile against the actual module tree.
 use crate::state::LuaState;
+#[allow(unused_imports)] use crate::prelude::*;
 use lua_types::{LuaValue, GcRef, LuaString, StackIdx};
 use lua_types::error::LuaError;
 use lua_types::arith::ArithOp;
@@ -104,13 +105,13 @@ fn int_arith(state: &mut LuaState, op: ArithOp, v1: i64, v2: i64) -> Result<i64,
         ArithOp::Mod => crate::vm::int_floor_mod(state, v1, v2),
         // C: case LUA_OPIDIV: return luaV_idiv(L, v1, v2);
         // TODO(port): confirm function path for integer floor-div in lvm.rs
-        ArithOp::IDiv => crate::vm::int_floor_div(state, v1, v2),
+        ArithOp::Idiv => crate::vm::int_floor_div(state, v1, v2),
         // C: case LUA_OPBAND: return intop(&, v1, v2);
-        ArithOp::BAnd => Ok(v1 & v2),
+        ArithOp::Band => Ok(v1 & v2),
         // C: case LUA_OPBOR:  return intop(|, v1, v2);
-        ArithOp::BOr => Ok(v1 | v2),
+        ArithOp::Bor => Ok(v1 | v2),
         // C: case LUA_OPBXOR: return intop(^, v1, v2);
-        ArithOp::BXor => Ok(v1 ^ v2),
+        ArithOp::Bxor => Ok(v1 ^ v2),
         // C: case LUA_OPSHL: return luaV_shiftl(v1, v2);
         // TODO(port): confirm function path for shift-left in lvm.rs
         ArithOp::Shl => Ok(crate::vm::shiftl(v1, v2)),
@@ -120,7 +121,7 @@ fn int_arith(state: &mut LuaState, op: ArithOp, v1: i64, v2: i64) -> Result<i64,
         ArithOp::Unm => Ok((0u64).wrapping_sub(v1 as u64) as i64),
         // C: case LUA_OPBNOT: return intop(^, ~l_castS2U(0), v1);
         //    l_castS2U(0) → 0u64, ~0u64 = 0xFFFFFFFFFFFFFFFF = !0u64
-        ArithOp::BNot => Ok((!0u64 ^ v1 as u64) as i64),
+        ArithOp::Bnot => Ok((!0u64 ^ v1 as u64) as i64),
         // C: default: lua_assert(0); return 0;
         _ => {
             debug_assert!(false, "int_arith called with non-integer op");
@@ -150,7 +151,7 @@ fn float_arith(state: &mut LuaState, op: ArithOp, v1: f64, v2: f64) -> Result<f6
         // C: case LUA_OPPOW: return luai_numpow(L, v1, v2);
         ArithOp::Pow => Ok(if v2 == 2.0 { v1 * v1 } else { v1.powf(v2) }),
         // C: case LUA_OPIDIV: return luai_numidiv(L, v1, v2);
-        ArithOp::IDiv => Ok((v1 / v2).floor()),
+        ArithOp::Idiv => Ok((v1 / v2).floor()),
         // C: case LUA_OPUNM: return luai_numunm(L, v1);
         ArithOp::Unm => Ok(-v1),
         // C: case LUA_OPMOD: return luaV_modf(L, v1, v2);
@@ -184,14 +185,14 @@ pub fn raw_arith(
     match op {
         // C: case LUA_OPBAND: case LUA_OPBOR: case LUA_OPBXOR:
         // case LUA_OPSHL: case LUA_OPSHR: case LUA_OPBNOT: — integer-only ops
-        ArithOp::BAnd | ArithOp::BOr | ArithOp::BXor
-        | ArithOp::Shl | ArithOp::Shr | ArithOp::BNot => {
+        ArithOp::Band | ArithOp::Bor | ArithOp::Bxor
+        | ArithOp::Shl | ArithOp::Shr | ArithOp::Bnot => {
             // C: if (tointegerns(p1, &i1) && tointegerns(p2, &i2)) {
             //        setivalue(res, intarith(L, op, i1, i2));  return 1; }
             //    else return 0;
             if let (Some(i1), Some(i2)) = (
-                p1.to_integer_no_strconv(F2Imod::Eq),
-                p2.to_integer_no_strconv(F2Imod::Eq),
+                p1.to_integer_no_strconv(),
+                p2.to_integer_no_strconv(),
             ) {
                 *res = LuaValue::Int(int_arith(state, op, i1, i2)?);
                 Ok(true)
@@ -264,10 +265,11 @@ pub fn arith(
     if raw_arith(state, op, p1, p2, &mut temp)? {
         state.set_at(res, temp);
     } else {
-        // TODO(port): need TagMethod::from_arith_op(op) conversion helper;
-        // in C this is `cast(TMS, (op - LUA_OPADD) + TM_ADD)`.
-        let tm = TagMethod::from_arith_op(op);
-        state.try_bin_tm(p1, p2, res, tm)?;
+        // TODO(phase-b): `cast(TMS, (op - LUA_OPADD) + TM_ADD)` — needs a real
+        // ArithOp→TagMethod conversion helper in lua-types::tagmethod.
+        let _tm: TagMethod = todo!("phase-b: TagMethod::from_arith_op");
+        let _ = state;
+        let _ = (p1, p2);
     }
     Ok(())
 }
@@ -742,7 +744,7 @@ fn pushstr(buf: &mut BufFs, state: &mut LuaState, str_bytes: &[u8]) -> Result<()
     //    if (!buff->pushed) buff->pushed = 1;
     //    else luaV_concat(L, 2);
     let s = state.intern_str(str_bytes)?;
-    state.push(LuaValue::Str(s))?;
+    state.push(LuaValue::Str(s));
     if !buf.pushed {
         buf.pushed = true;
     } else {
@@ -922,7 +924,7 @@ pub fn push_vfstring<'a>(
     // PORT NOTE: in C this returns a `const char *` into the TString; in Rust
     // we return the GcRef<LuaString> directly.
     // TODO(port): state.peek_string_at_top() path needs to be confirmed.
-    state.peek_string_at_top()
+    Ok(state.peek_string_at_top())
 }
 
 /// Variadic entry point; delegates to `push_vfstring`.
