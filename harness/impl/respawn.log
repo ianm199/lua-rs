@@ -102,3 +102,105 @@
 [2026-05-16T20:39:34Z respawn] respawn watchdog finished after 50 attempts (or success)
 [2026-05-16T20:41:11Z respawn] respawn watchdog starting. GLOBAL_CAP=$2000.00 PER_RUN_MAX_ITER=80 OUTER_MAX_RUNS=50
 [2026-05-16T20:41:11Z respawn] outer run #1 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:43:45Z respawn] outer run #1 exited rc=0
+[2026-05-16T20:43:50Z respawn] outer run #2 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:43:50Z respawn] outer run #2 exited rc=0
+[2026-05-16T20:43:55Z respawn] outer run #3 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:43:56Z respawn] outer run #3 exited rc=0
+[2026-05-16T20:44:01Z respawn] outer run #4 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:01Z respawn] outer run #4 exited rc=0
+[2026-05-16T20:44:06Z respawn] outer run #5 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:07Z respawn] outer run #5 exited rc=0
+[2026-05-16T20:44:12Z respawn] outer run #6 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:12Z respawn] outer run #6 exited rc=0
+[2026-05-16T20:44:17Z respawn] outer run #7 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:18Z respawn] outer run #7 exited rc=0
+[2026-05-16T20:44:23Z respawn] outer run #8 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:23Z respawn] outer run #8 exited rc=0
+[2026-05-16T20:44:28Z respawn] outer run #9 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:29Z respawn] outer run #9 exited rc=0
+[2026-05-16T20:44:34Z respawn] outer run #10 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:34Z respawn] outer run #10 exited rc=0
+[2026-05-16T20:44:39Z respawn] outer run #11 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:40Z respawn] outer run #11 exited rc=0
+[2026-05-16T20:44:45Z respawn] outer run #12 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:45Z respawn] outer run #12 exited rc=0
+[2026-05-16T20:44:50Z respawn] outer run #13 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:51Z respawn] outer run #13 exited rc=0
+[2026-05-16T20:44:56Z respawn] outer run #14 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:44:56Z respawn] outer run #14 exited rc=0
+[2026-05-16T20:45:01Z respawn] outer run #15 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:02Z respawn] outer run #15 exited rc=0
+[2026-05-16T20:45:07Z respawn] outer run #16 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:07Z respawn] outer run #16 exited rc=0
+[2026-05-16T20:45:12Z respawn] outer run #17 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:13Z respawn] outer run #17 exited rc=0
+[2026-05-16T20:45:18Z respawn] outer run #18 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:18Z respawn] outer run #18 exited rc=0
+[2026-05-16T20:45:23Z respawn] outer run #19 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:24Z respawn] outer run #19 exited rc=0
+[2026-05-16T20:45:29Z respawn] outer run #20 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:29Z respawn] outer run #20 exited rc=0
+[2026-05-16T20:45:34Z respawn] outer run #21 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:35Z respawn] outer run #21 exited rc=0
+[2026-05-16T20:45:40Z respawn] outer run #22 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:40Z respawn] outer run #22 exited rc=0
+[2026-05-16T20:45:45Z respawn] outer run #23 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:46Z respawn] outer run #23 exited rc=0
+[2026-05-16T20:45:51Z respawn] outer run #24 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:51Z respawn] outer run #24 exited rc=0
+[2026-05-16T20:45:56Z respawn] outer run #25 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:45:57Z respawn] outer run #25 exited rc=0
+[2026-05-16T20:46:02Z respawn] outer run #26 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:02Z respawn] outer run #26 exited rc=0
+[2026-05-16T20:46:07Z respawn] outer run #27 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:08Z respawn] outer run #27 exited rc=0
+[2026-05-16T20:46:13Z respawn] outer run #28 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:13Z respawn] outer run #28 exited rc=0
+[2026-05-16T20:46:18Z respawn] outer run #29 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:19Z respawn] outer run #29 exited rc=0
+[2026-05-16T20:46:24Z respawn] outer run #30 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:24Z respawn] outer run #30 exited rc=0
+[2026-05-16T20:46:29Z respawn] outer run #31 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:30Z respawn] outer run #31 exited rc=0
+[2026-05-16T20:46:35Z respawn] outer run #32 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:35Z respawn] outer run #32 exited rc=0
+[2026-05-16T20:46:40Z respawn] outer run #33 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:41Z respawn] outer run #33 exited rc=0
+[2026-05-16T20:46:46Z respawn] outer run #34 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:46Z respawn] outer run #34 exited rc=0
+[2026-05-16T20:46:51Z respawn] outer run #35 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:52Z respawn] outer run #35 exited rc=0
+[2026-05-16T20:46:57Z respawn] outer run #36 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:46:57Z respawn] outer run #36 exited rc=0
+[2026-05-16T20:47:02Z respawn] outer run #37 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:03Z respawn] outer run #37 exited rc=0
+[2026-05-16T20:47:08Z respawn] outer run #38 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:08Z respawn] outer run #38 exited rc=0
+[2026-05-16T20:47:13Z respawn] outer run #39 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:14Z respawn] outer run #39 exited rc=0
+[2026-05-16T20:47:19Z respawn] outer run #40 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:19Z respawn] outer run #40 exited rc=0
+[2026-05-16T20:47:24Z respawn] outer run #41 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:25Z respawn] outer run #41 exited rc=0
+[2026-05-16T20:47:30Z respawn] outer run #42 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:30Z respawn] outer run #42 exited rc=0
+[2026-05-16T20:47:35Z respawn] outer run #43 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:36Z respawn] outer run #43 exited rc=0
+[2026-05-16T20:47:41Z respawn] outer run #44 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:41Z respawn] outer run #44 exited rc=0
+[2026-05-16T20:47:46Z respawn] outer run #45 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:47Z respawn] outer run #45 exited rc=0
+[2026-05-16T20:47:52Z respawn] outer run #46 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:52Z respawn] outer run #46 exited rc=0
+[2026-05-16T20:47:57Z respawn] outer run #47 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:47:58Z respawn] outer run #47 exited rc=0
+[2026-05-16T20:48:03Z respawn] outer run #48 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:48:03Z respawn] outer run #48 exited rc=0
+[2026-05-16T20:48:08Z respawn] outer run #49 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:48:09Z respawn] outer run #49 exited rc=0
+[2026-05-16T20:48:14Z respawn] outer run #50 starting (test: print("hello"); print(1+2); print("end"))
+[2026-05-16T20:48:14Z respawn] outer run #50 exited rc=0
+[2026-05-16T20:48:19Z respawn] respawn watchdog finished after 50 attempts (or success)
+[2026-05-16T20:52:29Z respawn] respawn watchdog starting. GLOBAL_CAP=$2000.00 PER_RUN_MAX_ITER=80 OUTER_MAX_RUNS=50
+[2026-05-16T20:52:29Z respawn] outer run #1 starting (test: print(1+2))

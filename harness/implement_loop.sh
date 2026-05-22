@@ -123,7 +123,8 @@ extract_real_error() {
     panic=$(grep -oE "panicked at [^:]+:[0-9]+:[0-9]+:.*" "$1" | head -1 | sed -E 's/^panicked at //')
     if [ -n "$panic" ]; then echo "$panic"; return; fi
     if grep -qE "^\[ok\] execution completed" "$1"; then
-        echo "execution completed with status=Ok but did NOT produce 'hello' on stdout — print() is reachable as a global but the call never actually invokes the C function, OR codegen produced empty bytecode (proto.code) so OP_CALL is never dispatched. Trace the call path: pcall_k → protected_call_raw → callnoyield → ccall_inner → precall → vm::execute → OP_CALL → state.precall(). Verify the compiled chunk's proto.code is non-empty (it should contain GETTABUP, LOADK, CALL, RETURN). If proto.code IS empty, the bug is in the parser/codegen: expression statements are not emitting instructions because luaK_dischargevars / luaK_exp2nextreg / luaK_indexed in crates/lua-parse/ are stubbed."
+        local actual; actual=$(grep -vE "^\[|warning|note|help|^\s*\||^\s*=|^\s*-->|^\s*$" "$1" | tail -20 | tr '\n' ',' )
+        echo "execution completed with status=Ok but program output did NOT match SUCCESS_MARKER='$SUCCESS_MARKER'. Actual recent output lines (comma-joined): $actual. Likely causes: (1) codegen emits incomplete bytecode for an expression — e.g. ARITH ops (OP_ADD/OP_ADDI/OP_ADDK) not wired, or (2) a VM dispatch arm uses todo!() that's being masked. Investigate by reading the proto.code for the test program — if missing OP_ADD or similar, the bug is in lua-parse/codegen; if the bytecode is correct but execution gives wrong result, the bug is in lua-vm/vm.rs dispatch."
         return
     fi
     echo "(no diagnosable error)"

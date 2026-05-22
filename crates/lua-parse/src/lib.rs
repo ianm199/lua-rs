@@ -607,6 +607,66 @@ fn reserve_reg(fs: &mut FuncState) -> u8 {
     r
 }
 
+/// Constant-folding `luaK_posfix` for arithmetic binary operators where both
+/// operands are already numeric literals (`KInt` / `KFlt`). Mirrors the
+/// `constfolding` branch in C's `luaK_posfix`: when both operands are
+/// numerals, the result is computed at compile time and stored back into
+/// `e1`. Non-foldable cases (variables, calls, comparisons, concat, logical
+/// ops) hit `todo!()` so they surface as the next iteration's blocker.
+fn cg_posfix_fold(
+    op: BinOpr,
+    e1: &mut ExprDesc,
+    e2: &mut ExprDesc,
+    _line: i32,
+) -> Result<(), LuaError> {
+    let promote = |k: ExprKind, u: &ExprPayload| -> Option<f64> {
+        match k {
+            ExprKind::KInt => Some(u.ival as f64),
+            ExprKind::KFlt => Some(u.nval),
+            _ => None,
+        }
+    };
+
+    if let (ExprKind::KInt, ExprKind::KInt) = (e1.k, e2.k) {
+        let a = e1.u.ival;
+        let b = e2.u.ival;
+        let r: Option<i64> = match op {
+            BinOpr::Add => Some(a.wrapping_add(b)),
+            BinOpr::Sub => Some(a.wrapping_sub(b)),
+            BinOpr::Mul => Some(a.wrapping_mul(b)),
+            BinOpr::Mod if b != 0 => Some(a.rem_euclid(b)),
+            BinOpr::IDiv if b != 0 => Some(a.div_euclid(b)),
+            BinOpr::BAnd => Some(a & b),
+            BinOpr::BOr  => Some(a | b),
+            BinOpr::BXor => Some(a ^ b),
+            _ => None,
+        };
+        if let Some(v) = r {
+            e1.k = ExprKind::KInt;
+            e1.u.ival = v;
+            return Ok(());
+        }
+    }
+    if let (Some(a), Some(b)) = (promote(e1.k, &e1.u), promote(e2.k, &e2.u)) {
+        let r: Option<f64> = match op {
+            BinOpr::Add => Some(a + b),
+            BinOpr::Sub => Some(a - b),
+            BinOpr::Mul => Some(a * b),
+            BinOpr::Div => Some(a / b),
+            BinOpr::Pow => Some(a.powf(b)),
+            _ => None,
+        };
+        if let Some(v) = r {
+            if v.is_finite() {
+                e1.k = ExprKind::KFlt;
+                e1.u.nval = v;
+                return Ok(());
+            }
+        }
+    }
+    todo!("phase-b: cg_posfix_fold non-foldable binop {:?} ({:?} {:?})", op, e1.k, e2.k)
+}
+
 /// Minimal `luaK_dischargevars` covering the cases the parser bootstrap can
 /// produce: `VUpVal`, `VIndexUp`, `VKStr`. Other variants are left untouched.
 /// Returns Ok(()) on success.
@@ -2257,7 +2317,7 @@ fn subexpr(
         // TODO(port): lua_code::infix(ls.fs.as_mut().unwrap(), op, v)?;
         let nextop = subexpr(ls, state, &mut v2, PRIORITY[op as usize].1 as i32)?;
         // C: luaK_posfix(ls->fs, op, v, &v2, line)
-        // TODO(port): lua_code::posfix(ls.fs.as_mut().unwrap(), op, v, &mut v2, line)?;
+        cg_posfix_fold(op, v, &mut v2, line)?;
         op = nextop;
     }
 
