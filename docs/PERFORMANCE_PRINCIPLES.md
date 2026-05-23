@@ -165,6 +165,25 @@ offenders in interpreters:
 - Constructing `String` for type-name lookups (PERF(port) callout in
   `tagmethods.rs:328`)
 
+**The hidden-allocation-in-helper pattern.** Watch out for innocuous-
+looking helpers that secretly allocate. Example (lua, fixed 3190288):
+`check_arg_string(idx)` returned `Vec<u8>` — calling code treated it
+as "argument coercion + tiny validation," but every call did
+`as_bytes().to_vec()` of the full source string. For `string.byte(s, i)`
+in a tight loop (e.g. iterating every byte of a 14 KB string), that's
+14000 calls × 14000-byte copies = ~200 MB of allocator churn per
+iteration — and the workload runs the loop 50 times. The fix was to
+hold a `GcRef<LuaString>` (one-pointer Copy) and borrow `.as_bytes()`,
+so the bytes stay heap-resident on the GC and the helper just adds a
+type check. **`string_ops_long` dropped from 2.25× to 1.58×** — first
+workload to fall below the 1.5× parity threshold. Max RSS for the
+workload also dropped from 116 MB to 7 MB.
+
+The general lesson: when a function is called N times in an inner loop,
+*every* allocation it does internally is multiplied by N. Cheap-looking
+one-liners (`x.to_vec()`, `format!(...)`, `Vec::new()`) deserve as much
+profile scrutiny as explicit `Box::new` constructions.
+
 ### 4. Inline-friendly fast paths
 
 If the inner loop is a method call that ends in a `match` on a tag,
@@ -175,6 +194,25 @@ match is too wide, splitting the cold cases into a separate function
 
 C-Lua's `vmcase`/`vmbreak` macros plus its `OP_GETI` / `OP_SETI`
 opcodes are the bytecode-level expression of this discipline.
+
+**The negative-result variant: clones aren't always the cost.** Example
+(lua, da9401e): we suspected `LuaValue::Clone` in the arith opcodes
+was a real cost — every `OP_ADD` cloned two operands to satisfy the
+borrow checker. We refactored to use primitive-tag accessors
+(`get_int_at` returns `Option<i64>`, no enum clone). **Result:
+mandelbrot improved (2.12× → 2.00×) but fibonacci was essentially
+unchanged** — the LLVM-inlined 24-byte enum copy was not material.
+The real fibonacci bottleneck is the dispatch machinery (precall,
+upvalue_get, instruction decode). Profile evidence beats hypothesis;
+sometimes the hypothesis was wrong about magnitude even when the
+direction is right.
+
+The fix landed anyway because (a) it's a structural improvement
+matching C-Lua's `op_arith_aux` shape, (b) float-heavy workloads
+benefit, (c) the new primitive accessors enable follow-up fixes on
+the ORDER/BITWISE opcodes. But the bench-driven discipline matters:
+we'd otherwise have claimed "fixed the fibonacci arith clones" when
+the truth is "fixed mandelbrot incidentally, fibonacci was elsewhere."
 
 ### 5. Reference-counted values: clone-vs-borrow
 
