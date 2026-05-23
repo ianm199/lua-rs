@@ -1,3 +1,14 @@
+warning: method `set_int_value` is never used
+   --> crates/lua-types/src/table.rs:896:8
+    |
+238 | impl TableInner {
+    | --------------- method in this implementation
+...
+896 |     fn set_int_value(&mut self, key: i64, value: LuaValue) -> Result<(), LuaError> {
+    |        ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
 warning: unused imports: `CallInfoIdx`, `CallInfo`, and `GlobalState`
   --> crates/lua-vm/src/api.rs:16:44
    |
@@ -375,21 +386,21 @@ warning: constant `LUA_EXTRASPACE` is never used
     |       ^^^^^^^^^^^^^^
 
 warning: function `inc_c_stack` is never used
-    --> crates/lua-vm/src/state.rs:3381:15
+    --> crates/lua-vm/src/state.rs:3399:15
      |
-3381 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
+3399 | pub(crate) fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
      |               ^^^^^^^^^^^
 
 warning: function `free_thread` is never used
-    --> crates/lua-vm/src/state.rs:3742:15
+    --> crates/lua-vm/src/state.rs:3767:15
      |
-3742 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
+3767 | pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
      |               ^^^^^^^^^^^
 
 warning: function `warn_error` is never used
-    --> crates/lua-vm/src/state.rs:4158:15
+    --> crates/lua-vm/src/state.rs:4184:15
      |
-4158 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
+4184 | pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
      |               ^^^^^^^^^^
 
 warning: type alias `LocalGcRef` is never used
@@ -542,9 +553,9 @@ warning: unused import: `LuaStatus`
    |                          ^^^^^^^^^
 
 warning: unused imports: `CompareOp` and `LuaDebug`
-  --> crates/lua-stdlib/src/string_lib.rs:19:87
+  --> crates/lua-stdlib/src/string_lib.rs:20:87
    |
-19 | use crate::state_stub::{LuaState, LuaStateStubExt as _, lua_CFunction, upvalue_index, CompareOp, LuaDebug};
+20 | use crate::state_stub::{LuaState, LuaStateStubExt as _, lua_CFunction, upvalue_index, CompareOp, LuaDebug};
    |                                                                                       ^^^^^^^^^  ^^^^^^^^
 
 warning: unused imports: `LuaDebug`, `lua_CFunction`, and `upvalue_index`
@@ -653,17 +664,17 @@ warning: unreachable statement
     = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
 
 warning: unused variable: `p_start`
-    --> crates/lua-stdlib/src/string_lib.rs:1152:14
+    --> crates/lua-stdlib/src/string_lib.rs:1153:14
      |
-1152 |         let (p_start, p_slice) = if anchor {
+1153 |         let (p_start, p_slice) = if anchor {
      |              ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_p_start`
      |
      = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
 
 warning: variable does not need to be mutable
-    --> crates/lua-stdlib/src/string_lib.rs:1624:9
+    --> crates/lua-stdlib/src/string_lib.rs:1616:9
      |
-1624 |     let mut buf = num2straux(n);
+1616 |     let mut buf = num2straux(n);
      |         ----^^^
      |         |
      |         help: remove this `mut`
@@ -671,9 +682,9 @@ warning: variable does not need to be mutable
      = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
 
 warning: unused variable: `state`
-    --> crates/lua-stdlib/src/string_lib.rs:2384:14
+    --> crates/lua-stdlib/src/string_lib.rs:2376:14
      |
-2384 | fn unpackint(state: &LuaState, data: &[u8], is_little: bool, size: usize, is_signed: bool) -> Result<i64, LuaError> {
+2376 | fn unpackint(state: &LuaState, data: &[u8], is_little: bool, size: usize, is_signed: bool) -> Result<i64, LuaError> {
      |              ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
 
 warning: unused variable: `label`
@@ -728,27 +739,27 @@ warning: variant `CountB` is never constructed
    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
 warning: constant `MAX_ITEM` is never used
-  --> crates/lua-stdlib/src/string_lib.rs:44:7
+  --> crates/lua-stdlib/src/string_lib.rs:45:7
    |
-44 | const MAX_ITEM: usize = 120;
+45 | const MAX_ITEM: usize = 120;
    |       ^^^^^^^^
 
 warning: constant `MAX_ITEM_F` is never used
-  --> crates/lua-stdlib/src/string_lib.rs:47:7
+  --> crates/lua-stdlib/src/string_lib.rs:48:7
    |
-47 | const MAX_ITEM_F: usize = 418;
+48 | const MAX_ITEM_F: usize = 418;
    |       ^^^^^^^^^^
 
 warning: constant `MAX_FORMAT` is never used
-  --> crates/lua-stdlib/src/string_lib.rs:50:7
+  --> crates/lua-stdlib/src/string_lib.rs:51:7
    |
-50 | const MAX_FORMAT: usize = 32;
+51 | const MAX_FORMAT: usize = 32;
    |       ^^^^^^^^^^
 
 warning: struct `GMatchState` is never constructed
-   --> crates/lua-stdlib/src/string_lib.rs:139:8
+   --> crates/lua-stdlib/src/string_lib.rs:140:8
     |
-139 | struct GMatchState {
+140 | struct GMatchState {
     |        ^^^^^^^^^^^
 
 warning: struct `LibReg` is never constructed
