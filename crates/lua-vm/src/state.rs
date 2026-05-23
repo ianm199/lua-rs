@@ -2336,20 +2336,7 @@ impl LuaState {
         let LuaValue::Table(tbl) = t else {
             return Err(LuaError::type_error(t, "get length of"));
         };
-        // PORT NOTE: C's `luaH_getn` returns a boundary i such that t[i] is
-        // present and t[i+1] is absent (or 0 if t[1] is absent), exploiting the
-        // hybrid array+hash layout. Phase B's LuaTable is a flat Vec<(K,V)> with
-        // no array part, so we linearly probe integer keys starting at 1. The
-        // rich impl in crates/lua-vm/src/table.rs lights up in Phase D.
-        // PERF(port): O(n) linear scan with O(n) lookups → O(n²); Phase D fixes.
-        let mut i: i64 = 1;
-        loop {
-            let v = tbl.get_int(i);
-            if matches!(v, LuaValue::Nil) {
-                return Ok(i - 1);
-            }
-            i += 1;
-        }
+        Ok(tbl.getn() as i64)
     }
     pub fn table_metatable(&mut self, v: &LuaValue) -> Option<GcRef<LuaTable>> {
         match v {
