@@ -61,9 +61,40 @@ The bolded rows are the bulk of the remaining gap, and **none of them are
 safety taxes**. They are choices we made to satisfy the borrow checker or to
 follow idiomatic Rust without thinking carefully about hot paths.
 
-**Realistic floor for a faithful safe-Rust port:** ~1.3–1.5× of C, with
-disciplined work on the recoverable rows. Not 2.6×, and not "parity" exactly,
-but close enough that real users wouldn't notice on most workloads.
+**The goal is parity (~1.0×), not "close enough."**
+
+The sibling project `redis-rs-port` reached full performance parity with
+upstream Valkey through exactly the kind of disciplined hot-path work
+described in this doc. There is no fundamental reason — no law of physics,
+no inherent Rust limitation — why a faithful safe-Rust port of an
+interpreter cannot reach the same place. Every unit of the remaining
+2.5× gap has a recoverable cause; the work is to find and fix them one
+at a time.
+
+What's different for an interpreter vs. a server like Valkey:
+
+- **Valkey** spends most of its wall-clock in I/O and syscalls (epoll,
+  socket reads/writes, packet parsing). The command-handling logic is a
+  small fraction of total time. Hot-path optimization there means
+  making the small CPU portion fast enough that I/O dominates again, at
+  which point parity is the natural state.
+- **Lua** is pure CPU. Every nanosecond of interpreter overhead is
+  naked CPU time — there's no I/O layer to hide behind. So our
+  remaining 2.5× *is* the bottleneck, by definition.
+
+That makes the work harder per unit of improvement, but it doesn't move
+the floor. The same disciplined "find a hot-path missed fast path, fix
+it surgically" pattern that got redis-rs-port to parity will get us there
+too. Earlier versions of this doc claimed "1.3–1.5× is the realistic
+floor" — that was a guess, not a measured limit. Discard it.
+
+**The last 1.0–1.2× of the gap** may require carefully-scoped `unsafe`
+(NaN-boxed value representation, `get_unchecked` on the stack, possibly
+`become` for tail-call dispatch when stabilized). Each of those would be
+a deliberate, well-contained `unsafe` block with its own correctness
+argument, not a wholesale departure from the `unsafe_code = "forbid"`
+default. `redis-rs-port` accepts the same trade-off in its network
+buffer and FFI code without compromising the overall safety story.
 
 ## What we've actually shipped (evidence)
 
@@ -215,9 +246,13 @@ profile data, both fixes would have aimed at the wrong target.
 The redis-rs-port discipline: every perf-shaped commit links the profile
 artifact that motivated it. We follow the same rule.
 
-## What won't help much without `unsafe`
+## What requires `unsafe` (the last increment to parity)
 
-For completeness, the things we can NOT recover without leaving safe Rust:
+The list below is what we can NOT recover purely in safe Rust. Each is a
+candidate for carefully-scoped `unsafe` once the safe-Rust work plateaus.
+None of these are blockers — the bulk of the gap is recoverable without
+them, as the redis-rs-port precedent shows. They become relevant for the
+final 1.0–1.2× push toward parity.
 
 - **NaN-boxing the value representation.** C-Lua's `TValue` is 16 bytes;
   pointers and small ints are encoded in NaN bit patterns of a 64-bit
@@ -243,8 +278,10 @@ For completeness, the things we can NOT recover without leaving safe Rust:
   `musttail` (LLVM attribute, not exposed) but those require nightly.
 
 Combined, the unsafe-only opportunities account for maybe 1.15–1.25× of
-additional speedup. Worth it for a production interpreter; not the
-headline.
+additional speedup. **That's the difference between "well within striking
+distance of parity" and "actually at parity."** Worth doing once we've
+exhausted the safe-Rust hot-path work — same trade-off redis-rs-port
+made for its network buffer and FFI code paths.
 
 ## Future: where a JIT would fit
 
