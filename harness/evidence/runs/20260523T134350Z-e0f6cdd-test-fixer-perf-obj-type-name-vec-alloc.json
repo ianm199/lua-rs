@@ -1,0 +1,81 @@
+{
+  "captured_ts": "2026-05-23T13:54:09.251184Z",
+  "gate_results": {
+    "cargo_check_lua-vm": {
+      "detail": "skipped (earlier gate failed)",
+      "ok": null
+    },
+    "cargo_check_workspace": {
+      "detail": "skipped (earlier gate failed)",
+      "ok": null
+    },
+    "cargo_test_lua-vm_tagmethods": {
+      "detail": "skipped (earlier gate failed)",
+      "ok": null
+    },
+    "no_out_of_scope_changes": {
+      "detail": "out-of-scope changed files: .claude/worktrees/agent-a0c4d7c805c6f1127, .claude/worktrees/agent-a122a3b92258fd7e2, .claude/worktrees/agent-a227f50474a35f744, .claude/worktrees/agent-a287ab4456d3786b2, .claude/worktrees/agent-a2e6489db72490802, .claude/worktrees/agent-a32372c7d91d04a10, .claude/worktrees/agent-a3cff2dc28600646d, .claude/worktrees/agent-a4076e2d1ac11932b, .claude/worktrees/agent-a41e53ce73592160f, .claude/worktrees/agent-a45cc5a47e3378549, .claude/worktrees/agent-a4bf5249b1d047930, .claude/worktrees/agent-a5496c41ee3cf82c9, ... +20 more",
+      "ok": false
+    },
+    "oracle_rust_vs_reference": {
+      "detail": "skipped (earlier gate failed)",
+      "ok": null
+    },
+    "target_files_modified": {
+      "detail": "test-fixer touched 1/1 candidate target(s)",
+      "ok": true
+    },
+    "trailer_present": {
+      "detail": "skipped (earlier gate failed)",
+      "ok": null
+    }
+  },
+  "harness_context": {
+    "commit": "a55fa43",
+    "git_dirty": true,
+    "git_status_short": [
+      " M .claude/worktrees/agent-a0c4d7c805c6f1127",
+      " M .claude/worktrees/agent-a122a3b92258fd7e2",
+      " M .claude/worktrees/agent-a227f50474a35f744",
+      " M .claude/worktrees/agent-a287ab4456d3786b2",
+      " M .claude/worktrees/agent-a2e6489db72490802",
+      " M .claude/worktrees/agent-a32372c7d91d04a10",
+      " M .claude/worktrees/agent-a3cff2dc28600646d",
+      " M .claude/worktrees/agent-a4076e2d1ac11932b",
+      " M .claude/worktrees/agent-a41e53ce73592160f",
+      " M .claude/worktrees/agent-a45cc5a47e3378549",
+      " M .claude/worktrees/agent-a4bf5249b1d047930",
+      " M .claude/worktrees/agent-a5496c41ee3cf82c9",
+      " M .claude/worktrees/agent-a78227b37e1b30b7e",
+      " M .claude/worktrees/agent-a7fcacb7450d302a9",
+      " M .claude/worktrees/agent-a8083831579e0ffd1",
+      " M .claude/worktrees/agent-a8268512c702a2ca1",
+      " M .claude/worktrees/agent-a86aa43ac9c0b2a3d",
+      " M .claude/worktrees/agent-a8f4bfd7642e42fad",
+      " M .claude/worktrees/agent-a91bc9ac6a0211d0a",
+      " M .claude/worktrees/agent-a969829d177cae990",
+      " M .claude/worktrees/agent-aa4920ddc13972d60",
+      " M .claude/worktrees/agent-aa6e5c9f19103c7e4",
+      " M .claude/worktrees/agent-ac14bc4de38192508",
+      " M .claude/worktrees/agent-ac7126ea6cd4a079b",
+      " M .claude/worktrees/agent-acacdf716b7d0f636",
+      " M .claude/worktrees/agent-ad6c80c855439690b",
+      " M .claude/worktrees/agent-ad915e819065c299c",
+      " M .claude/worktrees/agent-adf47834f1f9b3005",
+      " M .claude/worktrees/agent-ae51d0e314fe1835e",
+      " M .claude/worktrees/agent-ae62591602981c664",
+      " M .claude/worktrees/agent-af9e88a6dc78c1a3f",
+      " M .claude/worktrees/agent-afb541d64485bb915"
+    ],
+    "run_id": "loop-33aa91c06583647a",
+    "target_commit": "a55fa43afb52426ce4f976e021242a40779bf6e7",
+    "tree_hash": "e80b8934d5b6478c162c6d5d279a4b3e185bc8845c426867163707b3ad443540"
+  },
+  "kind": "agent_transcript",
+  "packet": "perf-obj-type-name-vec-alloc",
+  "prompt_hash": "6dee07733740eb2a",
+  "role": "test-fixer",
+  "transcript_bytes": 918474,
+  "transcript_preview": "d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"e9a6c6d6-f250-449b-b8c5-2f64cad35888\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" -q` \u2014 clean \u2705  \\n- \"}},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"b2074315-c7b8-4c33-9fd3-a057f18c9d7f\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"44/44 official tests \u2014 all pass \u2705  \\n- `compare.sh --\"}},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"dcf1eac6-d3f0-4518-9b6d-03e3015bf94a\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"runs 3` \u2014 no regressions across all workloads \u2705  \\n\\nThe `obj_type_name_cow` function is now available\"}},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"fb2fe276-06e5-46a0-8598-68b1b1205ec0\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" for callers to migrate to when they can accept `Cow` \u2014\"}},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"4f548407-0189-4d25-8b6b-fff0ad657e2b\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" eliminating the `.into_owned()` allocation entirely. The PERF(port) callout is retired.\"}},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"59282397-1995-47e5-b8af-c0cf49e10e7c\"}\n{\"type\":\"assistant\",\"message\":{\"model\":\"claude-sonnet-4-6\",\"id\":\"msg_01SMK913u2RCY3Wqoo3xxJY3\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"The implementation looks exactly right. Let me provide a concise summary of what was done:\\n\\n---\\n\\n## Summary\\n\\n**Hypothesis:** `obj_type_name` in `tagmethods.rs` returned `Vec<u8>` on every call, allocating even for the common case where the type name is a static byte string (b\\\"nil\\\", b\\\"boolean\\\", etc.). A `Cow<'static, [u8]>` return avoids this allocation in the `Borrowed` case.\\n\\n**Change made (only `crates/lua-vm/src/tagmethods.rs`):**\\n\\n1. **Added `use std::borrow::Cow;`** at the top.\\n\\n2. **Added `obj_type_name_cow(o: &LuaValue) -> Cow<'static, [u8]>`** \u2014 the canonical allocation-free implementation:\\n   - `Cow::Borrowed(b\\\"light userdata\\\")` for `LightUserData`\\n   - `Cow::Borrowed(type_name(o.base_type()))` for all other types without a custom `__name` metafield (the common path \u2014 zero allocation)\\n   - `Cow::Owned(s.as_bytes().to_vec())` only when a metatable `__name` field is present\\n   - Uses `get_str_bytes` (raw byte scan, infallible) instead of `intern_str` (fallible, needs mutable state)\\n   - Requires no `LuaState` access at all\\n\\n3. **Changed `obj_type_name`** to a thin compat wrapper: `Ok(obj_type_name_cow(o).into_owned())`. Existing callers are unchanged (still get `Result<Vec<u8>, LuaError>`). The `_state` parameter is retained for API compatibility.\\n\\n4. **Retired the `PERF(port)` callout** (notes 5 and 7 in PORT STATUS), updated counts.\\n\\n**Result:**\\n- `cargo build --release -p lua-cli -q` \u2014 clean \u2705  \\n- 44/44 official tests \u2014 all pass \u2705  \\n- `compare.sh --runs 3` \u2014 no regressions across all workloads \u2705  \\n\\nThe `obj_type_name_cow` function is now available for callers to migrate to when they can accept `Cow` \u2014 eliminating the `.into_owned()` allocation entirely. The PERF(port) callout is retired.\"}],\"stop_reason\":null,\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":1,\"cache_creation_input_tokens\":1983,\"cache_read_input_tokens\":65869,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":1983},\"output_tokens\":2,\"service_tier\":\"standard\",\"inference_geo\":\"not_available\"},\"diagnostics\":null,\"context_management\":null},\"parent_tool_use_id\":null,\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"uuid\":\"152f6ae6-a344-48c8-87ac-389eb7442b02\",\"request_id\":\"req_011CbKcWWiNVJQyxP8cHSQAq\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_stop\",\"index\":0},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"0e8e5da2-469e-4546-9569-7956a7713b96\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null},\"usage\":{\"input_tokens\":1,\"cache_creation_input_tokens\":1983,\"cache_read_input_tokens\":65869,\"output_tokens\":577,\"iterations\":[{\"input_tokens\":1,\"output_tokens\":577,\"cache_read_input_tokens\":65869,\"cache_creation_input_tokens\":1983,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":1983},\"type\":\"message\"}]},\"context_management\":{\"applied_edits\":[]}},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"2ceff996-31d6-4199-b389-c319b5d85a24\"}\n{\"type\":\"stream_event\",\"event\":{\"type\":\"message_stop\"},\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"parent_tool_use_id\":null,\"uuid\":\"a321d1a0-8f92-4a33-be83-1973b215d925\"}\n{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"api_error_status\":null,\"duration_ms\":616264,\"duration_api_ms\":462983,\"ttft_ms\":3057,\"num_turns\":33,\"result\":\"The implementation looks exactly right. Let me provide a concise summary of what was done:\\n\\n---\\n\\n## Summary\\n\\n**Hypothesis:** `obj_type_name` in `tagmethods.rs` returned `Vec<u8>` on every call, allocating even for the common case where the type name is a static byte string (b\\\"nil\\\", b\\\"boolean\\\", etc.). A `Cow<'static, [u8]>` return avoids this allocation in the `Borrowed` case.\\n\\n**Change made (only `crates/lua-vm/src/tagmethods.rs`):**\\n\\n1. **Added `use std::borrow::Cow;`** at the top.\\n\\n2. **Added `obj_type_name_cow(o: &LuaValue) -> Cow<'static, [u8]>`** \u2014 the canonical allocation-free implementation:\\n   - `Cow::Borrowed(b\\\"light userdata\\\")` for `LightUserData`\\n   - `Cow::Borrowed(type_name(o.base_type()))` for all other types without a custom `__name` metafield (the common path \u2014 zero allocation)\\n   - `Cow::Owned(s.as_bytes().to_vec())` only when a metatable `__name` field is present\\n   - Uses `get_str_bytes` (raw byte scan, infallible) instead of `intern_str` (fallible, needs mutable state)\\n   - Requires no `LuaState` access at all\\n\\n3. **Changed `obj_type_name`** to a thin compat wrapper: `Ok(obj_type_name_cow(o).into_owned())`. Existing callers are unchanged (still get `Result<Vec<u8>, LuaError>`). The `_state` parameter is retained for API compatibility.\\n\\n4. **Retired the `PERF(port)` callout** (notes 5 and 7 in PORT STATUS), updated counts.\\n\\n**Result:**\\n- `cargo build --release -p lua-cli -q` \u2014 clean \u2705  \\n- 44/44 official tests \u2014 all pass \u2705  \\n- `compare.sh --runs 3` \u2014 no regressions across all workloads \u2705  \\n\\nThe `obj_type_name_cow` function is now available for callers to migrate to when they can accept `Cow` \u2014 eliminating the `.into_owned()` allocation entirely. The PERF(port) callout is retired.\",\"stop_reason\":\"end_turn\",\"session_id\":\"1849180a-667c-4d2c-ba81-71578548d5ad\",\"total_cost_usd\":0.9592562999999998,\"usage\":{\"input_tokens\":24,\"cache_creation_input_tokens\":67852,\"cache_read_input_tokens\":954731,\"output_tokens\":27888,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":67852,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[{\"input_tokens\":1,\"output_tokens\":577,\"cache_read_input_tokens\":65869,\"cache_creation_input_tokens\":1983,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":1983},\"type\":\"message\"}],\"speed\":\"standard\"},\"modelUsage\":{\"claude-sonnet-4-6\":{\"inputTokens\":24,\"outputTokens\":27888,\"cacheReadInputTokens\":954731,\"cacheCreationInputTokens\":67852,\"webSearchRequests\":0,\"costUSD\":0.9592562999999998,\"contextWindow\":200000,\"maxOutputTokens\":32000}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"uuid\":\"ab5c530f-c452-4410-a580-e543ddd892a3\"}\n",
+  "transcript_src": "/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/loop/state/transcripts/20260523T134350Z-test-fixer-perf-obj-type-name-vec-alloc.jsonl"
+}

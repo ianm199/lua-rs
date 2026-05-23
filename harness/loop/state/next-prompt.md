@@ -22,19 +22,19 @@ the evidence.
 
 Latest oracle evidence blob:
 
-`harness/bench/results/20260523T045041Z-8d1ab73-compare.json`
+`harness/bench/results/20260523T135221Z-0152912-compare.json`
 
-  - `binarytrees` (proves `lua-perf-binarytrees`) - last attempt 20260523T045041ZZ: 0/1
-  - `closure_ops` (proves `lua-perf-closure-ops`) - last attempt 20260523T045041ZZ: 0/1
+  - `binarytrees` (proves `lua-perf-binarytrees`) - last attempt 20260523T135221ZZ: 0/1
+  - `closure_ops` (proves `lua-perf-closure-ops`) - last attempt 20260523T135221ZZ: 0/1
   - `db` (proves `debug-line-hook-timing`) - last attempt 2026-05-22T03:29:44Z: 0/1
-  - `fibonacci` (proves `lua-perf-fibonacci`) - last attempt 20260523T045041ZZ: 0/1
+  - `fibonacci` (proves `lua-perf-fibonacci`) - last attempt 20260523T135221ZZ: 0/1
   - `gc` (proves `gc-cycle-convergence`) - last attempt 2026-05-22T03:33:29Z: 0/1
   - `gengc` (proves `gc-cycle-convergence`) - last attempt 2026-05-22T03:32:53Z: 0/1
-  - `mandelbrot` (proves `lua-perf-mandelbrot`) - last attempt 20260523T045041ZZ: 0/1
-  - `string_ops` (proves `lua-perf-string-ops`) - last attempt 20260523T045041ZZ: 0/1
-  - `string_ops_long` (proves `lua-perf-string-ops-long`) - last attempt 20260523T045041ZZ: 0/1
-  - `table_ops` (proves `lua-perf-table-ops`) - last attempt 20260523T045041ZZ: 0/1
-  - `table_ops_long` (proves `lua-perf-table-ops-long`) - last attempt 20260523T045041ZZ: 0/1
+  - `mandelbrot` (proves `lua-perf-mandelbrot`) - last attempt 20260523T135221ZZ: 0/1
+  - `string_ops` (proves `lua-perf-string-ops`) - last attempt 20260523T135221ZZ: 0/1
+  - `string_ops_long` (proves `lua-perf-string-ops-long`) - last attempt 20260523T135221ZZ: 0/1
+  - `table_ops` (proves `lua-perf-table-ops`) - last attempt 20260523T135221ZZ: 0/1
+  - `table_ops_long` (proves `lua-perf-table-ops-long`) - last attempt 20260523T135221ZZ: 0/1
 
 Packet-specific hypothesis and target:
 
@@ -112,5 +112,5 @@ If the bench did not actually improve, the commit message should explain why
 code is cleaner"). Hygiene is fine; lying about perf is not.
 
 Project root: `/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port`
-Prompt hash: `6dee07733740eb2a`
-Evidence path: `harness/evidence/runs/20260523T134350Z-e0f6cdd-test-fixer-perf-obj-type-name-vec-alloc.json`
+Prompt hash: `7dfd9fcbcca9200b`
+Evidence path: `harness/evidence/runs/20260523T135409Z-a55fa43-test-fixer-perf-obj-type-name-vec-alloc.json`

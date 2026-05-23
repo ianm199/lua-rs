@@ -1,9 +1,21 @@
 {
-  "consecutive_failures": 0,
-  "history": [],
+  "consecutive_failures": 1,
+  "history": [
+    {
+      "dispatch_rc": 0,
+      "iteration": 0,
+      "packet": "perf-obj-type-name-vec-alloc",
+      "phase": "auto-dispatch",
+      "record_rc": 1,
+      "role": "test-fixer",
+      "runtime": "claude",
+      "transcript": "/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/loop/state/transcripts/20260523T134350Z-test-fixer-perf-obj-type-name-vec-alloc.jsonl",
+      "ts": "2026-05-23T13:54:09Z"
+    }
+  ],
   "iteration": 0,
-  "last_failed_packet": null,
+  "last_failed_packet": "perf-obj-type-name-vec-alloc",
   "last_successful_packet": null,
-  "same_packet_failures": 0,
+  "same_packet_failures": 1,
   "started_at": "2026-05-23T13:43:50Z"
 }

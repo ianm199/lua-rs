@@ -11,8 +11,8 @@
     "lua-perf-table-ops",
     "lua-perf-table-ops-long"
   ],
-  "commit": "e0f6cdd",
-  "evidence_path": "harness/evidence/runs/20260523T134350Z-e0f6cdd-test-fixer-perf-obj-type-name-vec-alloc.json",
+  "commit": "a55fa43",
+  "evidence_path": "harness/evidence/runs/20260523T135409Z-a55fa43-test-fixer-perf-obj-type-name-vec-alloc.json",
   "git_dirty": true,
   "git_status_short": [
     " M .claude/worktrees/agent-a0c4d7c805c6f1127",
@@ -49,10 +49,7 @@
     " M .claude/worktrees/agent-afb541d64485bb915",
     " M harness/evidence/ledger.jsonl",
     " M harness/loop/state/loop-state.json",
-    " D harness/loop/state/next-packet.json",
-    " D harness/loop/state/next-prompt.md",
-    " M harness/work-packets.jsonl",
-    "?? harness/completion.toml"
+    "?? harness/evidence/runs/20260523T134350Z-e0f6cdd-test-fixer-perf-obj-type-name-vec-alloc.json"
   ],
   "mode": "test-fixer",
   "packet": {
@@ -81,14 +78,14 @@
     ]
   },
   "packet_id": "perf-obj-type-name-vec-alloc",
-  "prompt_hash": "6dee07733740eb2a",
+  "prompt_hash": "7dfd9fcbcca9200b",
   "role": "test-fixer",
   "run_id": "loop-33aa91c06583647a",
   "runner_id": null,
-  "target_commit": "e0f6cdda3d1e7b143b9607bde4d4885d7d0a8877",
+  "target_commit": "a55fa43afb52426ce4f976e021242a40779bf6e7",
   "targets": [
     "crates/lua-vm/src/tagmethods.rs"
   ],
-  "tree_hash": "cdec9b68c5ed43e271937f1b4a71f97cc4c6bc15aabe8d8f2ce594b53673bd18",
-  "ts": "2026-05-23T13:43:50.173135Z"
+  "tree_hash": "bbc6b009c2a562d56f05deeb5d4387aaeac03e5e5ac3cff09ec38f25f601214f",
+  "ts": "2026-05-23T13:54:09.343254Z"
 }
