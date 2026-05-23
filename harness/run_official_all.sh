@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 TEST_TIMEOUT_S=${TEST_TIMEOUT_S:-60}
-BIN="$ROOT/target/debug/lua-rs"
+BIN="${LUA_RS_BIN:-$ROOT/target/debug/lua-rs}"
 TESTES_DIR="$ROOT/reference/lua-c/testes"
 OUT_DIR="$ROOT/harness/impl/official"
 TSV="$OUT_DIR/run_all.tsv"
@@ -45,23 +45,25 @@ for test_file in "$TESTES_DIR"/*.lua; do
     base=$(basename "$test_file" .lua)
     case "$base" in _*) continue ;; esac
 
-    combined="$OUT_DIR/$base.combined.lua"
+    wrap="$OUT_DIR/$base.wrap.lua"
     outfile="$OUT_DIR/$base.out"
+    # Wrapper approach: preamble + dofile. Works on any binary version
+    # (positional-arg path) and preserves the test file's own line numbers
+    # in tracebacks (dofile sources the test as a fresh chunk).
     {
-        printf -- '-- harness preamble (passed via -e, NOT prepended; preserves test file line numbers):\n'
-        printf -- '-- %s\n\n' "$PREAMBLE_EXPR"
-        cat "$test_file"
-    } > "$combined"
+        printf '%s\n' "$PREAMBLE_EXPR"
+        printf 'dofile([[%s]])\n' "$test_file"
+    } > "$wrap"
     case "$base" in
         all) run_cwd="$TESTES_DIR" ;;
         *)   run_cwd="$ROOT" ;;
     esac
 
     if command -v gtimeout >/dev/null 2>&1; then
-        ( cd "$run_cwd" && gtimeout --signal=KILL "$TEST_TIMEOUT_S" "$BIN" -e "$PREAMBLE_EXPR" "$test_file" > "$outfile" 2>&1 )
+        ( cd "$run_cwd" && gtimeout --signal=KILL "$TEST_TIMEOUT_S" "$BIN" "$wrap" > "$outfile" 2>&1 )
         rc=$?
     else
-        ( cd "$run_cwd" && "$BIN" -e "$PREAMBLE_EXPR" "$test_file" > "$outfile" 2>&1 ) &
+        ( cd "$run_cwd" && "$BIN" "$wrap" > "$outfile" 2>&1 ) &
         pid=$!
         ( sleep "$TEST_TIMEOUT_S" && kill -9 "$pid" 2>/dev/null ) &
         wpid=$!

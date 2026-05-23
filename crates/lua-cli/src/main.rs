@@ -671,33 +671,47 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let (source, chunkname): (Vec<u8>, Vec<u8>) = if args_os[1] == "-e" {
-        if args_os.len() < 3 {
-            eprintln!("-e requires an argument");
-            return ExitCode::from(2);
-        }
-        (os_str_bytes(&args_os[2]), b"=stdin".to_vec())
-    } else {
-        let path = std::path::Path::new(&args_os[1]);
-        if path.is_file() {
-            if let Some(script_dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-                prepend_lua_path(script_dir);
+    let mut chunks: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    let mut i = 1;
+    while i < args_os.len() {
+        let arg = &args_os[i];
+        if arg == "-e" {
+            i += 1;
+            if i >= args_os.len() {
+                eprintln!("-e requires an argument");
+                return ExitCode::from(2);
             }
-            match std::fs::read(path) {
-                Ok(bytes) => {
-                    let mut name = vec![b'@'];
-                    name.extend_from_slice(&os_str_bytes(&args_os[1]));
-                    (bytes, name)
-                }
-                Err(e) => {
-                    eprintln!("cannot read {}: {}", path.display(), e);
-                    return ExitCode::from(2);
-                }
-            }
+            chunks.push((os_str_bytes(&args_os[i]), b"=(command line)".to_vec()));
+            i += 1;
         } else {
-            (os_str_bytes(&args_os[1]), b"=stdin".to_vec())
+            let path = std::path::Path::new(arg);
+            if path.is_file() {
+                if let Some(script_dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+                    prepend_lua_path(script_dir);
+                }
+                match std::fs::read(path) {
+                    Ok(bytes) => {
+                        let mut name = vec![b'@'];
+                        name.extend_from_slice(&os_str_bytes(arg));
+                        chunks.push((bytes, name));
+                    }
+                    Err(e) => {
+                        eprintln!("cannot read {}: {}", path.display(), e);
+                        return ExitCode::from(2);
+                    }
+                }
+            } else {
+                chunks.push((os_str_bytes(arg), b"=(command line)".to_vec()));
+            }
+            i += 1;
+            break;
         }
-    };
+    }
+    if chunks.is_empty() {
+        eprintln!("usage: {} <script.lua | -e 'source'>",
+            args_os.first().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "lua-rs".to_string()));
+        return ExitCode::from(2);
+    }
 
     let verbose = std::env::var("LUA_RS_VERBOSE").is_ok();
     macro_rules! step { ($($t:tt)*) => { if verbose { eprintln!($($t)*); } }; }
@@ -721,23 +735,28 @@ fn main() -> ExitCode {
         register_preloaded_modules(&mut state)
             .map_err(|e| format!("preload registration failed: {}", render_lua_error(&e)))?;
 
-        step!("[3/4] Loading source (parse + compile)...");
-        let status = load_buffer(&mut state, &source, &chunkname)
-            .map_err(|e| format!("load_buffer failed: {}", render_lua_error(&e)))?;
-        if status != 0 {
-            let msg = match to_lua_string(&mut state, -1) {
-                Ok(Some(s)) => String::from_utf8_lossy(s.as_bytes()).into_owned(),
-                _ => "(no error message on stack)".to_string(),
-            };
-            return Err(format!(
-                "Syntax: {} (load_string status={})",
-                msg, status
-            ));
-        }
+        let mut final_status = None;
+        for (chunk_idx, (source, chunkname)) in chunks.iter().enumerate() {
+            step!("[3/4] Loading chunk {}/{} (parse + compile)...", chunk_idx + 1, chunks.len());
+            let status = load_buffer(&mut state, source, chunkname)
+                .map_err(|e| format!("load_buffer failed: {}", render_lua_error(&e)))?;
+            if status != 0 {
+                let msg = match to_lua_string(&mut state, -1) {
+                    Ok(Some(s)) => String::from_utf8_lossy(s.as_bytes()).into_owned(),
+                    _ => "(no error message on stack)".to_string(),
+                };
+                return Err(format!(
+                    "Syntax: {} (load_string status={})",
+                    msg, status
+                ));
+            }
 
-        step!("[4/4] Executing chunk...");
-        let final_status = pcall_k(&mut state, 0, MULTRET, 0, 0, None)
-            .map_err(|e| format!("pcall_k failed: {}", render_lua_error(&e)))?;
+            step!("[4/4] Executing chunk {}/{}...", chunk_idx + 1, chunks.len());
+            let status = pcall_k(&mut state, 0, MULTRET, 0, 0, None)
+                .map_err(|e| format!("pcall_k failed: {}", render_lua_error(&e)))?;
+            final_status = Some(status);
+        }
+        let final_status = final_status.expect("at least one chunk must be present");
 
         if std::env::var("LUA_RS_GC_DIAG").is_ok() {
             let tracked = state.global().heap.bytes_used();

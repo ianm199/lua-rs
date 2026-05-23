@@ -2,4 +2,27 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
-[ok] execution completed, status=Ok
+
+	Starting Tests
+random seeds: 1779563851, 0
+current path:
+****/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/impl/official/?.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/impl/official/?/init.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?/init.lua;./?.lua;./?/init.lua****
+
+    ---- total memory: 3.8K, max memory: 3.8K ----
+
+time: 0 (+0)
+
+***** FILE 'main.lua'*****
+
+***** FILE 'gc.lua'*****
+.testing incremental garbage collection
+..................................................................creating many objects
+................................functions with errors
+long strings
+steps
+steps (2)
+....clearing tables
+................weak tables
+...............................+
+......self-referenced threads
+..................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................

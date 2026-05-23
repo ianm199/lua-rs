@@ -2,4 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
+calling collectgarbage 1
+done 1
+done 2
+done 3
+done 4
+step 2 ok
 [ok] execution completed, status=Ok

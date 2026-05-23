@@ -2,4 +2,10 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
+testing functions and calls
++
++
+testing tail calls
++
++
 [ok] execution completed, status=Ok

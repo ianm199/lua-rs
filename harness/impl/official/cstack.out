@@ -2,4 +2,21 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
+testing stack overflow detection
+testing stack overflow in message handling
+final count: 	250043
+testing recursion inside pattern matching
+testing stack-overflow in recursive 'gsub'
+final count: 	196
+testing stack-overflow in recursive 'gsub' with metatables
+final count: 	98
+testing limits in coroutines inside deep calls
+final count: 	195
+chain of 'coroutine.close'
+final count: 	196
+nesting of resuming yielded coroutines
+final count: 	194
+nesting coroutines running after recoverable errors
+final count: 	196
+OK
 [ok] execution completed, status=Ok

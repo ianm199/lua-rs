@@ -2,4 +2,14 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
+testing scanner
++
++
++
++
++
+
+ >>> pt_BR locale not available: skipping decimal point tests <<<
+
+OK
 [ok] execution completed, status=Ok

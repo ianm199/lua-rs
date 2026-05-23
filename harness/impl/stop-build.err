@@ -1602,3 +1602,12 @@ help: use `let _ = ...` to ignore the expression or result
 2804 +     let _ = fs; // release borrow before iterating
      |
 
+warning: value assigned to `i` is never read
+   --> crates/lua-cli/src/main.rs:706:13
+    |
+706 |             i += 1;
+    |             ^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+

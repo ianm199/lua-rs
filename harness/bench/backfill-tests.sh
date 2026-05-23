@@ -116,10 +116,14 @@ for commit in $commits; do
     build_s=$(( $(date +%s) - start ))
     echo "  [build] ok (${build_s}s)"
 
-    echo "  [tests] running suite..."
+    echo "  [tests] running suite via MAIN runner with worktree binary..."
     start=$(date +%s)
     tmp=$(mktemp)
-    (cd "$WORKTREE" && bash harness/run_official_all.sh) >"$tmp" 2>&1 || true
+    # Invoke the MAIN repo's harness runner (which has the dofile-wrapper
+    # invocation that works on any binary version) and point it at the
+    # worktree's freshly-built lua-rs. testes/ comes from MAIN (it's
+    # local-only / not tracked, so the worktree wouldn't have it either).
+    LUA_RS_BIN="$WORKTREE/target/debug/lua-rs" bash "$ROOT/harness/run_official_all.sh" >"$tmp" 2>&1 || true
     elapsed=$(( $(date +%s) - start ))
 
     total_t=$(awk '/^[[:space:]]*Total:/ {print $2; exit}' "$tmp")

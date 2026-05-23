@@ -2,4 +2,20 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
+testing functions and calls
++
++
+BISECT: after deep(180)
+testing tail calls
+BISECT: after tail-call varargs
+BISECT: after C-stack overflow
+BISECT: after __call chain coroutine
+BISECT: after testing chains
+BISECT: after a=23
+BISECT: after closures
+BISECT: after multret
+BISECT: after incorrect args
+BISECT: about to load
+BISECT: loaded successfully
+BISECT: ran loaded function ok
 [ok] execution completed, status=Ok

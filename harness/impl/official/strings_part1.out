@@ -2,4 +2,18 @@
 [2/4] Opening standard library...
 [3/4] Loading source (parse + compile)...
 [4/4] Executing chunk...
+testing strings and string library
+got past find
+find batch1 done
+find with 0 done
+string.find done
+len done
+byte done
+char done
+checkerror char done
+upper done
+rep basic done
+reverse done
+tostring done
+part1 done
 [ok] execution completed, status=Ok
