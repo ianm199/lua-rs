@@ -4,7 +4,7 @@
 [4/4] Executing chunk...
 
 	Starting Tests
-random seeds: 1779564866, 0
+random seeds: 1779564871, 0
 current path:
 ****/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/impl/official/?.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/impl/official/?/init.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?/init.lua;./?.lua;./?/init.lua****
 
@@ -24,4 +24,5 @@ steps (2)
 ....clearing tables
 ................weak tables
 ...............................+
-.....lua: pcall_k failed: Runtime: gc.lua:469: assertion failed!
+......self-referenced threads
+................................

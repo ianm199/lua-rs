@@ -14,4 +14,4 @@ weak tables
 
  >>> testC not active: skipping userdata GC tests <<<
 
-self-referenced threads
+lua: pcall_k failed: Runtime: ...ustExperiments/lua-rs-port/reference/lua-c/testes/gc.lua:469: assertion failed!

@@ -1,8 +1,0 @@
-all	FAIL	.....lua: pcall_k failed: Runtime: gc.lua:469: assertion failed!
-api	PASS	-
-attrib	PASS	-
-big	PASS	-
-bitwise	PASS	-
-bwcoercion	PASS	-
-calls	PASS	-
-calls_head313	PASS	-
