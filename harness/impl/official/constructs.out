@@ -4,7 +4,7 @@
 [4/4] Executing chunk...
 testing syntax
 +
-testing short-circuit optimizations (1)
+testing short-circuit optimizations (0)
 +
 OK
 [ok] execution completed, status=Ok

@@ -4,7 +4,7 @@
 [4/4] Executing chunk...
 
 	Starting Tests
-random seeds: 1779564297, 0
+random seeds: 1779564421, 0
 current path:
 ****/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/impl/official/?.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/harness/impl/official/?/init.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?.lua;/Users/ianmclaughlin/PycharmProjects/rustExperiments/lua-rs-port/reference/lua-c/testes/?/init.lua;./?.lua;./?/init.lua****
 
@@ -25,4 +25,4 @@ steps (2)
 ................weak tables
 ...............................+
 ......self-referenced threads
-...................................................................................................................................
+.............................................................
