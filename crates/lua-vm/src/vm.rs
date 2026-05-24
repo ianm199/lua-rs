@@ -2627,19 +2627,18 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                     //             setnilvalue(L->top++) }
                     //    goto ret;
                     OpCode::Return0 => {
-                        if state.hook_mask() != 0 {
-                            let ra = base + i.arg_a();
-                            state.set_top(ra);
-                            state.set_ci_savedpc(ci, pc);
-                            state.poscall(ci, 0)?;
-                            trap = true;
-                        } else {
-                            let nres = state.ci_nresults(ci);
-                            state.set_ci_previous(ci);
-                            state.set_top(base - 1);
+                        if state.hookmask == 0 {
+                            let ci_slot = ci.as_usize();
+                            let nres = state.call_info[ci_slot].nresults as i32;
+                            state.ci = state.call_info[ci_slot]
+                                .previous
+                                .expect("RETURN0: returning frame has no previous CallInfo");
+                            state.top = base - 1;
                             for _ in 0..nres.max(0) {
                                 state.push(LuaValue::Nil);
                             }
+                        } else {
+                            return0_hook(state, ci, base, i, pc, &mut trap)?;
                         }
                         break 'dispatch; // goto ret
                     }
@@ -2648,26 +2647,25 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                     //    else { nres = ci->nresults; ci = ci->previous; ...handle results... }
                     //    goto ret;
                     OpCode::Return1 => {
-                        if state.hook_mask() != 0 {
-                            let ra = base + i.arg_a();
-                            state.set_top(ra + 1);
-                            state.set_ci_savedpc(ci, pc);
-                            state.poscall(ci, 1)?;
-                            trap = true;
-                        } else {
-                            let nres = state.ci_nresults(ci);
-                            state.set_ci_previous(ci);
+                        if state.hookmask == 0 {
+                            let ci_slot = ci.as_usize();
+                            let nres = state.call_info[ci_slot].nresults as i32;
+                            state.ci = state.call_info[ci_slot]
+                                .previous
+                                .expect("RETURN1: returning frame has no previous CallInfo");
                             if nres == 0 {
-                                state.set_top(base - 1);
+                                state.top = base - 1;
                             } else {
                                 let ra = base + i.arg_a();
-                                let v = state.get_at(ra);
-                                state.set_at(base - 1, v); // at least this result
-                                state.set_top(base);
+                                state.stack[(base - 1).0 as usize].val =
+                                    state.stack[ra.0 as usize].val; // at least this result
+                                state.top = base;
                                 for _ in 1..nres.max(0) {
                                     state.push(LuaValue::Nil);
                                 }
                             }
+                        } else {
+                            return1_hook(state, ci, base, i, pc, &mut trap)?;
                         }
                         break 'dispatch; // goto ret
                     }
@@ -3078,6 +3076,42 @@ fn finish_order_imm_jump(
         *pc = (*pc as i64 + next.arg_s_j() as i64 + 1) as u32;
         *trap = state.ci_trap(ci);
     }
+}
+
+#[cold]
+#[inline(never)]
+fn return0_hook(
+    state: &mut LuaState,
+    ci: CallInfoIdx,
+    base: StackIdx,
+    i: Instruction,
+    pc: u32,
+    trap: &mut bool,
+) -> Result<(), LuaError> {
+    let ra = base + i.arg_a();
+    state.set_top(ra);
+    state.set_ci_savedpc(ci, pc);
+    state.poscall(ci, 0)?;
+    *trap = true;
+    Ok(())
+}
+
+#[cold]
+#[inline(never)]
+fn return1_hook(
+    state: &mut LuaState,
+    ci: CallInfoIdx,
+    base: StackIdx,
+    i: Instruction,
+    pc: u32,
+    trap: &mut bool,
+) -> Result<(), LuaError> {
+    let ra = base + i.arg_a();
+    state.set_top(ra + 1);
+    state.set_ci_savedpc(ci, pc);
+    state.poscall(ci, 1)?;
+    *trap = true;
+    Ok(())
 }
 
 // ──────────────────────────────────────────────────────────────────────────
