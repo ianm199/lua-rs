@@ -2441,24 +2441,60 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                     // C: op_orderI(L, l_lti/l_lei/l_gti/l_gei, luai_numlt/le/gt/ge,
                     //              inv=0/0/1/1, tm=TM_LT/TM_LE/TM_LT/TM_LE)
                     OpCode::LtI => {
-                        order_imm_op(state, &cl, &mut pc, &mut trap, ci, base, i,
-                            |a: i64, b: i64| a < b, |a: f64, b: f64| a < b,
-                            false, TagMethod::Lt)?;
+                        let ra = base + i.arg_a();
+                        let im = i.arg_s_b() as i64;
+                        let fast_cond = match &state.stack[ra.0 as usize].val {
+                            LuaValue::Int(ia) => Some(*ia < im),
+                            LuaValue::Float(fa) => Some(*fa < im as f64),
+                            _ => None,
+                        };
+                        let cond = match fast_cond {
+                            Some(cond) => cond,
+                            None => order_imm_slow(state, ra, pc, &mut trap, ci, i, im, false, TagMethod::Lt)?,
+                        };
+                        finish_order_imm_jump(state, &cl, &mut pc, &mut trap, ci, i, cond);
                     }
                     OpCode::LeI => {
-                        order_imm_op(state, &cl, &mut pc, &mut trap, ci, base, i,
-                            |a: i64, b: i64| a <= b, |a: f64, b: f64| a <= b,
-                            false, TagMethod::Le)?;
+                        let ra = base + i.arg_a();
+                        let im = i.arg_s_b() as i64;
+                        let fast_cond = match &state.stack[ra.0 as usize].val {
+                            LuaValue::Int(ia) => Some(*ia <= im),
+                            LuaValue::Float(fa) => Some(*fa <= im as f64),
+                            _ => None,
+                        };
+                        let cond = match fast_cond {
+                            Some(cond) => cond,
+                            None => order_imm_slow(state, ra, pc, &mut trap, ci, i, im, false, TagMethod::Le)?,
+                        };
+                        finish_order_imm_jump(state, &cl, &mut pc, &mut trap, ci, i, cond);
                     }
                     OpCode::GtI => {
-                        order_imm_op(state, &cl, &mut pc, &mut trap, ci, base, i,
-                            |a: i64, b: i64| a > b, |a: f64, b: f64| a > b,
-                            true, TagMethod::Lt)?;
+                        let ra = base + i.arg_a();
+                        let im = i.arg_s_b() as i64;
+                        let fast_cond = match &state.stack[ra.0 as usize].val {
+                            LuaValue::Int(ia) => Some(*ia > im),
+                            LuaValue::Float(fa) => Some(*fa > im as f64),
+                            _ => None,
+                        };
+                        let cond = match fast_cond {
+                            Some(cond) => cond,
+                            None => order_imm_slow(state, ra, pc, &mut trap, ci, i, im, true, TagMethod::Lt)?,
+                        };
+                        finish_order_imm_jump(state, &cl, &mut pc, &mut trap, ci, i, cond);
                     }
                     OpCode::GeI => {
-                        order_imm_op(state, &cl, &mut pc, &mut trap, ci, base, i,
-                            |a: i64, b: i64| a >= b, |a: f64, b: f64| a >= b,
-                            true, TagMethod::Le)?;
+                        let ra = base + i.arg_a();
+                        let im = i.arg_s_b() as i64;
+                        let fast_cond = match &state.stack[ra.0 as usize].val {
+                            LuaValue::Int(ia) => Some(*ia >= im),
+                            LuaValue::Float(fa) => Some(*fa >= im as f64),
+                            _ => None,
+                        };
+                        let cond = match fast_cond {
+                            Some(cond) => cond,
+                            None => order_imm_slow(state, ra, pc, &mut trap, ci, i, im, true, TagMethod::Le)?,
+                        };
+                        finish_order_imm_jump(state, &cl, &mut pc, &mut trap, ci, i, cond);
                     }
                     // ── OP_TEST ────────────────────────────────────────────────
                     // C: int cond = !l_isfalse(s2v(ra)); docondjump()
@@ -2999,41 +3035,41 @@ fn bitwise_shift_rr(
     }
 }
 
-/// C: `op_orderI` — comparison with an immediate integer operand.
-/// `inv = true` inverts the condition (for GTI/GEI which use the flipped TM).
-/// `cl` is the current closure handle (opaque to this helper; only used for proto_code).
-/// TODO(port): replace `LuaValue` stand-in for `cl` with proper `GcRef<LuaClosure>` once
-///             the closure GC type lands in Phase B.
-#[allow(dead_code)]
+/// Cold half of C's `op_orderI` macro: only reached when the operand is not a
+/// plain integer/float and a metamethod lookup may be needed.
+#[cold]
+#[inline(never)]
 #[allow(clippy::too_many_arguments)]
-fn order_imm_op(
+fn order_imm_slow(
+    state: &mut LuaState,
+    ra: StackIdx,
+    pc: u32,
+    trap: &mut bool,
+    ci: CallInfoIdx,
+    i: Instruction,
+    im: i64,
+    inv: bool,
+    tm: TagMethod,
+) -> Result<bool, LuaError> {
+    let ra_v = state.get_at(ra);
+    let isf = i.arg_c() != 0;
+    state.set_ci_savedpc(ci, pc);
+    state.set_top(state.ci_top(ci));
+    let r = state.call_order_i_tm(&ra_v, im, inv, isf, tm)?;
+    *trap = state.ci_trap(ci);
+    Ok(r)
+}
+
+#[inline(always)]
+fn finish_order_imm_jump(
     state: &mut LuaState,
     cl: &lua_types::GcRef<lua_types::LuaLClosure>,
     pc: &mut u32,
     trap: &mut bool,
     ci: CallInfoIdx,
-    base: StackIdx,
     i: Instruction,
-    opi: fn(i64, i64) -> bool,
-    opf: fn(f64, f64) -> bool,
-    inv: bool,
-    tm: TagMethod,
-) -> Result<(), LuaError> {
-    let ra_v = state.get_at(base + i.arg_a());
-    let im = i.arg_s_b() as i64;
-    let cond: bool = match &ra_v {
-        LuaValue::Int(ia) => opi(*ia, im),
-        LuaValue::Float(fa) => opf(*fa, im as f64),
-        _ => {
-            // C: Protect(cond = luaT_callorderiTM(L, s2v(ra), im, inv, isf, tm))
-            let isf = i.arg_c() != 0;
-            state.set_ci_savedpc(ci, *pc);
-            state.set_top(state.ci_top(ci));
-            let r = state.call_order_i_tm(&ra_v, im, inv, isf, tm)?;
-            *trap = state.ci_trap(ci);
-            r
-        }
-    };
+    cond: bool,
+) {
     // C: docondjump()
     if (cond as i32) != i.arg_k() {
         *pc += 1;
@@ -3042,7 +3078,6 @@ fn order_imm_op(
         *pc = (*pc as i64 + next.arg_s_j() as i64 + 1) as u32;
         *trap = state.ci_trap(ci);
     }
-    Ok(())
 }
 
 // ──────────────────────────────────────────────────────────────────────────
