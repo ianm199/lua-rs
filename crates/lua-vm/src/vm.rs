@@ -1697,9 +1697,16 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                     OpCode::SetUpVal => {
                         let ra = base + i.arg_a();
                         let b = i.arg_b() as usize;
-                        let v = state.get_at(ra);
-                        state.upvalue_set(&cl, b, v.clone())?;
-                        state.gc_barrier_upval(&cl, b, &v);
+                        let v = state.stack[ra.0 as usize].val;
+                        let uv = cl.upval(b);
+                        match uv.try_open_payload() {
+                            Some((thread_id, idx)) if thread_id as u64 == state.cached_thread_id => {
+                                state.stack[idx.0 as usize].val = v;
+                            }
+                            _ => {
+                                state.upvalue_set(&cl, b, v)?;
+                            }
+                        }
                     }
                     // ── OP_GETTABUP ──────────────────────────────────────────
                     // C: upval = cl->upvals[B]->v.p; rc = KC(i) (short string key)
@@ -2675,28 +2682,24 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                     //    updatetrap(ci);
                     OpCode::ForLoop => {
                         let ra = base + i.arg_a();
-                        let is_int_loop = matches!(state.get_at(ra + 2), LuaValue::Int(_));
-                        if is_int_loop {
+                        let ra_u = ra.0 as usize;
+                        if let LuaValue::Int(step) = state.stack[ra_u + 2].val {
                             // C: count = l_castS2U(ivalue(s2v(ra+1)));
-                            let count = match state.get_at(ra + 1) {
+                            let count = match state.stack[ra_u + 1].val {
                                 LuaValue::Int(c) => c as u64,
                                 _ => 0,
                             };
                             if count > 0 {
-                                let step = match state.get_at(ra + 2) {
-                                    LuaValue::Int(s) => s,
-                                    _ => 0,
-                                };
-                                let idx = match state.get_at(ra) {
+                                let idx = match state.stack[ra_u].val {
                                     LuaValue::Int(x) => x,
                                     _ => 0,
                                 };
                                 // C: chgivalue(s2v(ra+1), count-1)
-                                state.set_at(ra + 1, LuaValue::Int((count - 1) as i64));
+                                state.stack[ra_u + 1].val = LuaValue::Int((count - 1) as i64);
                                 // C: idx = intop(+, idx, step)
                                 let new_idx = intop_add(idx, step);
-                                state.set_at(ra, LuaValue::Int(new_idx));
-                                state.set_at(ra + 3, LuaValue::Int(new_idx));
+                                state.stack[ra_u].val = LuaValue::Int(new_idx);
+                                state.stack[ra_u + 3].val = LuaValue::Int(new_idx);
                                 // C: pc -= GETARG_Bx(i)
                                 pc = (pc as i64 - i.arg_bx() as i64) as u32;
                             }
