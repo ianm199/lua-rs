@@ -9,7 +9,7 @@ use std::ffi::c_void;
 pub use crate::table::LuaTable;
 
 /// The dynamically-typed Lua value. Replaces C's `TValue`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum LuaValue {
     Nil,
     Bool(bool),

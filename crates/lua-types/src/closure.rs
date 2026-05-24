@@ -16,7 +16,7 @@ use crate::value::LuaValue;
 /// call time.
 pub type LuaCFnPtr = usize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum LuaClosure {
     Lua(GcRef<LuaLClosure>),
     C(GcRef<LuaCClosure>),
