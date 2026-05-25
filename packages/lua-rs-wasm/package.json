@@ -11,7 +11,8 @@
     "build:wasm": "node scripts/build-wasm.mjs",
     "prepack": "npm run build:wasm",
     "test": "node scripts/smoke.mjs",
-    "test:install": "node scripts/install-smoke.mjs"
+    "test:install": "node scripts/install-smoke.mjs",
+    "test:registry": "node scripts/registry-smoke.mjs"
   },
   "files": [
     "dist/lua_wasm.wasm",

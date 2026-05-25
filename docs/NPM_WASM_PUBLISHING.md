@@ -45,11 +45,15 @@ publishing would claim the package under that account.
    ```bash
    npm view lua-rs-wasm version
    npm view lua-rs-wasm dist.tarball
+   npm run test:registry --prefix packages/lua-rs-wasm
    ```
 
 The workflow runs `WASM_SKIP_BROWSER=1 ./harness/check_wasm_package.sh` before
 publishing, then runs `npm publish --provenance --access public --tag <tag>` from
-`packages/lua-rs-wasm`.
+`packages/lua-rs-wasm`. On real publishes, it also runs the registry smoke after
+publishing: a fresh temporary app installs `lua-rs-wasm@<package version>` from
+npm, imports `lua-rs-wasm/node`, and executes Lua through the packaged `.wasm`.
+That smoke retries installation for npm registry propagation.
 
 ## Alternative: Trusted Publishing
 

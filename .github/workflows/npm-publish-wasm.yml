@@ -77,3 +77,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public --tag "${{ inputs.tag }}"
+
+      - name: verify registry install
+        if: ${{ !inputs.dry_run }}
+        working-directory: packages/lua-rs-wasm
+        run: npm run test:registry

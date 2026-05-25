@@ -22,6 +22,7 @@ node --check packages/lua-rs-wasm/node.mjs
 node --check packages/lua-rs-wasm/scripts/build-wasm.mjs
 node --check packages/lua-rs-wasm/scripts/smoke.mjs
 node --check packages/lua-rs-wasm/scripts/install-smoke.mjs
+node --check packages/lua-rs-wasm/scripts/registry-smoke.mjs
 node --check harness/wasm/runtime-smoke.mjs
 node --check harness/wasm/unknown-smoke.mjs
 node --check harness/wasm/browser-smoke.mjs
@@ -72,6 +73,7 @@ for (const required of [
   "package.json",
   "scripts/build-wasm.mjs",
   "scripts/install-smoke.mjs",
+  "scripts/registry-smoke.mjs",
   "scripts/smoke.mjs",
 ]) {
   if (!byPath.has(required)) {
