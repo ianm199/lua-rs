@@ -76,3 +76,9 @@ but is not allowed to publish under that account's 2FA policy. Create an npm
 automation token or a granular access token with publish permission and 2FA
 bypass enabled for the intended owner, overwrite `NPM_TOKEN`, and rerun the real
 publish workflow.
+
+If the workflow fails at `npm publish` with `EOTP`, npm accepted the token but
+requires an interactive one-time password for this publish. That is not a
+reliable GitHub Actions publishing path because the package gate and queue time
+can exceed an authenticator code's lifetime. Use an automation token or granular
+publish token with 2FA bypass enabled instead.

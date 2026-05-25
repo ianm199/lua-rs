@@ -78,7 +78,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if ! npm publish --provenance --access public --tag "${{ inputs.tag }}"; then
-            echo "npm publish failed. If npm reported E403 with a two-factor-authentication requirement, create an npm automation token or granular access token with publish permission and 2FA bypass enabled, then overwrite NPM_TOKEN." >&2
+            echo "npm publish failed. If npm reported E403 or EOTP with a two-factor-authentication requirement, create an npm automation token or granular access token with publish permission and 2FA bypass enabled, then overwrite NPM_TOKEN." >&2
             exit 1
           fi
 
