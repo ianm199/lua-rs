@@ -20,7 +20,6 @@ lua-rs -e 'print("hello")'
 - A standalone binary: no `liblua`, no C interpreter, no C toolchain to build it.
 - Mostly safe Rust. The only `unsafe` is a small, audited core in the garbage
   collector and the optional dynamic-library loader.
-- Runs the real LuaRocks 3.11.1 and installs pure-Lua rocks.
 - Competitive with reference C (~1.3× geomean wall time), benchmarked per commit.
 
 ## Usage
@@ -46,7 +45,21 @@ TEST_TIMEOUT_S=90 ./harness/run_official_all.sh   # 44/44 PASS
 ```
 
 This is evidence of Lua source/runtime compatibility. It does not imply C API or
-ABI compatibility.
+ABI compatibility, and stock Lua C modules that expect `liblua` won't load.
+
+## Safety
+
+Most crates build under `#![forbid(unsafe_code)]`. The only `unsafe` is in the
+garbage collector (`lua-gc`) and the optional dynamic-library loader (`lua-cli`);
+both are budgeted and audited. It is not 100% safe Rust yet. See
+[docs/LUA_SYSTEM_DEEP_DIVE.md](docs/LUA_SYSTEM_DEEP_DIVE.md).
+
+## Performance
+
+`lua-rs` is benchmarked against reference Lua 5.4.7 on every commit. At the
+latest commit the geomean wall time is ~1.27× C and peak memory ~1.96× C, with
+some workloads faster than C. It is competitive with C, not faster, and is not
+LuaJIT. [Live dashboard.](https://ianm199.github.io/lua-rs/harness/bench/history/)
 
 ## LuaRocks
 
@@ -69,34 +82,13 @@ LUA_PATH="/tmp/luarocks-3.11.1/src/?.lua;/tmp/luarocks-3.11.1/src/?/init.lua" \
 LUA_PATH="/tmp/rocks/share/lua/5.4/?.lua;;" lua-rs -e 'print(require("inspect")({1, 2, 3}))'
 ```
 
-## Safety
+## Future goals
 
-Most crates build under `#![forbid(unsafe_code)]`. The only `unsafe` is in the
-garbage collector (`lua-gc`) and the optional dynamic-library loader (`lua-cli`);
-both are budgeted and audited. It is not 100% safe Rust. See
-[docs/LUA_SYSTEM_DEEP_DIVE.md](docs/LUA_SYSTEM_DEEP_DIVE.md).
-
-## Performance
-
-`lua-rs` is benchmarked against reference Lua 5.4.7 on every commit. At the
-latest commit the geomean wall time is ~1.27× C and peak memory ~1.96× C, with
-some workloads faster than C. It is competitive with C, not faster, and is not
-LuaJIT. [Live dashboard.](https://ianm199.github.io/lua-rs/harness/bench/history/)
-
-## Roadmap
-
-- Close the remaining wall-time gap toward parity with reference Lua.
-- An embedding API: use `lua-rs` as a crate to run Lua from Rust with no C
-  toolchain, and eventually to sandbox untrusted scripts more safely than
-  C-backed bindings. See [docs/FUTURE_GOALS.md](docs/FUTURE_GOALS.md).
-- LuaRocks support for native C rocks.
-
-## Limitations and non-goals
-
-- Not LuaJIT, and not aiming for LuaJIT-level speed.
-- Not a C-ABI drop-in: stock Lua C modules that expect `liblua` won't load.
-- Lua 5.4 only (not 5.1 ecosystems like OpenResty or Neovim's LuaJIT).
-- Native C rocks aren't supported yet.
+- Get to full safety: drive the remaining `unsafe` (in the garbage collector and
+  the dynamic-library loader) to zero, so the whole runtime is safe Rust.
+- Reach performance parity with reference Lua 5.4.
+- A Rust embedding API: run Lua from Rust as a crate, with no C toolchain. See
+  [docs/FUTURE_GOALS.md](docs/FUTURE_GOALS.md).
 
 ## Project layout
 
