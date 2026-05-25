@@ -354,16 +354,32 @@ impl LuaState {
     /// error during `lua_writestring` would surface through the host's
     /// error handling.
     pub fn write_output(&mut self, msg: &[u8]) -> Result<(), LuaError> {
-        use std::io::Write;
-        let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
-        handle
-            .write_all(msg)
-            .map_err(|e| LuaError::runtime(format_args!("{}", e)))?;
-        handle
-            .flush()
-            .map_err(|e| LuaError::runtime(format_args!("{}", e)))?;
-        Ok(())
+        if let Some(write_fn) = self.global().stdout_hook {
+            write_fn(msg).map_err(|e| LuaError::runtime(format_args!("{}", e)))?;
+            return Ok(());
+        }
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            let _ = msg;
+            Err(LuaError::runtime(format_args!(
+                "stdout not available in this host"
+            )))
+        }
+
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            use std::io::Write;
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            handle
+                .write_all(msg)
+                .map_err(|e| LuaError::runtime(format_args!("{}", e)))?;
+            handle
+                .flush()
+                .map_err(|e| LuaError::runtime(format_args!("{}", e)))?;
+            Ok(())
+        }
     }
 
     /// Convert the value at `idx` to a display string, push the result onto

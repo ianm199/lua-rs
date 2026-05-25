@@ -574,7 +574,6 @@ pub(crate) fn loadfile_fn(state: &mut LuaState) -> Result<usize, LuaError> {
     let fname: Option<Vec<u8>> = state.opt_arg_lstring(1, None)?;
     let mode: Option<Vec<u8>> = state.opt_arg_lstring(2, None)?;
     let env = if state.type_at(3) != LuaType::None { 3 } else { 0 };
-    // TODO(port): File I/O must go through state's IO abstraction; std::fs banned outside lua-cli.
     let status_ok = state.load_file_ex(fname.as_deref(), mode.as_deref())?;
     load_aux(state, status_ok, env)
 }
@@ -657,7 +656,6 @@ fn dofile_cont(state: &mut LuaState, _status: i32, _ctx: isize) -> Result<usize,
 pub(crate) fn dofile_fn(state: &mut LuaState) -> Result<usize, LuaError> {
     let fname: Option<Vec<u8>> = state.opt_arg_lstring(1, None)?;
     lua_vm::api::set_top(state, 1)?;
-    // TODO(port): File I/O must go through state's IO abstraction; std::fs banned outside lua-cli.
     if !state.load_file(fname.as_deref())? {
         return Err(LuaError::from_value(state.pop()));
     }
@@ -851,9 +849,9 @@ pub fn open(state: &mut LuaState) -> Result<usize, LuaError> {
 //                  in Phase B when lua-vm is compiled), (2) generic_reader's
 //                  self-referential &mut borrow needs architectural resolution,
 //                  (3) GC API stubs (gc_count, gc_step, …) need Phase D
-//                  implementations, (4) I/O (write_output, load_file*) must be
-//                  routed through a state abstraction rather than std::fs/stdout
-//                  directly (Phase B), (5) pcallk / callk continuations are
+//                  implementations, (4) I/O host capabilities now route through
+//                  state/global hooks, but stdin/env/time/temp remain incomplete,
+//                  (5) pcallk / callk continuations are
 //                  stubbed pending coroutine support in Phase E.  The fake
 //                  `struct LuaState;` placeholder here avoids duplicate-definition
 //                  errors while keeping the file self-contained; Phase B removes it.

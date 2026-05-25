@@ -16,8 +16,6 @@
 //! Keeping the platform calls behind hooks lets `lua-stdlib` stay free of
 //! `unsafe` per PORTING.md §1; `libloading` lives entirely in `lua-cli`.
 
-use std::env;
-
 use lua_types::{
  LuaError, LuaType, LuaValue,
 };
@@ -88,6 +86,34 @@ const LUA_CPATH_DEFAULT: &[u8] = b"./?.dll";
 
 // TODO(port): Centralise version constants; this is duplicated from luaconf.h.
 const LUA_VERSUFFIX: &[u8] = b"_5_4";
+
+fn getenv_bytes(state: &LuaState, name: &[u8]) -> Option<Vec<u8>> {
+    if let Some(env_fn) = state.global().env_hook {
+        return env_fn(name);
+    }
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        None
+    }
+
+    #[cfg(all(unix, not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+
+        let os_name = OsStr::from_bytes(name);
+        std::env::var_os(os_name).map(|v| v.into_vec())
+    }
+
+    #[cfg(all(not(unix), not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    {
+        std::str::from_utf8(name)
+            .ok()
+            .and_then(|name_str| std::env::var(name_str).ok())
+            .map(|s| s.into_bytes())
+    }
+}
 
 // ── Opaque library handle ─────────────────────────────────────────────────────
 //
@@ -320,19 +346,13 @@ fn setpath(
     let mut nver = envname.to_vec();
     nver.extend_from_slice(LUA_VERSUFFIX);
 
-    // TODO(port): std::env::var() accepts &str (UTF-8). Env-var names are
-    // OS-level ASCII here (not Lua user data), so from_utf8 is acceptable, but
-    // std::env::var_os + std::os::unix::ffi::OsStrExt would be more correct for
-    // paths containing non-UTF-8 bytes on Unix. Revisit in Phase B.
-    let nver_str = std::str::from_utf8(&nver).unwrap_or("");
-    let envname_str = std::str::from_utf8(envname).unwrap_or("");
+    let path_opt = if noenv(state) {
+        None
+    } else {
+        getenv_bytes(state, &nver).or_else(|| getenv_bytes(state, envname))
+    };
 
-    let path_opt: Option<Vec<u8>> = env::var(nver_str)
-        .ok()
-        .map(|s| s.into_bytes())
-        .or_else(|| env::var(envname_str).ok().map(|s| s.into_bytes()));
-
-    let final_path: Vec<u8> = if path_opt.is_none() || noenv(state) {
+    let final_path: Vec<u8> = if path_opt.is_none() {
         dft.to_vec()
     } else {
         let path = path_opt.unwrap();

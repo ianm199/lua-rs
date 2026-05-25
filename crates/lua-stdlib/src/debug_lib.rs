@@ -10,6 +10,7 @@
 //! C source: `reference/lua-5.4.7/src/ldblib.c` (484 lines, 20 functions)
 
 use std::cell::RefCell;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use std::io::{self, BufRead, Write};
 use std::rc::Rc;
 
@@ -842,43 +843,54 @@ pub(crate) fn get_hook(state: &mut LuaState) -> Result<usize, LuaError> {
 /// commands are printed to stderr and the loop continues.
 ///
 pub(crate) fn debug_interactive(state: &mut LuaState) -> Result<usize, LuaError> {
-    let stdin = io::stdin();
-    loop {
-        eprint!("lua_debug> ");
-        let _ = io::stderr().flush();
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        let _ = state;
+        return Err(LuaError::runtime(format_args!(
+            "debug.debug interactive stdin not available in this host"
+        )));
+    }
 
-        //        return 0;
-        // PORT NOTE: using String for the line buffer is Rust I/O infrastructure,
-        // not Lua data. The bytes are immediately converted to &[u8] before being
-        // passed into the Lua API.
-        let mut line = String::new();
-        let n = stdin
-            .lock()
-            .read_line(&mut line)
-            .map_err(|e| LuaError::runtime(format_args!("stdin read error: {}", e)))?;
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        let stdin = io::stdin();
+        loop {
+            eprint!("lua_debug> ");
+            let _ = io::stderr().flush();
 
-        if n == 0 || line == "cont\n" {
-            return Ok(0);
+            //        return 0;
+            // PORT NOTE: using String for the line buffer is Rust I/O infrastructure,
+            // not Lua data. The bytes are immediately converted to &[u8] before being
+            // passed into the Lua API.
+            let mut line = String::new();
+            let n = stdin
+                .lock()
+                .read_line(&mut line)
+                .map_err(|e| LuaError::runtime(format_args!("stdin read error: {}", e)))?;
+
+            if n == 0 || line == "cont\n" {
+                return Ok(0);
+            }
+
+            let bytes: &[u8] = line.as_bytes();
+
+            //        lua_pcall(L, 0, 0, 0))
+            //      lua_writestringerror("%s\n", luaL_tolstring(L, -1, NULL));
+            let result = state
+                .load_buffer(bytes, b"=(debug command)", None)
+                .and_then(|_| state.protected_call(0, 0, 0));
+
+            if let Err(_) = result {
+                // TODO(port): display the error via state.coerce_to_string(-1) which
+                // maps to luaL_tolstring. The exact method name for the coercing
+                // to-string operation and the stderr-write helper need to be established
+                // in Phase B (lua-vm/src/api.rs).
+                eprintln!("(error in debug command)");
+                state.pop_n(1);
+            }
+
+            lua_vm::api::set_top(state, 0)?;
         }
-
-        let bytes: &[u8] = line.as_bytes();
-
-        //        lua_pcall(L, 0, 0, 0))
-        //      lua_writestringerror("%s\n", luaL_tolstring(L, -1, NULL));
-        let result = state
-            .load_buffer(bytes, b"=(debug command)", None)
-            .and_then(|_| state.protected_call(0, 0, 0));
-
-        if let Err(_) = result {
-            // TODO(port): display the error via state.coerce_to_string(-1) which
-            // maps to luaL_tolstring. The exact method name for the coercing
-            // to-string operation and the stderr-write helper need to be established
-            // in Phase B (lua-vm/src/api.rs).
-            eprintln!("(error in debug command)");
-            state.pop_n(1);
-        }
-
-        lua_vm::api::set_top(state, 0)?;
     }
 }
 

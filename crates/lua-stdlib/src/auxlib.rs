@@ -14,8 +14,9 @@
 //! `UBox` / `resizebox` / `boxgc` / `boxmt` / `newbox` / `buffonstack`
 //! machinery. The public interface remains compatible.
 //!
-//! PORT NOTE: File-loading functions (`load_filex`) reference `std::fs` which
-//! is banned outside `lua-cli`. Those functions carry `TODO(port)` markers.
+//! PORT NOTE: File-loading functions (`load_filex`) use the embedder-installed
+//! `GlobalState::file_loader_hook`; concrete filesystem access belongs in
+//! `lua-cli` or another host backend.
 
 // TODO(port): LuaState, LuaValue, LuaError, GcRef, LuaString, LuaUserData,
 // LuaDebug, and LuaType are defined across lua-vm / lua-types. Imports will be
@@ -103,8 +104,8 @@ pub struct LuaBuffer {
 // may move there. Keeping here to mirror the C header.
 pub struct LuaStream {
     /// The underlying file handle. `None` for incompletely opened or closed streams.
-    // TODO(port): use a real File type (e.g. `std::fs::File`) in Phase B,
-    // noting std::fs is allowed in lua-stdlib for I/O library support.
+    // TODO(port): this legacy auxlib stream placeholder should converge with the
+    // host-provided LuaFileHandle abstraction used by io_lib.
     pub f: Option<Box<dyn std::io::Read>>,
     /// Optional close function (None for already-closed streams).
     pub closef: Option<fn(&mut LuaState) -> Result<usize, LuaError>>,
@@ -935,11 +936,11 @@ fn make_string_reader(data: Vec<u8>) -> impl FnMut() -> Option<Vec<u8>> {
 /// Strip an optional UTF-8 BOM (EF BB BF) and any `#`-prefixed first line.
 ///
 /// PORT NOTE: C reads byte-by-byte with `getc`/`feof` and lazily reopens the
-/// file in binary mode if it looks like a binary chunk. Here we slurp the file
-/// into memory (`std::fs::read`), strip the BOM, and let `lua_vm::api::load`
-/// dispatch text vs. binary by the first byte. The "binary chunk" branch in
-/// `luaL_loadfilex` exists in C because text mode does newline translation;
-/// `std::fs::read` already returns raw bytes on every platform we support.
+/// file in binary mode if it looks like a binary chunk. Here we ask the
+/// embedder-installed file loader hook for raw bytes, strip the BOM, and let
+/// `lua_vm::api::load` dispatch text vs. binary by the first byte. The "binary
+/// chunk" branch in `luaL_loadfilex` exists in C because text mode does newline
+/// translation; the host loader is expected to provide raw bytes.
 fn skip_bom_and_shebang(buf: &[u8]) -> Vec<u8> {
     let s = if buf.starts_with(b"\xEF\xBB\xBF") { &buf[3..] } else { buf };
     if s.first() == Some(&b'#') {
@@ -982,23 +983,25 @@ pub fn load_filex(
             return Ok(LUA_ERRFILE);
         }
     };
-    let path = match std::str::from_utf8(fname) {
-        Ok(s) => std::path::PathBuf::from(s),
-        Err(_) => {
-            state.push_fstring(format_args!(
-                "cannot open {}: invalid utf-8 in filename",
-                BStr(fname)
-            ))?;
-            return Ok(LUA_ERRFILE);
-        }
+    let raw = match state.global().file_loader_hook {
+        Some(load_fn) => load_fn(fname),
+        None => Err(LuaError::runtime(format_args!(
+            "no file_loader_hook registered"
+        ))),
     };
-    let raw = match std::fs::read(&path) {
+    let raw = match raw {
         Ok(bytes) => bytes,
         Err(e) => {
+            let detail = match &e {
+                LuaError::Runtime(LuaValue::Str(s)) => {
+                    String::from_utf8_lossy(s.as_bytes()).into_owned()
+                }
+                other => format!("{:?}", other),
+            };
             state.push_fstring(format_args!(
                 "cannot open {}: {}",
                 BStr(fname),
-                e
+                detail
             ))?;
             return Ok(LUA_ERRFILE);
         }
@@ -1366,9 +1369,9 @@ use std::fmt::Write as _;
 //   notes:         Buffer simplified from stack-based C UBox/box-on-Lua-stack to
 //                  plain Vec<u8> (LuaBuffer); UBox/resizebox/boxgc/boxmt/newbox
 //                  machinery dropped entirely — Rust Drop handles deallocation.
-//                  load_filex now reads via std::fs::read and pushes an error
-//                  string on open failure so loadfile/dofile return (nil, err)
-//                  per C semantics (stdin loading still TODO).
+//                  load_filex reads via GlobalState::file_loader_hook and pushes
+//                  an error string on open failure so loadfile/dofile return
+//                  (nil, err) per C semantics (stdin loading still TODO).
 //                  Warning system uses fn-ptr callbacks matching lua_WarnFunction
 //                  type; warnfoff/warnfon/warnfcont translated faithfully.
 //                  LuaState / LuaDebug / GcRef are Phase-A stubs; Phase B replaces

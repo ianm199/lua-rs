@@ -1,0 +1,21 @@
+[package]
+name = "lua-wasm-smoke"
+version.workspace = true
+description = "Bare wasm32 smoke harness for lua-rs."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints.rust]
+# Exported wasm smoke symbols require `#[no_mangle]`. This crate is a
+# non-published harness; runtime crates keep the workspace unsafe ceiling.
+unsafe_code = "allow"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lua-rs-runtime.workspace = true

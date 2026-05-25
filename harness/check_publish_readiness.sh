@@ -23,6 +23,9 @@ publishable=(
     lua-cli
 )
 
+echo "[publish] checking release version metadata"
+node harness/check_release_versions.mjs
+
 echo "[publish] verifying leaf package: lua-gc"
 cargo package -p lua-gc --allow-dirty >/tmp/lua-rs-port-package-lua-gc.log 2>&1
 
@@ -36,6 +39,9 @@ if ! rg -n '^publish = false$' crates/lua-cli-test-rust-module/Cargo.toml >/dev/
     echo "[publish] FAIL: lua-cli-test-rust-module must remain publish = false" >&2
     exit 1
 fi
+
+echo "[publish] checking wasm npm package"
+WASM_SKIP_BROWSER=1 ./harness/check_wasm_package.sh
 
 echo "[publish] ok"
 echo "[publish] note: full verification of dependent crates requires publishing internal deps in order."

@@ -530,14 +530,11 @@ fn project_from_upvalue(
 ///
 /// TODO(port): must write n1 and n2 back to the upvalue RanState.
 fn apply_random_seed(state: &mut LuaState) -> Result<(), LuaError> {
-    // PORT NOTE: std::time is not in the banned list (only std::fs/net/process).
-    let seed1 = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    // TODO(port): C uses address of L for ASLR entropy; no safe equivalent.
-    // Phase B can use a thread-local counter or OS entropy instead.
-    let seed2: u64 = 0;
+    let entropy = state.global().entropy_hook.map(|hook| hook()).unwrap_or(0);
+    let seed1 = entropy;
+    // TODO(port): C also mixes address entropy; keep the second seed derived
+    // deterministically unless a richer host entropy API is added.
+    let seed2: u64 = entropy.rotate_left(17) ^ 0x9e37_79b9_7f4a_7c15;
     apply_set_seed(state, seed1, seed2)
 }
 

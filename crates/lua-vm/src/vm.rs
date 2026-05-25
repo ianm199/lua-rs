@@ -1737,15 +1737,18 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                             pc += 1; // skip extra argument even if zero
                         }
                         state.set_top(ra + 1);
-                        let t = state.new_table();
+                        let t = if b != 0 || c != 0 {
+                            state.new_table_with_sizes(b as u32, c as u32)?
+                        } else {
+                            state.new_table()
+                        };
                         state.set_at(ra, LuaValue::Table(t.clone()));
-                        if b != 0 || c != 0 {
-                            state.table_resize(&t, c as usize, b as usize)?;
-                        }
                         state.set_ci_savedpc(ci, pc);
                         state.set_top(ra + 1);
                         state.gc_cond_step();
-                        trap = state.ci_trap(ci);
+                        if state.hookmask != 0 {
+                            trap = state.ci_trap(ci);
+                        }
                     }
                     // ── OP_SELF ───────────────────────────────────────────────
                     OpCode::Self_ => {
@@ -2333,10 +2336,15 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                             state.set_top(ra + b);
                         }
                         state.set_ci_savedpc(ci, pc); // savepc
+                        let had_hook = state.hookmask != 0;
                         match state.precall(ra, nresults)? {
                             None => {
-                                // C function — nothing else to do
-                                trap = state.ci_trap(ci); // updatetrap
+                                // C functions such as debug.sethook can change
+                                // hook state during the call, so refresh the VM
+                                // trap when hooks were or became relevant.
+                                if had_hook || state.hookmask != 0 {
+                                    trap = state.ci_trap(ci); // updatetrap
+                                }
                             }
                             Some(new_ci) => {
                                 // Lua function — goto startfunc
@@ -2376,7 +2384,9 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                             // C function — ci->func.p -= delta; luaD_poscall; goto ret
                             state.ci_adjust_func(ci, delta);
                             state.poscall(ci, n as u32)?;
-                            trap = state.ci_trap(ci);
+                            if state.hookmask != 0 {
+                                trap = state.ci_trap(ci);
+                            }
                             break 'dispatch; // goto ret
                         }
                     }
@@ -2401,16 +2411,20 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                                 state.set_top(ci_top);
                             }
                             crate::func::close(state, base, crate::func::CLOSE_K_TOP, true)?;
-                            trap = state.ci_trap(ci);
+                            if state.hookmask != 0 {
+                                trap = state.ci_trap(ci);
+                            }
                             base = state.ci_base(ci); // updatestack
                         }
                         if nparams1 != 0 {
                             let nextraargs = state.ci_nextraargs(ci) as u32;
-                            state.ci_adjust_func(ci, (nextraargs as i32 + nparams1 as i32));
+                            state.ci_adjust_func(ci, nextraargs as i32 + nparams1 as i32);
                         }
                         state.set_top(ra + n as i32);
                         state.poscall(ci, n)?;
-                        trap = state.ci_trap(ci);
+                        if state.hookmask != 0 {
+                            trap = state.ci_trap(ci);
+                        }
                         break 'dispatch; // goto ret
                     }
                     // ── OP_RETURN0 ─────────────────────────────────────────────

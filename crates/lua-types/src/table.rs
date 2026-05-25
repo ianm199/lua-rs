@@ -42,6 +42,13 @@ pub const MAXHBITS: u32 = MAXABITS - 1;
 /// Maximum size of the hash part (power-of-2 count of nodes).
 const MAXHSIZE: u32 = 1u32 << MAXHBITS;
 
+/// Minimum hash node count when lazily materializing a brand-new dummy table
+/// on first non-array key insertion.
+///
+/// In workloads that create many tiny record-like tables (`binarytrees`),
+/// a dummy→rehash path on every first insert adds avoidable overhead.
+const DUMMY_TABLE_INIT_HASH_NODES: u32 = 4;
+
 /// Bit 7 of `TableFlags`: when set, `alimit` is NOT the real array size.
 const BIT_RAS: u8 = 1 << 7;
 
@@ -722,6 +729,14 @@ impl TableInner {
         } else { key };
 
         if matches!(value, LuaValue::Nil) { return Ok(()); }
+
+        if self.is_dummy() && !matches!(key, LuaValue::Int(_)) {
+            self.set_node_vector(DUMMY_TABLE_INIT_HASH_NODES)?;
+            let mp = self.main_position(key);
+            self.node[mp].set_key(key);
+            self.node[mp].value = value;
+            return Ok(());
+        }
 
         let mp = self.main_position(key);
         let mp_occupied = self.is_dummy() || !matches!(self.node[mp].value, LuaValue::Nil);

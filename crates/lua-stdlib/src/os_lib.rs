@@ -4,10 +4,10 @@
 //!
 //! ## Platform access limitations
 //!
-//! Several `os.*` functions require OS-level capabilities that are restricted to
-//! `lua-cli` per PORTING.md (no `std::fs`, no `std::process` in `lua-stdlib`).
-//! Those functions are stubbed with `TODO(port)` markers and return nil / error
-//! until a capability-injection layer is designed in Phase B.
+//! Several `os.*` functions require OS-level capabilities. File removal,
+//! rename, command execution, environment lookup, temporary-name generation,
+//! and wall-clock access route through `GlobalState` hooks supplied by the
+//! embedder where needed for sandboxed/WASM hosts.
 //!
 //! Time decomposition (`os.date`, `os.time`) requires C-library functions
 //! (`gmtime_r`, `localtime_r`, `mktime`, `strftime`).  Those call sites are
@@ -240,16 +240,77 @@ fn check_time(state: &mut LuaState, arg: i32) -> Result<i64, LuaError> {
 }
 
 /// Returns the current Unix timestamp (seconds since 1970-01-01 UTC).
-///
-/// PORT NOTE: C uses `time(NULL)`.  Rust's `SystemTime::now()` is OS-clock based
-/// and equivalent for whole-second resolution.  Returns 0 if the system clock is
-/// before the epoch (the documented `duration_since` failure mode).
-fn unix_now() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+fn unix_now(state: &LuaState) -> Result<i64, LuaError> {
+    if let Some(now_fn) = state.global().unix_time_hook {
+        return Ok(now_fn());
+    }
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        let _ = state;
+        return Err(LuaError::runtime(format_args!(
+            "current time not available in this host"
+        )));
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        Ok(SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0))
+    }
+}
+
+fn native_temp_name() -> Result<Vec<u8>, LuaError> {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        return Err(LuaError::runtime(format_args!(
+            "temporary filenames not available in this host"
+        )));
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        let mut dir: Vec<u8> = {
+            let path = std::env::temp_dir();
+            #[cfg(unix)]
+            {
+                use std::os::unix::ffi::OsStrExt;
+                path.as_os_str().as_bytes().to_vec()
+            }
+            #[cfg(not(unix))]
+            {
+                path.to_string_lossy().as_bytes().to_vec()
+            }
+        };
+        if dir.last().copied() != Some(b'/') && dir.last().copied() != Some(b'\\') {
+            dir.push(b'/');
+        }
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        let suffix = format!("lua_{:x}_{:x}_{:x}", std::process::id(), nanos, n);
+        dir.extend_from_slice(suffix.as_bytes());
+        Ok(dir)
+    }
+}
+
+fn host_temp_name(state: &LuaState) -> Result<Vec<u8>, LuaError> {
+    match state.global().temp_name_hook {
+        Some(temp_fn) => temp_fn(),
+        None => native_temp_name(),
+    }
 }
 
 /// Decompose a Unix timestamp (UTC) into broken-down time fields.
@@ -567,44 +628,11 @@ pub(crate) fn os_rename(state: &mut LuaState) -> Result<usize, LuaError> {
 /// Generates a unique temporary file name and pushes it as a string.
 /// Raises a runtime error if generation fails.
 ///
-/// PORT NOTE: The C reference implementation uses POSIX `mkstemp` (which both
-/// generates a name and atomically creates the file) when `LUA_USE_POSIX` is
-/// defined, falling back to ISO C `tmpnam` otherwise.  Replicating `mkstemp`
-/// exactly requires `std::fs`, but Lua semantics only require that the
-/// returned path is currently unique and usable for subsequent `io.open`.
-/// We compose the system temp directory with a process / time / counter
-/// suffix, which matches the `tmpnam` branch of the reference.
+/// PORT NOTE: Temporary names are host capability. Native hosts can install
+/// `GlobalState::temp_name_hook`; bare WASM without that hook raises a Lua
+/// error instead of touching `std::env` / `std::time` stubs.
 pub(crate) fn os_tmpname(state: &mut LuaState) -> Result<usize, LuaError> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    let mut dir: Vec<u8> = {
-        let path = std::env::temp_dir();
-        #[cfg(unix)]
-        {
-            use std::os::unix::ffi::OsStrExt;
-            path.as_os_str().as_bytes().to_vec()
-        }
-        #[cfg(not(unix))]
-        {
-            path.to_string_lossy().as_bytes().to_vec()
-        }
-    };
-    if dir.last().copied() != Some(b'/') && dir.last().copied() != Some(b'\\') {
-        dir.push(b'/');
-    }
-
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-
-    let suffix = format!("lua_{:x}_{:x}_{:x}", std::process::id(), nanos, n);
-    dir.extend_from_slice(suffix.as_bytes());
-
+    let dir = host_temp_name(state)?;
     state.push_string(&dir)?;
     Ok(1)
 }
@@ -615,28 +643,31 @@ pub(crate) fn os_tmpname(state: &mut LuaState) -> Result<usize, LuaError> {
 pub(crate) fn os_getenv(state: &mut LuaState) -> Result<usize, LuaError> {
     let name_bytes: Vec<u8> = state.check_arg_string(1)?.to_vec();
 
-    // PORT NOTE: On Unix, environment variable names are arbitrary byte sequences
-    // and `OsStr::from_bytes` (from `std::os::unix::ffi::OsStrExt`) is the
-    // byte-exact approach.  On Windows they must be valid UTF-16.  Phase B should
-    // use the platform-appropriate OsStr API.
-    //
-    // TODO(port): Replace the cfg-guarded from_utf8 fallback on non-Unix targets
-    // with proper wide-string handling.
-    #[cfg(unix)]
-    let result: Option<Vec<u8>> = {
-        use std::ffi::OsStr;
-        use std::os::unix::ffi::{OsStrExt, OsStringExt};
-        let os_name = OsStr::from_bytes(&name_bytes);
-        std::env::var_os(os_name).map(|v| v.into_vec())
-    };
+    let result: Option<Vec<u8>> = match state.global().env_hook {
+        Some(env_fn) => env_fn(&name_bytes),
+        None => {
+            #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+            {
+                None
+            }
 
-    #[cfg(not(unix))]
-    let result: Option<Vec<u8>> = {
-        // TODO(port): from_utf8 used on Lua string data for OS API interop on
-        // non-Unix platforms.  Ideally replaced with wide-string conversion.
-        match std::str::from_utf8(&name_bytes) {
-            Ok(name_str) => std::env::var(name_str).ok().map(|v| v.into_bytes()),
-            Err(_) => None,
+            #[cfg(all(unix, not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            {
+                use std::ffi::OsStr;
+                use std::os::unix::ffi::{OsStrExt, OsStringExt};
+                let os_name = OsStr::from_bytes(&name_bytes);
+                std::env::var_os(os_name).map(|v| v.into_vec())
+            }
+
+            #[cfg(all(not(unix), not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            {
+                // TODO(port): from_utf8 used on Lua string data for OS API interop on
+                // non-Unix platforms.  Ideally replaced with wide-string conversion.
+                match std::str::from_utf8(&name_bytes) {
+                    Ok(name_str) => std::env::var(name_str).ok().map(|v| v.into_bytes()),
+                    Err(_) => None,
+                }
+            }
         }
     };
 
@@ -675,7 +706,7 @@ pub(crate) fn os_date(state: &mut LuaState) -> Result<usize, LuaError> {
     let s: &[u8] = &format[..];
 
     let t: i64 = if matches!(state.type_at(2), LuaType::None | LuaType::Nil) {
-        unix_now()
+        unix_now(state)?
     } else {
         check_time(state, 2)?
     };
@@ -741,7 +772,7 @@ pub(crate) fn os_time(state: &mut LuaState) -> Result<usize, LuaError> {
     let t: i64;
 
     if matches!(state.type_at(1), LuaType::None | LuaType::Nil) {
-        t = unix_now();
+        t = unix_now(state)?;
     } else {
         state.check_arg_type(1, LuaType::Table)?;
         // PORT NOTE: must use the public-API `set_top` (relative to the current
@@ -905,8 +936,9 @@ pub fn open_os(state: &mut LuaState) -> Result<usize, LuaError> {
 //   todos:         18
 //   port_notes:    4
 //   unsafe_blocks: 0
-//   notes:         Logic structure faithful; all OS calls that require banned
-//                  imports (std::fs, std::process) are stubbed with TODO(port).
+//   notes:         Logic structure faithful. File/process/env/temp/time
+//                  operations route through host hooks where they need OS
+//                  capabilities for sandboxed and bare-WASM hosts.
 //                  Time formatting (os.date, os.time, os.clock) needs libc or
 //                  chrono in Phase B.  os.exit needs a LuaError::Exit(i32)
 //                  variant.  check_strftime_option logic is fully translated.

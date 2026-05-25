@@ -489,16 +489,13 @@ pub fn unpack(state: &mut LuaState) -> Result<usize, LuaError> {
 ///
 /// `unsigned int` array whose elements are summed.
 ///
-/// PORT NOTE: Rust uses `SystemTime` as an entropy source instead of
-/// POSIX `clock()`/`time()`. The mixing is simplified (subsecond nanos XOR-
-/// shifted) but serves the same purpose: breaking pathological patterns.
-fn randomize_pivot() -> u32 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0u32);
-    nanos ^ nanos.wrapping_shr(16)
+/// PORT NOTE: C uses a small randomised pivot guard to avoid pathological sort
+/// partitions. The Rust port asks the host for entropy when available and falls
+/// back to a deterministic pivot value in sandboxed/bare-WASM hosts.
+fn randomize_pivot(state: &LuaState) -> u32 {
+    let entropy = state.global().entropy_hook.map(|hook| hook()).unwrap_or(0);
+    let mixed = entropy ^ entropy.wrapping_shr(32);
+    (mixed as u32) ^ (mixed as u32).wrapping_shr(16)
 }
 
 /// `table[i]` and `table[j]` respectively (table is at stack position 1).
@@ -759,7 +756,7 @@ fn aux_sort(state: &mut LuaState, mut lo: IdxT, mut up: IdxT, mut rnd: u32) -> R
 
         // Re-randomise if the partition was severely imbalanced.
         if (up - lo) / 128 > n {
-            rnd = randomize_pivot();
+            rnd = randomize_pivot(state);
         }
     }
     Ok(())

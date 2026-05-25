@@ -45,6 +45,21 @@ jobs:
           "$BIN" -e 'local mt = setmetatable({}, {__index = function() return 9 end}); assert(mt.anything == 9)'
           "$BIN" -e 'print("smoke ok")'
 
+  wasm-package:
+    name: wasm package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: Swatinem/rust-cache@v2
+      - name: wasm package gate
+        run: WASM_SKIP_BROWSER=1 ./harness/check_wasm_package.sh
+
   unsafe-budget:
     name: unsafe budget gate
     runs-on: ubuntu-latest

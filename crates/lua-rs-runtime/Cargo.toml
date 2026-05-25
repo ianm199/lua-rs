@@ -1,0 +1,19 @@
+[package]
+name = "lua-rs-runtime"
+version.workspace = true
+description = "Embedding helper for lua-rs."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+lua-types.workspace = true
+lua-vm.workspace = true
+lua-stdlib.workspace = true
+lua-parse.workspace = true

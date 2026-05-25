@@ -2,14 +2,11 @@
 //!
 //! C source: `src/liolib.c` (841 lines, ~35 functions).
 //!
-//! PORT NOTE: This module necessarily requires file-system access. The PORTING.md
-//! rule banning `std::fs` outside `lua-cli` conflicts with the crate assignment
-//! (`lua-stdlib`). Every file-system call site carries a `TODO(port): std::fs`
-//! marker. The architecture team must either relax the rule for this file, move
-//! the module to `lua-cli`, or provide a thin IO-abstraction crate that wraps
-//! `std::fs` under a permitted API.
-//!
-//! `popen` additionally requires `std::process::Command` and is stubbed.
+//! PORT NOTE: Filesystem and process access is host-provided. Regular files use
+//! `GlobalState::file_open_hook`, `io.popen` uses `GlobalState::popen_hook`, and
+//! stdout/stderr use output hooks when installed. The native CLI provides hooks
+//! backed by `std::fs`, `std::process`, and `std::io`; sandboxed and WASM hosts
+//! can leave those capabilities absent.
 //!
 //! PORT NOTE: Rust's borrow checker prevents holding `&mut dyn LuaFileOps`
 //! (extracted from userdata) and `&mut LuaState` simultaneously. The affected
@@ -26,6 +23,7 @@ use std::io::{self, SeekFrom};
 use std::rc::Rc;
 
 use lua_types::{LuaError, LuaFileHandle, LuaType, LuaValue};
+use lua_vm::state::{InputHook, OutputHook};
 use crate::state_stub::{LuaState, LuaStateStubExt as _};
 
 thread_local! {
@@ -143,47 +141,106 @@ impl LStream {
     }
 }
 
-/// Minimal `LuaFileOps` placeholder for stdin/stdout/stderr while real
-/// std::io wiring is deferred. All read/write/seek operations return
-/// `Unsupported`, which is sufficient for the validation paths exercised
-/// by `io.input(io.stdin)`, `io.output(io.stdout)`, and `io.type`.
+/// Standard stream handle for stdin/stdout/stderr.
+///
+/// Output goes through host hooks when installed. Native builds keep a direct
+/// stdio fallback for compatibility; bare `wasm32-unknown-unknown` reports
+/// unsupported instead of touching stubbed stdio.
 struct StdStreamHandle {
     kind: StdFileKind,
+    input_hook: Option<InputHook>,
+    output_hook: Option<OutputHook>,
+    unread: Option<u8>,
 }
 
 impl LuaFileHandle for StdStreamHandle {
     fn read_byte(&mut self) -> i32 {
-        use std::io::Read;
+        if let Some(byte) = self.unread.take() {
+            return byte as i32;
+        }
         match self.kind {
             StdFileKind::Stdin => {
-                let mut buf = [0u8; 1];
-                match std::io::stdin().read(&mut buf) {
-                    Ok(1) => buf[0] as i32,
-                    _ => EOF_SENTINEL,
+                if let Some(read_fn) = self.input_hook {
+                    let mut buf = [0u8; 1];
+                    return match read_fn(&mut buf) {
+                        Ok(1) => buf[0] as i32,
+                        _ => EOF_SENTINEL,
+                    };
+                }
+
+                #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+                {
+                    EOF_SENTINEL
+                }
+
+                #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+                {
+                    use std::io::Read;
+                    let mut buf = [0u8; 1];
+                    match std::io::stdin().read(&mut buf) {
+                        Ok(1) => buf[0] as i32,
+                        _ => EOF_SENTINEL,
+                    }
                 }
             }
             _ => EOF_SENTINEL,
         }
     }
-    fn unread_byte(&mut self, _byte: i32) {}
+    fn unread_byte(&mut self, byte: i32) {
+        if (0..=u8::MAX as i32).contains(&byte) {
+            self.unread = Some(byte as u8);
+        }
+    }
     fn write_bytes(&mut self, data: &[u8]) -> io::Result<usize> {
-        use std::io::Write;
-        match self.kind {
-            StdFileKind::Stderr => {
-                std::io::stderr().write_all(data)?;
-                Ok(data.len())
-            }
-            _ => {
-                std::io::stdout().write_all(data)?;
-                Ok(data.len())
+        if let Some(write_fn) = self.output_hook {
+            write_fn(data)?;
+            return Ok(data.len());
+        }
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            let _ = data;
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "standard output not available in this host",
+            ));
+        }
+
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            use std::io::Write;
+            match self.kind {
+                StdFileKind::Stderr => {
+                    std::io::stderr().write_all(data)?;
+                    Ok(data.len())
+                }
+                _ => {
+                    std::io::stdout().write_all(data)?;
+                    Ok(data.len())
+                }
             }
         }
     }
     fn flush(&mut self) -> io::Result<()> {
-        use std::io::Write;
-        match self.kind {
-            StdFileKind::Stderr => std::io::stderr().flush(),
-            _ => std::io::stdout().flush(),
+        if self.output_hook.is_some() {
+            return Ok(());
+        }
+
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "standard output not available in this host",
+            ));
+        }
+
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        {
+            use std::io::Write;
+            match self.kind {
+                StdFileKind::Stderr => std::io::stderr().flush(),
+                _ => std::io::stdout().flush(),
+            }
         }
     }
     fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
@@ -201,7 +258,18 @@ impl LuaFileOps for StdStreamHandle {
 }
 
 impl StdStreamHandle {
-    fn new(kind: StdFileKind) -> Self { StdStreamHandle { kind } }
+    fn new(
+        kind: StdFileKind,
+        input_hook: Option<InputHook>,
+        output_hook: Option<OutputHook>,
+    ) -> Self {
+        StdStreamHandle {
+            kind,
+            input_hook,
+            output_hook,
+            unread: None,
+        }
+    }
 }
 
 /// State machine for reading a numeric literal byte-by-byte from a file.
@@ -691,6 +759,34 @@ pub fn io_popen(state: &mut LuaState) -> Result<usize, LuaError> {
     }
 }
 
+fn native_temp_name() -> io::Result<Vec<u8>> {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "temporary files not available in this host",
+        ));
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        let mut path = std::env::temp_dir().to_string_lossy().as_bytes().to_vec();
+        if path.last().copied() != Some(b'/') && path.last().copied() != Some(b'\\') {
+            path.push(b'/');
+        }
+        let unique = format!(
+            "lua_tmpfile_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        path.extend_from_slice(unique.as_bytes());
+        Ok(path)
+    }
+}
+
 /// `io.tmpfile()`. C: `io_tmpfile`.
 pub fn io_tmpfile(state: &mut LuaState) -> Result<usize, LuaError> {
     let hook = state.global().file_open_hook;
@@ -702,19 +798,30 @@ pub fn io_tmpfile(state: &mut LuaState) -> Result<usize, LuaError> {
         return file_result(state, false, None, os_err);
     };
 
-    let mut path = std::env::temp_dir().to_string_lossy().as_bytes().to_vec();
-    if path.last().copied() != Some(b'/') && path.last().copied() != Some(b'\\') {
-        path.push(b'/');
-    }
-    let unique = format!(
-        "lua_tmpfile_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    );
-    path.extend_from_slice(unique.as_bytes());
+    let temp_name_hook = state.global().temp_name_hook;
+    let path = match temp_name_hook {
+        Some(temp_fn) => match temp_fn() {
+            Ok(path) => path,
+            Err(e) => {
+                let msg = match &e {
+                    LuaError::Runtime(LuaValue::Str(s)) => {
+                        String::from_utf8_lossy(s.as_bytes()).into_owned()
+                    }
+                    other => format!("{:?}", other),
+                };
+                return file_result(
+                    state,
+                    false,
+                    None,
+                    io::Error::new(io::ErrorKind::Unsupported, msg),
+                );
+            }
+        },
+        None => match native_temp_name() {
+            Ok(path) => path,
+            Err(e) => return file_result(state, false, None, e),
+        },
+    };
 
     match open_fn(&path, b"w+b") {
         Ok(fh) => {
@@ -1511,9 +1618,22 @@ fn create_std_file(
     field_name: &[u8],
 ) -> Result<(), LuaError> {
     let cell = new_pre_file(state)?;
+    let output_hook = match std_kind {
+        StdFileKind::Stdout => state.global().stdout_hook,
+        StdFileKind::Stderr => state.global().stderr_hook,
+        StdFileKind::Stdin => None,
+    };
+    let input_hook = match std_kind {
+        StdFileKind::Stdin => state.global().stdin_hook,
+        StdFileKind::Stdout | StdFileKind::Stderr => None,
+    };
     {
         let mut p = cell.borrow_mut();
-        p.file = Some(Box::new(StdStreamHandle::new(std_kind)));
+        p.file = Some(Box::new(StdStreamHandle::new(
+            std_kind,
+            input_hook,
+            output_hook,
+        )));
         p.close_fn = Some(io_noclose);
     }
     if let Some(key) = registry_key {
@@ -1552,16 +1672,16 @@ pub fn luaopen_io(state: &mut LuaState) -> Result<usize, LuaError> {
 //                  existing LStream read/write/close path Just Works. With
 //                  no hook registered (sandboxed embeddings) io.popen
 //                  returns nil, errmsg, errno via file_result rather than
-//                  panicking. Remaining systemic Phase B blockers:
-//                  (1) All concrete LuaFileOps implementations need std::fs or
-//                  std::process, both banned outside lua-cli by PORTING.md; the
-//                  architecture must grant an exemption for lua-stdlib/src/io_lib.rs
-//                  or introduce a thin IO-abstraction crate.
-//                  (2) The borrow checker prevents holding &mut dyn LuaFileOps
+//                  panicking. stdout/stderr can now route through host output
+//                  hooks; native builds retain a direct stdio fallback.
+//                  io.tmpfile now uses the temp-name host hook when installed
+//                  and fails cleanly under bare WASM without one.
+//                  Remaining systemic Phase B blockers:
+//                  (1) The borrow checker prevents holding &mut dyn LuaFileOps
 //                  (extracted from LuaUserData) and &mut LuaState simultaneously;
 //                  fix via RefCell<Box<dyn LuaFileOps>> inside LStream, plus
 //                  restructure g_read/g_write to accept StackIdx not a raw borrow.
-//                  (3) C's %.14g (significant-digit float format) has no direct
+//                  (2) C's %.14g (significant-digit float format) has no direct
 //                  Rust equivalent; a custom formatter is needed for faithful
 //                  number serialisation. The typed-userdata API (needed to cast
 //                  raw LuaUserData bytes to LStream) must also land in Phase B.

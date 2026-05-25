@@ -637,6 +637,40 @@ pub type FileLoaderHook = fn(filename: &[u8]) -> Result<Vec<u8>, LuaError>;
 pub type FileOpenHook =
     fn(filename: &[u8], mode: &[u8]) -> Result<Box<dyn lua_types::LuaFileHandle>, LuaError>;
 
+/// Function-pointer signature for writing bytes to a host-provided output
+/// stream, installed on [`GlobalState::stdout_hook`] or
+/// [`GlobalState::stderr_hook`] by the embedder.
+///
+/// Bare `wasm32-unknown-unknown` has no ambient stdout/stderr. Keeping output
+/// behind explicit hooks lets sandboxed and WASM hosts decide whether output is
+/// unavailable, buffered, or bridged to something like a browser console.
+pub type OutputHook = fn(bytes: &[u8]) -> std::io::Result<()>;
+
+/// Function-pointer signature for reading bytes from a host-provided input
+/// stream, installed on [`GlobalState::stdin_hook`] by the embedder.
+pub type InputHook = fn(buf: &mut [u8]) -> std::io::Result<usize>;
+
+/// Function-pointer signature for reading a host environment variable.
+///
+/// Returning `None` maps naturally to Lua's `os.getenv` result for a missing
+/// variable and is also the sandbox/bare-WASM default when no environment is
+/// exposed.
+pub type EnvHook = fn(name: &[u8]) -> Option<Vec<u8>>;
+
+/// Function-pointer signature for retrieving the current Unix time in seconds.
+pub type UnixTimeHook = fn() -> i64;
+
+/// Function-pointer signature for host entropy used by default PRNG seeds and
+/// table-sort pivot randomisation. Hosts without entropy may leave it unset; the
+/// stdlib then uses deterministic fallback values instead of touching OS stubs.
+pub type EntropyHook = fn() -> u64;
+
+/// Function-pointer signature for generating a host temporary filename.
+///
+/// Used by `os.tmpname` and `io.tmpfile`. The hook should return a path-like byte
+/// string that the host's `file_open_hook` can understand.
+pub type TempNameHook = fn() -> Result<Vec<u8>, LuaError>;
+
 /// Function-pointer signature for spawning a child process with a connected
 /// pipe, installed on [`GlobalState::popen_hook`] by the embedder.
 ///
@@ -797,9 +831,35 @@ pub struct GlobalState {
 
     /// Phase-B hook for opening a file handle for read/write/append. Set by
     /// `lua-cli` since `std::fs` is banned in `lua-stdlib`. `None` causes
-    /// `io.open` and `io.output(name)` to return an error; the standard streams
-    /// (`io.stdin`, `io.stdout`, `io.stderr`) remain functional.
+    /// `io.open` and `io.output(name)` to return an error; standard output and
+    /// error are controlled separately through output hooks/native fallbacks.
     pub file_open_hook: Option<FileOpenHook>,
+
+    /// Hook for host stdout. When absent, native builds fall back to Rust stdout
+    /// for compatibility; bare `wasm32-unknown-unknown` reports stdout
+    /// unavailable instead of touching a stubbed stdio implementation.
+    pub stdout_hook: Option<OutputHook>,
+
+    /// Hook for host stderr. See [`GlobalState::stdout_hook`].
+    pub stderr_hook: Option<OutputHook>,
+
+    /// Hook for host stdin. When absent, native builds fall back to Rust stdin
+    /// for compatibility; bare `wasm32-unknown-unknown` behaves like EOF.
+    pub stdin_hook: Option<InputHook>,
+
+    /// Hook for host environment lookups. `None` makes `os.getenv` return nil.
+    pub env_hook: Option<EnvHook>,
+
+    /// Hook for host wall-clock time. Required for `os.time()` and `os.date()`
+    /// without an explicit timestamp under bare WASM.
+    pub unix_time_hook: Option<UnixTimeHook>,
+
+    /// Hook for host entropy. Used by default `math.randomseed` and table sort
+    /// pivot randomisation; absent hooks fall back to deterministic seeds.
+    pub entropy_hook: Option<EntropyHook>,
+
+    /// Hook for host temporary filenames. Used by `os.tmpname` and `io.tmpfile`.
+    pub temp_name_hook: Option<TempNameHook>,
 
     /// Phase-G hook for spawning a child process and connecting one stream
     /// (stdin or stdout) to a Lua file handle. Set by `lua-cli` since
@@ -1330,6 +1390,12 @@ pub struct LuaState {
     /// at the resume site.
     pub cached_thread_id: u64,
 
+    /// Local GC gate.
+    ///
+    /// Avoids borrowing `GlobalState` on every call edge when GC/finalizers
+    /// are not currently due.
+    pub gc_check_needed: bool,
+
 }
 
 impl LuaState {
@@ -1454,7 +1520,23 @@ impl LuaState {
     /// macros.tsv: `lua_newtable → state.new_table()`
     pub fn new_table(&mut self) -> GcRef<LuaTable> {
         // TODO(port): register with GC tracking (state.global_mut().allgc) in Phase D
+        self.mark_gc_check_needed();
         GcRef::new(LuaTable::placeholder())
+    }
+
+    /// Create a fresh table with pre-sized array/hash parts.
+    ///
+    /// mirrors the `luaH_new` + `luaH_resize` pair in one call so we don't
+    /// pay an extra resize path for hot construction sites.
+    pub fn new_table_with_sizes(
+        &mut self,
+        array_size: u32,
+        hash_size: u32,
+    ) -> Result<GcRef<LuaTable>, LuaError> {
+        self.mark_gc_check_needed();
+        let t = GcRef::new(LuaTable::placeholder());
+        self.table_resize(&t, array_size as usize, hash_size as usize)?;
+        Ok(t)
     }
 
     /// Intern a byte string in the global string pool.
@@ -1472,6 +1554,7 @@ impl LuaState {
             if let Some(existing) = self.global().interned_lt.get(bytes) {
                 return Ok(existing.clone());
             }
+            self.mark_gc_check_needed();
             let _local = crate::string::new(self, bytes)?;
             let new_ref = GcRef::new(LuaString::from_bytes(bytes.to_vec()));
             self.global_mut()
@@ -1479,6 +1562,7 @@ impl LuaState {
                 .insert(bytes.to_vec().into_boxed_slice(), new_ref.clone());
             Ok(new_ref)
         } else {
+            self.mark_gc_check_needed();
             let new_ref = GcRef::new(LuaString::from_bytes(bytes.to_vec()));
             // PORT NOTE: Phase-B byte tracking for `collectgarbage("count")`.
             // C-Lua's `luaC_newobj` calls `luaM_malloc`, which adds
@@ -1962,11 +2046,13 @@ impl LuaState {
     /// Rc during Phase D-1; mutable access via `Rc::get_mut` only works while
     /// no other GcRefs alias it — true at construction).
     pub fn new_proto(&mut self) -> GcRef<LuaProto> {
+        self.mark_gc_check_needed();
         GcRef::new(LuaProto::placeholder())
     }
 
     /// Allocate a Lua-side closure (compiled function + upvalue slots).
     pub fn new_lclosure(&mut self, proto: GcRef<LuaProto>, nupvals: usize) -> GcRef<LuaClosureLua> {
+        self.mark_gc_check_needed();
         let mut upvals = Vec::with_capacity(nupvals);
         for _ in 0..nupvals {
             upvals.push(std::cell::Cell::new(self.new_upval_closed(LuaValue::Nil)));
@@ -1976,11 +2062,13 @@ impl LuaState {
 
     /// Allocate a closed upvalue holding the given value.
     pub fn new_upval_closed(&mut self, v: LuaValue) -> GcRef<UpVal> {
+        self.mark_gc_check_needed();
         GcRef::new(UpVal::closed(v))
     }
 
     /// Allocate an open upvalue referring to a thread's stack slot.
     pub fn new_upval_open(&mut self, thread_id: usize, level: StackIdx) -> GcRef<UpVal> {
+        self.mark_gc_check_needed();
         GcRef::new(UpVal::open(thread_id, level))
     }
     /// Mirrors `luaS_newlstr`: short strings are interned globally so equal
@@ -2023,6 +2111,7 @@ impl LuaState {
         }
         // TODO(D-1c-bridge): upvals are pre-populated from parent frame; state.new_lclosure
         // fills with fresh Nil upvals which would drop the captured bindings.
+        self.mark_gc_check_needed();
         let new_cl = GcRef::new(LuaClosureLua {
             proto: child_proto,
             upvals,
@@ -2465,6 +2554,7 @@ impl LuaState {
         }
     }
     pub fn table_resize(&mut self, t: &GcRef<LuaTable>, na: usize, nh: usize) -> Result<(), LuaError> {
+        self.mark_gc_check_needed();
         t.resize(self, na, nh)
     }
     pub fn table_getn(&self, t: &GcRef<LuaTable>) -> i64 {
@@ -2590,34 +2680,71 @@ impl LuaState {
     }
 
     #[inline(always)]
+    fn should_check_gc(&mut self) -> bool {
+        if self.gc_check_needed {
+            return true;
+        }
+        if !self.global().to_be_finalized.is_empty() {
+            self.gc_check_needed = true;
+            return true;
+        }
+        false
+    }
+
+    #[inline(always)]
+    pub(crate) fn mark_gc_check_needed(&mut self) {
+        self.gc_check_needed = true;
+    }
+
+    #[inline(always)]
     pub fn gc_check_step(&mut self) {
         if !self.allowhook {
             return;
         }
+        if !self.should_check_gc() {
+            return;
+        }
         let Some((should_collect, has_finalizers)) = self.gc_step_flags() else {
+            self.gc_check_needed = false;
             return;
         };
-        if should_collect {
-            self.gc().check_step();
-        }
-        if has_finalizers || !self.global().to_be_finalized.is_empty() {
+        if should_collect || has_finalizers {
+            if should_collect {
+                self.gc().check_step();
+            }
             crate::api::run_pending_finalizers(self);
+            self.gc_check_needed = true;
         }
+        let should_keep_checking = {
+            let g = self.global();
+            g.heap.would_collect() || !g.to_be_finalized.is_empty()
+        };
+        self.gc_check_needed = should_keep_checking;
     }
     #[inline(always)]
     pub fn gc_cond_step(&mut self) {
         if !self.allowhook {
             return;
         }
+        if !self.should_check_gc() {
+            return;
+        }
         let Some((should_collect, has_finalizers)) = self.gc_step_flags() else {
+            self.gc_check_needed = false;
             return;
         };
-        if should_collect {
-            self.gc().check_step();
-        }
-        if has_finalizers || !self.global().to_be_finalized.is_empty() {
+        if should_collect || has_finalizers {
+            if should_collect {
+                self.gc().check_step();
+            }
             crate::api::run_pending_finalizers(self);
+            self.gc_check_needed = true;
         }
+        let should_keep_checking = {
+            let g = self.global();
+            g.heap.would_collect() || !g.to_be_finalized.is_empty()
+        };
+        self.gc_check_needed = should_keep_checking;
     }
     pub fn gc_barrier_back<T, U>(&mut self, _t: T, _v: U) { /* phase-b no-op */ }
     pub fn gc_barrier_upval<T, U, V>(&mut self, _cl: T, _uv: U, _v: V) { /* phase-b no-op */ }
@@ -3259,23 +3386,31 @@ impl<'a> GcHandle<'a> {
 // PORT NOTE: `luai_makeseed` in C mixed ASLR entropy (pointer addresses of a
 // heap var, stack var, and code symbol) with the current time via `luaS_hash`.
 // In Rust, raw pointer addresses require `unsafe` which is forbidden outside
-// lua-gc/lua-coro.  Phase A uses time-only entropy.  The hash is computed via
-// `crate::string::hash_bytes` to match the Lua FNV-style algorithm.
+// lua-gc/lua-coro. Native builds use time-only entropy for now; bare WASM uses
+// a fixed seed so state creation never touches a stubbed host clock.
 fn make_seed() -> u32 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as u32)
-        .unwrap_or(0);
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    {
+        return crate::string::hash_bytes(b"lua-rs-wasm-seed", 0x9e37_79b9);
+    }
 
-    // TODO(port): mix in ASLR entropy (pointer to heap / stack / code).
-    // Requires a short `unsafe` block to cast references to usize.
-    // The entropy improvement is important for hash DoS resistance (CVE-class).
-    // Phase B should add this via a platform-specific helper in lua-gc or via
-    // the `getrandom` crate if it is added as a dependency.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let t = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as u32)
+            .unwrap_or(0);
 
-    // For Phase A, just hash the time bytes against itself.
-    crate::string::hash_bytes(&t.to_le_bytes(), t)
+        // TODO(port): mix in ASLR entropy (pointer to heap / stack / code).
+        // Requires a short `unsafe` block to cast references to usize.
+        // The entropy improvement is important for hash DoS resistance (CVE-class).
+        // Phase B should add this via a platform-specific helper in lua-gc or via
+        // the `getrandom` crate if it is added as a dependency.
+
+        // For Phase A, just hash the time bytes against itself.
+        crate::string::hash_bytes(&t.to_le_bytes(), t)
+    }
 }
 
 /// Adjust `GCdebt` to `debt` while preserving the `totalbytes + GCdebt` invariant.
@@ -3645,6 +3780,7 @@ fn preinit_thread(thread: &mut LuaState, global: Rc<RefCell<GlobalState>>) {
     thread.status = LuaStatus::Ok as u8;
     thread.errfunc = 0;
     thread.oldpc = 0;
+    thread.gc_check_needed = true;
 }
 
 fn close_state(state: &mut LuaState) {
@@ -3739,6 +3875,7 @@ pub fn new_thread(state: &mut LuaState, initial_body: Option<LuaValue>) -> Resul
         oldpc: 0,
         marked: 0,
         cached_thread_id: reserved_id,
+        gc_check_needed: false,
     };
 
     preinit_thread(&mut new_thread, global_rc);
@@ -3966,6 +4103,13 @@ pub fn new_state() -> Option<LuaState> {
         parser_hook: None,
         file_loader_hook: None,
         file_open_hook: None,
+        stdout_hook: None,
+        stderr_hook: None,
+        stdin_hook: None,
+        env_hook: None,
+        unix_time_hook: None,
+        entropy_hook: None,
+        temp_name_hook: None,
         popen_hook: None,
         file_remove_hook: None,
         file_rename_hook: None,
@@ -4050,6 +4194,7 @@ pub fn new_state() -> Option<LuaState> {
         oldpc: 0,
         marked: initial_marked,
         cached_thread_id: 0,
+        gc_check_needed: false,
     };
 
     preinit_thread(&mut main_thread, global_rc.clone());

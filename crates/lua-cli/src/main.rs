@@ -320,6 +320,85 @@ fn file_open_hook(filename: &[u8], mode: &[u8]) -> Result<Box<dyn LuaFileHandle>
     })
 }
 
+fn stdout_hook(bytes: &[u8]) -> io::Result<()> {
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    handle.write_all(bytes)?;
+    handle.flush()
+}
+
+fn stderr_hook(bytes: &[u8]) -> io::Result<()> {
+    let stderr = std::io::stderr();
+    let mut handle = stderr.lock();
+    handle.write_all(bytes)?;
+    handle.flush()
+}
+
+fn stdin_hook(buf: &mut [u8]) -> io::Result<usize> {
+    std::io::stdin().lock().read(buf)
+}
+
+fn env_hook(name: &[u8]) -> Option<Vec<u8>> {
+    #[cfg(unix)]
+    {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+        std::env::var_os(OsStr::from_bytes(name)).map(|v| v.into_vec())
+    }
+
+    #[cfg(not(unix))]
+    {
+        let name = std::str::from_utf8(name).ok()?;
+        std::env::var(name).ok().map(|v| v.into_bytes())
+    }
+}
+
+fn unix_time_hook() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn entropy_hook() -> u64 {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    nanos ^ ((std::process::id() as u64) << 32)
+}
+
+fn temp_name_hook() -> Result<Vec<u8>, LuaError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let mut path: Vec<u8> = {
+        let tmp = std::env::temp_dir();
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            tmp.as_os_str().as_bytes().to_vec()
+        }
+        #[cfg(not(unix))]
+        {
+            tmp.to_string_lossy().as_bytes().to_vec()
+        }
+    };
+    if path.last().copied() != Some(b'/') && path.last().copied() != Some(b'\\') {
+        path.push(b'/');
+    }
+
+    let unique = format!(
+        "lua_rs_{:x}_{:x}_{:x}",
+        std::process::id(),
+        entropy_hook(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+    path.extend_from_slice(unique.as_bytes());
+    Ok(path)
+}
+
 fn os_execute_hook(cmd: &[u8]) -> Result<OsExecuteResult, LuaError> {
     let cmd_str = std::str::from_utf8(cmd)
         .map_err(|_| LuaError::runtime(format_args!("os.execute command not valid UTF-8")))?;
@@ -713,6 +792,13 @@ fn main() -> ExitCode {
         state.global_mut().parser_hook = Some(parser_hook);
         state.global_mut().file_loader_hook = Some(file_loader_hook);
         state.global_mut().file_open_hook = Some(file_open_hook);
+        state.global_mut().stdout_hook = Some(stdout_hook);
+        state.global_mut().stderr_hook = Some(stderr_hook);
+        state.global_mut().stdin_hook = Some(stdin_hook);
+        state.global_mut().env_hook = Some(env_hook);
+        state.global_mut().unix_time_hook = Some(unix_time_hook);
+        state.global_mut().entropy_hook = Some(entropy_hook);
+        state.global_mut().temp_name_hook = Some(temp_name_hook);
         state.global_mut().popen_hook = Some(popen_hook);
         state.global_mut().file_remove_hook = Some(file_remove_hook);
         state.global_mut().file_rename_hook = Some(file_rename_hook);

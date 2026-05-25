@@ -493,7 +493,9 @@ fn try_func_tm(state: &mut LuaState, func_idx: StackIdx) -> Result<StackIdx, Lua
     // checkstackGCp → { state.check_stack(n)?; state.gc().check_step(); }  (macros.tsv)
     // PORT NOTE: func_idx is a StackIdx and survives any stack reallocation.
     state.check_stack(1)?;
-    state.gc_check_step();
+    if state.gc_check_needed {
+        state.gc_check_step();
+    }
 
     let func_val = state.get_at(func_idx).clone();
     let tm = state.get_tm_by_obj(&func_val, TagMethod::Call);
@@ -680,7 +682,9 @@ fn precall_c(
     f: crate::state::LuaCFunction,
 ) -> Result<i32, LuaError> {
     state.check_stack(LUA_MINSTACK as i32)?;
-    state.gc_check_step();
+    if state.gc_check_needed {
+        state.gc_check_step();
+    }
 
     let top_idx = state.top_idx();
     let ci_idx = prep_call_info(state, func_idx, nresults, CIST_C, top_idx + LUA_MINSTACK)?;
@@ -732,7 +736,9 @@ pub(crate) fn pretailcall(
                 let nfixparams = proto.numparams as i32;
 
                 state.check_stack(fsize - delta)?;
-                state.gc_check_step();
+                if state.gc_check_needed {
+                    state.gc_check_step();
+                }
 
                 {
                     let ci = state.get_ci_mut(ci_idx);
@@ -800,7 +806,9 @@ pub(crate) fn precall(
         let narg = (state.top_idx().0 as i32 - func_idx.0 as i32) - 1;
 
         state.check_stack(fsize)?;
-        state.gc_check_step();
+        if state.gc_check_needed {
+            state.gc_check_step();
+        }
 
         let ci_idx =
             prep_call_info(state, func_idx, nresults, 0, func_idx + 1 + fsize as i32)?;
@@ -848,7 +856,9 @@ fn precall_slow(
             }
             LuaValue::Function(LuaClosure::LightC(f)) => {
                 state.check_stack(LUA_MINSTACK as i32)?;
-                state.gc_check_step();
+                if state.gc_check_needed {
+                    state.gc_check_step();
+                }
 
                 let top_idx = state.top_idx();
                 let ci_idx =
@@ -874,7 +884,9 @@ fn precall_slow(
                 let fsize = cl.proto.maxstacksize as i32;
 
                 state.check_stack(fsize)?;
-                state.gc_check_step();
+                if state.gc_check_needed {
+                    state.gc_check_step();
+                }
 
                 let ci_idx = prep_call_info(
                     state,

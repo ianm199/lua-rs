@@ -1,0 +1,20 @@
+[package]
+name = "lua-wasm"
+version.workspace = true
+description = "Bare wasm32 embedding artifact for lua-rs."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints.rust]
+unsafe_code = "allow"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lua-types.workspace = true
+lua-rs-runtime.workspace = true

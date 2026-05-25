@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>lua-rs wasm browser smoke</title>
+<pre id="status" data-status="running">running</pre>
+<script type="module">
+  import { loadLuaRs } from "../../packages/lua-rs-wasm/index.mjs";
+  import { runRuntimeAssertions, smokeOptions } from "./smoke-scenario.mjs";
+
+  const status = document.getElementById("status");
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const wasmUrl =
+      params.get("wasm") ?? "../../target/wasm32-unknown-unknown/release/lua_wasm.wasm";
+    const { host } = await loadLuaRs(wasmUrl, smokeOptions());
+    const result = runRuntimeAssertions(host);
+    status.dataset.status = "pass";
+    status.textContent = `PASS ${JSON.stringify(result)}`;
+  } catch (error) {
+    status.dataset.status = "fail";
+    status.textContent = `FAIL ${error?.stack ?? error}`;
+  }
+</script>
