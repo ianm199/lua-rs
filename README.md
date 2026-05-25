@@ -90,7 +90,8 @@ builds and includes `dist/lua_wasm.wasm` for npm packaging. The package can be
 published with the manual `Publish lua-rs-wasm` GitHub Actions workflow once the
 repository has an `NPM_TOKEN` secret. Adding WASI support is separate future work. See
 [harness/wasm/README.md](harness/wasm/README.md) for the runnable host-callback
-smoke.
+smoke, and [docs/NPM_WASM_PUBLISHING.md](docs/NPM_WASM_PUBLISHING.md) for the
+publish runbook.
 
 ## LuaRocks
 

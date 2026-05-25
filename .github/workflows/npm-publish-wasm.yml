@@ -52,7 +52,17 @@ jobs:
       - name: npm publish dry-run
         if: ${{ inputs.dry_run }}
         working-directory: packages/lua-rs-wasm
-        run: npm publish --dry-run --tag "${{ inputs.tag }}"
+        run: npm publish --dry-run --access public --tag "${{ inputs.tag }}"
+
+      - name: require npm token
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "Missing NPM_TOKEN repository secret. Create an npm publish token for the intended package owner, then add it with: gh secret set NPM_TOKEN" >&2
+            exit 1
+          fi
 
       - name: npm identity
         if: ${{ !inputs.dry_run }}
@@ -66,4 +76,4 @@ jobs:
         working-directory: packages/lua-rs-wasm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --tag "${{ inputs.tag }}"
+        run: npm publish --provenance --access public --tag "${{ inputs.tag }}"

@@ -12,7 +12,8 @@ npm run test:install --prefix packages/lua-rs-wasm
 
 Publish from GitHub Actions with the manual `Publish lua-rs-wasm` workflow. It
 runs as a dry-run by default; real publishing requires dispatching from `main`
-with `dry_run=false` and an `NPM_TOKEN` repository secret.
+with `dry_run=false` and an `NPM_TOKEN` repository secret. See
+`docs/NPM_WASM_PUBLISHING.md` in the repository root for the full runbook.
 
 Then instantiate it from JS:
 
