@@ -27,3 +27,4 @@ lua-stdlib.workspace = true
 lua-parse.workspace = true
 lua-rs-lfs.workspace = true
 libloading = "0.9"
+rustyline = "14"

@@ -14,18 +14,16 @@ use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process::ExitCode;
 
-use lua_stdlib::auxlib::load_buffer;
-use lua_stdlib::init::open_libs;
 use lua_types::closure::LuaLClosure;
-use lua_types::error::{LuaError, LuaExit};
+use lua_types::error::LuaError;
 use lua_types::filehandle::LuaFileHandle;
 use lua_types::gc::GcRef;
 use lua_types::upval::UpVal;
 use lua_types::value::LuaValue;
-use lua_vm::api::{create_table, pcall_k, push_lstring, set_global, set_i, to_lua_string};
-use lua_vm::state::{
-    new_state, DynLibId, DynamicSymbol, LuaState, OsExecuteReason, OsExecuteResult,
-};
+use lua_vm::state::{new_state, DynLibId, DynamicSymbol, LuaState};
+
+mod interp;
+mod repl;
 
 fn file_loader_hook(filename: &[u8]) -> Result<Vec<u8>, LuaError> {
     #[cfg(unix)]
@@ -56,9 +54,9 @@ fn file_loader_hook(filename: &[u8]) -> Result<Vec<u8>, LuaError> {
 /// The write wrapper is flushed on `Drop` (implicit close) so data is not
 /// lost when `io.close()` drops the `Box<dyn LuaFileHandle>`.
 enum FsFile {
-    Read(BufReader<std::fs::File>, Option<(i32, String)>),
+    Read(BufReader<std::fs::File>),
     Write(BufWriter<std::fs::File>, bool, FsBufMode),
-    ReadWrite(std::fs::File, Option<u8>, Option<(i32, String)>),
+    ReadWrite(std::fs::File, Option<u8>),
 }
 
 #[derive(Clone, Copy)]
@@ -96,7 +94,7 @@ impl FsFile {
         match (first, update) {
             (b'r', false) => {
                 let f = std::fs::File::open(&path)?;
-                Ok(FsFile::Read(BufReader::new(f), None))
+                Ok(FsFile::Read(BufReader::new(f)))
             }
             (b'w', false) => {
                 let f = std::fs::File::create(&path)?;
@@ -115,42 +113,30 @@ impl FsFile {
                     .truncate(first == b'w')
                     .append(first == b'a')
                     .open(&path)?;
-                Ok(FsFile::ReadWrite(f, None, None))
+                Ok(FsFile::ReadWrite(f, None))
             }
         }
     }
 }
 
-fn io_error_info(err: &io::Error) -> (i32, String) {
-    (err.raw_os_error().unwrap_or(0), err.to_string())
-}
-
 impl LuaFileHandle for FsFile {
     fn read_byte(&mut self) -> i32 {
         match self {
-            FsFile::Read(r, err) => {
+            FsFile::Read(r) => {
                 let mut buf = [0u8; 1];
                 match r.read(&mut buf) {
                     Ok(1) => buf[0] as i32,
-                    Ok(_) => -1,
-                    Err(e) => {
-                        *err = Some(io_error_info(&e));
-                        -1
-                    }
+                    _ => -1,
                 }
             }
-            FsFile::ReadWrite(f, pushback, err) => {
+            FsFile::ReadWrite(f, pushback) => {
                 if let Some(b) = pushback.take() {
                     return b as i32;
                 }
                 let mut buf = [0u8; 1];
                 match f.read(&mut buf) {
                     Ok(1) => buf[0] as i32,
-                    Ok(_) => -1,
-                    Err(e) => {
-                        *err = Some(io_error_info(&e));
-                        -1
-                    }
+                    _ => -1,
                 }
             }
             FsFile::Write(_, errored, _) => {
@@ -162,12 +148,12 @@ impl LuaFileHandle for FsFile {
 
     fn unread_byte(&mut self, byte: i32) {
         match self {
-            FsFile::Read(r, _) => {
+            FsFile::Read(r) => {
                 if byte >= 0 {
                     let _ = r.seek_relative(-1);
                 }
             }
-            FsFile::ReadWrite(_, pushback, _) => {
+            FsFile::ReadWrite(_, pushback) => {
                 if byte >= 0 {
                     *pushback = Some(byte as u8);
                 }
@@ -187,24 +173,24 @@ impl LuaFileHandle for FsFile {
                 }
                 Ok(n)
             }
-            FsFile::ReadWrite(f, _, _) => f.write(data),
-            FsFile::Read(_, _) => Err(io::Error::new(io::ErrorKind::PermissionDenied, "file not open for writing")),
+            FsFile::ReadWrite(f, _) => f.write(data),
+            FsFile::Read(_) => Err(io::Error::new(io::ErrorKind::PermissionDenied, "file not open for writing")),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
         match self {
             FsFile::Write(w, _, _) => w.flush(),
-            FsFile::ReadWrite(f, _, _) => f.flush(),
-            FsFile::Read(_, _) => Ok(()),
+            FsFile::ReadWrite(f, _) => f.flush(),
+            FsFile::Read(_) => Ok(()),
         }
     }
 
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match self {
-            FsFile::Read(r, _) => r.seek(pos),
+            FsFile::Read(r) => r.seek(pos),
             FsFile::Write(w, _, _) => w.seek(pos),
-            FsFile::ReadWrite(f, _, _) => f.seek(pos),
+            FsFile::ReadWrite(f, _) => f.seek(pos),
         }
     }
 
@@ -213,28 +199,13 @@ impl LuaFileHandle for FsFile {
     }
 
     fn clear_error(&mut self) {
-        match self {
-            FsFile::Read(_, err) => *err = None,
-            FsFile::Write(_, errored, _) => *errored = false,
-            FsFile::ReadWrite(_, _, err) => *err = None,
+        if let FsFile::Write(_, errored, _) = self {
+            *errored = false;
         }
     }
 
     fn has_error(&self) -> bool {
-        match self {
-            FsFile::Read(_, err) => err.is_some(),
-            FsFile::Write(_, errored, _) => *errored,
-            FsFile::ReadWrite(_, _, err) => err.is_some(),
-        }
-    }
-
-    fn last_error_info(&self) -> Option<(i32, String)> {
-        match self {
-            FsFile::Read(_, err) => err.clone(),
-            FsFile::ReadWrite(_, _, err) => err.clone(),
-            FsFile::Write(_, true, _) => Some((0, "file write error".to_string())),
-            FsFile::Write(_, false, _) => None,
-        }
+        matches!(self, FsFile::Write(_, true, _))
     }
 
     fn set_buf_mode(&mut self, mode: i32, _size: usize) -> io::Result<()> {
@@ -317,42 +288,6 @@ fn file_open_hook(filename: &[u8], mode: &[u8]) -> Result<Box<dyn LuaFileHandle>
             String::from_utf8_lossy(filename),
             err
         ))
-    })
-}
-
-fn os_execute_hook(cmd: &[u8]) -> Result<OsExecuteResult, LuaError> {
-    let cmd_str = std::str::from_utf8(cmd)
-        .map_err(|_| LuaError::runtime(format_args!("os.execute command not valid UTF-8")))?;
-    let status = std::process::Command::new("/bin/sh")
-        .arg("-c")
-        .arg(cmd_str)
-        .status()
-        .map_err(|err| LuaError::runtime(format_args!("os.execute failed: {}", err)))?;
-
-    if let Some(code) = status.code() {
-        return Ok(OsExecuteResult {
-            success: status.success(),
-            reason: OsExecuteReason::Exit,
-            code,
-        });
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(signal) = status.signal() {
-            return Ok(OsExecuteResult {
-                success: false,
-                reason: OsExecuteReason::Signal,
-                code: signal,
-            });
-        }
-    }
-
-    Ok(OsExecuteResult {
-        success: false,
-        reason: OsExecuteReason::Exit,
-        code: -1,
     })
 }
 
@@ -667,31 +602,6 @@ fn register_preloaded_modules(state: &mut LuaState) -> Result<(), LuaError> {
     Ok(())
 }
 
-const MULTRET: i32 = -1;
-
-fn render_lua_error(e: &LuaError) -> String {
-    match e {
-        LuaError::Runtime(v) | LuaError::Syntax(v) => match v {
-            LuaValue::Str(s) => format!("{}: {}", e_tag(e), String::from_utf8_lossy(s.as_bytes())),
-            other => format!("{}: {:?}", e_tag(e), other),
-        },
-        LuaError::Memory | LuaError::Error | LuaError::Yield
-        | LuaError::File | LuaError::Gc => format!("{}", e_tag(e)),
-    }
-}
-
-fn e_tag(e: &LuaError) -> &'static str {
-    match e {
-        LuaError::Runtime(_) => "Runtime",
-        LuaError::Syntax(_)  => "Syntax",
-        LuaError::Memory     => "Memory",
-        LuaError::Error      => "Error",
-        LuaError::Yield      => "Yield",
-        LuaError::File       => "File",
-        LuaError::Gc         => "Gc",
-    }
-}
-
 #[cfg(unix)]
 fn os_str_bytes(s: &std::ffi::OsString) -> Vec<u8> {
     use std::os::unix::ffi::OsStrExt;
@@ -710,7 +620,7 @@ fn os_str_bytes(s: &std::ffi::OsString) -> Vec<u8> {
 /// `dir/?.lua;dir/?/init.lua;;` — the trailing `;;` causes `setpath` to
 /// splice in the compiled-in default at that position, matching C-Lua's
 /// behaviour when `LUA_PATH` is absent.
-fn prepend_lua_path(dir: &std::path::Path) {
+pub(crate) fn prepend_lua_path(dir: &std::path::Path) {
     let prefix = format!(
         "{dir}/?.lua;{dir}/?/init.lua",
         dir = dir.display(),
@@ -722,126 +632,15 @@ fn prepend_lua_path(dir: &std::path::Path) {
     std::env::set_var("LUA_PATH", new_val);
 }
 
-fn mask_unix_shebang(source: &mut [u8]) {
-    if source.first().copied() != Some(b'#') {
-        return;
-    }
-    let end = source
-        .iter()
-        .position(|&b| b == b'\n')
-        .unwrap_or(source.len());
-    for byte in &mut source[..end] {
-        *byte = b' ';
-    }
-}
-
-struct Chunk {
-    source: Vec<u8>,
-    chunkname: Vec<u8>,
-    args: Vec<Vec<u8>>,
-}
-
-fn install_arg_table(state: &mut LuaState, script_name: &[u8], script_args: &[Vec<u8>]) -> Result<(), LuaError> {
-    create_table(state, script_args.len() as i32, 1)?;
-    push_lstring(state, script_name)?;
-    set_i(state, -2, 0)?;
-    for (idx, arg) in script_args.iter().enumerate() {
-        push_lstring(state, arg)?;
-        set_i(state, -2, (idx + 1) as i64)?;
-    }
-    set_global(state, b"arg")
-}
-
 fn main() -> ExitCode {
     let args_os: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    if args_os.len() < 2 {
-        let prog = args_os
-            .first()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "lua-rs".to_string());
-        eprintln!("usage: {prog} <script.lua | -e 'source'>");
-        eprintln!("examples:");
-        eprintln!("  {prog} script.lua");
-        eprintln!("  {prog} -e 'print(\"hello\")'");
-        return ExitCode::from(2);
-    }
+    let argv: Vec<Vec<u8>> = args_os.iter().map(os_str_bytes).collect();
 
-    let mut chunks: Vec<Chunk> = Vec::new();
-    let mut script_arg_table: Option<(Vec<u8>, Vec<Vec<u8>>)> = None;
-    let mut i = 1;
-    while i < args_os.len() {
-        let arg = &args_os[i];
-        if arg == "-e" {
-            i += 1;
-            if i >= args_os.len() {
-                eprintln!("-e requires an argument");
-                return ExitCode::from(2);
-            }
-            chunks.push(Chunk {
-                source: os_str_bytes(&args_os[i]),
-                chunkname: b"=(command line)".to_vec(),
-                args: Vec::new(),
-            });
-            i += 1;
-        } else {
-            let path = std::path::Path::new(arg);
-            if path.is_file() {
-                let script_name = os_str_bytes(arg);
-                let script_args: Vec<Vec<u8>> = args_os[i + 1..].iter().map(os_str_bytes).collect();
-                if let Some(script_dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
-                    prepend_lua_path(script_dir);
-                }
-                match std::fs::read(path) {
-                    Ok(mut bytes) => {
-                        mask_unix_shebang(&mut bytes);
-                        let mut name = vec![b'@'];
-                        name.extend_from_slice(&script_name);
-                        chunks.push(Chunk {
-                            source: bytes,
-                            chunkname: name,
-                            args: script_args.clone(),
-                        });
-                        script_arg_table = Some((script_name, script_args));
-                    }
-                    Err(e) => {
-                        eprintln!("cannot read {}: {}", path.display(), e);
-                        return ExitCode::from(2);
-                    }
-                }
-            } else {
-                chunks.push(Chunk {
-                    source: os_str_bytes(arg),
-                    chunkname: b"=(command line)".to_vec(),
-                    args: Vec::new(),
-                });
-            }
-            i = args_os.len();
-            break;
-        }
-    }
-    if chunks.is_empty() {
-        eprintln!("usage: {} <script.lua | -e 'source'>",
-            args_os.first().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "lua-rs".to_string()));
-        return ExitCode::from(2);
-    }
-
-    let verbose = std::env::var("LUA_RS_VERBOSE").is_ok();
-    macro_rules! step { ($($t:tt)*) => { if verbose { eprintln!($($t)*); } }; }
-
-    let previous_panic_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        if info.payload().downcast_ref::<LuaExit>().is_none() {
-            previous_panic_hook(info);
-        }
-    }));
-
-    step!("[1/4] Creating LuaState...");
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<i32, String> {
         let mut state = new_state().ok_or("new_state returned None")?;
         state.global_mut().parser_hook = Some(parser_hook);
         state.global_mut().file_loader_hook = Some(file_loader_hook);
         state.global_mut().file_open_hook = Some(file_open_hook);
-        state.global_mut().os_execute_hook = Some(os_execute_hook);
         state.global_mut().popen_hook = Some(popen_hook);
         state.global_mut().file_remove_hook = Some(file_remove_hook);
         state.global_mut().file_rename_hook = Some(file_rename_hook);
@@ -849,44 +648,7 @@ fn main() -> ExitCode {
         state.global_mut().dynlib_symbol_hook = Some(dynlib_symbol);
         state.global_mut().dynlib_unload_hook = Some(dynlib_unload);
 
-        step!("[2/4] Opening standard library...");
-        open_libs(&mut state).map_err(|e| format!("open_libs failed: {}", render_lua_error(&e)))?;
-
-        register_preloaded_modules(&mut state)
-            .map_err(|e| format!("preload registration failed: {}", render_lua_error(&e)))?;
-
-        if let Some((script_name, script_args)) = &script_arg_table {
-            install_arg_table(&mut state, script_name, script_args)
-                .map_err(|e| format!("arg table setup failed: {}", render_lua_error(&e)))?;
-        }
-
-        let mut final_status = None;
-        for (chunk_idx, chunk) in chunks.iter().enumerate() {
-            step!("[3/4] Loading chunk {}/{} (parse + compile)...", chunk_idx + 1, chunks.len());
-            let status = load_buffer(&mut state, &chunk.source, &chunk.chunkname)
-                .map_err(|e| format!("load_buffer failed: {}", render_lua_error(&e)))?;
-            if status != 0 {
-                let msg = match to_lua_string(&mut state, -1) {
-                    Ok(Some(s)) => String::from_utf8_lossy(s.as_bytes()).into_owned(),
-                    _ => "(no error message on stack)".to_string(),
-                };
-                return Err(format!(
-                    "Syntax: {} (load_string status={})",
-                    msg, status
-                ));
-            }
-
-            for arg in &chunk.args {
-                push_lstring(&mut state, arg)
-                    .map_err(|e| format!("argument setup failed: {}", render_lua_error(&e)))?;
-            }
-
-            step!("[4/4] Executing chunk {}/{}...", chunk_idx + 1, chunks.len());
-            let status = pcall_k(&mut state, chunk.args.len() as i32, MULTRET, 0, 0, None)
-                .map_err(|e| format!("pcall_k failed: {}", render_lua_error(&e)))?;
-            final_status = Some(status);
-        }
-        let final_status = final_status.expect("at least one chunk must be present");
+        let code = interp::run(&mut state, &argv, register_preloaded_modules);
 
         if std::env::var("LUA_RS_GC_DIAG").is_ok() {
             let tracked = state.global().heap.bytes_used();
@@ -906,25 +668,16 @@ fn main() -> ExitCode {
             );
         }
 
-        Ok::<_, String>(final_status)
+        Ok(code)
     }));
 
     match result {
-        Ok(Ok(status)) => {
-            if verbose {
-                eprintln!("[ok] execution completed, status={:?}", status);
-            }
-            let _ = status;
-            ExitCode::SUCCESS
-        }
+        Ok(Ok(code)) => ExitCode::from(code as u8),
         Ok(Err(msg)) => {
             eprintln!("lua: {}", msg);
             ExitCode::from(1)
         }
         Err(panic) => {
-            if let Some(exit) = panic.downcast_ref::<LuaExit>() {
-                return ExitCode::from(exit.0 as u8);
-            }
             let msg = if let Some(s) = panic.downcast_ref::<String>() {
                 s.clone()
             } else if let Some(s) = panic.downcast_ref::<&str>() {

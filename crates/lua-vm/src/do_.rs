@@ -986,7 +986,7 @@ fn finish_pcallk(state: &mut LuaState, ci_idx: CallInfoIdx) -> Result<LuaStatus,
         // yield-then-error path (the sync-error path in `pcall_k`/api.rs
         // calls the handler inline and clears CIST_YPCALL before we'd reach
         // this function). Fixes coroutine.lua:319 (xpcall + yield + error).
-        if state.errfunc != 0 && error_status(status) && status != LuaStatus::ErrErr {
+        if state.errfunc != 0 && error_status(status) && status != LuaStatus::ErrErr && status != LuaStatus::ErrSyntax {
             let errfunc_stk = StackIdx(state.errfunc as u32);
             // Mirror the stack manipulation lua-c does in luaG_errormsg
             // (and the inline path in pcall_k api.rs:1944):
@@ -1406,7 +1406,12 @@ where
         Err(e) => {
             let s = e.to_status();
             state.push(e.into_value());
-            if ef != 0 && error_status(s) && s != LuaStatus::ErrErr {
+            // C: syntax errors throw directly (luaX_syntaxerror -> luaD_throw)
+            // and never reach luaG_errormsg, so the message handler is not run
+            // for them. Without this guard a CLI/xpcall errfunc leaks into a
+            // nested load()'s protected parser and decorates its returned
+            // message with a spurious traceback.
+            if ef != 0 && error_status(s) && s != LuaStatus::ErrErr && s != LuaStatus::ErrSyntax {
                 let errfunc_idx = StackIdx(ef as u32);
                 let arg = state.get_at(state.top_idx() - 1).clone();
                 state.push(arg);
