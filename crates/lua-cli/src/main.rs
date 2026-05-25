@@ -20,7 +20,9 @@ use lua_types::filehandle::LuaFileHandle;
 use lua_types::gc::GcRef;
 use lua_types::upval::UpVal;
 use lua_types::value::LuaValue;
-use lua_vm::state::{new_state, DynLibId, DynamicSymbol, LuaState};
+use lua_vm::state::{
+    new_state, DynLibId, DynamicSymbol, LuaState, OsExecuteReason, OsExecuteResult,
+};
 
 mod interp;
 mod repl;
@@ -54,9 +56,9 @@ fn file_loader_hook(filename: &[u8]) -> Result<Vec<u8>, LuaError> {
 /// The write wrapper is flushed on `Drop` (implicit close) so data is not
 /// lost when `io.close()` drops the `Box<dyn LuaFileHandle>`.
 enum FsFile {
-    Read(BufReader<std::fs::File>),
+    Read(BufReader<std::fs::File>, Option<(i32, String)>),
     Write(BufWriter<std::fs::File>, bool, FsBufMode),
-    ReadWrite(std::fs::File, Option<u8>),
+    ReadWrite(std::fs::File, Option<u8>, Option<(i32, String)>),
 }
 
 #[derive(Clone, Copy)]
@@ -94,7 +96,7 @@ impl FsFile {
         match (first, update) {
             (b'r', false) => {
                 let f = std::fs::File::open(&path)?;
-                Ok(FsFile::Read(BufReader::new(f)))
+                Ok(FsFile::Read(BufReader::new(f), None))
             }
             (b'w', false) => {
                 let f = std::fs::File::create(&path)?;
@@ -113,30 +115,42 @@ impl FsFile {
                     .truncate(first == b'w')
                     .append(first == b'a')
                     .open(&path)?;
-                Ok(FsFile::ReadWrite(f, None))
+                Ok(FsFile::ReadWrite(f, None, None))
             }
         }
     }
 }
 
+fn io_error_info(err: &io::Error) -> (i32, String) {
+    (err.raw_os_error().unwrap_or(0), err.to_string())
+}
+
 impl LuaFileHandle for FsFile {
     fn read_byte(&mut self) -> i32 {
         match self {
-            FsFile::Read(r) => {
+            FsFile::Read(r, err) => {
                 let mut buf = [0u8; 1];
                 match r.read(&mut buf) {
                     Ok(1) => buf[0] as i32,
-                    _ => -1,
+                    Ok(_) => -1,
+                    Err(e) => {
+                        *err = Some(io_error_info(&e));
+                        -1
+                    }
                 }
             }
-            FsFile::ReadWrite(f, pushback) => {
+            FsFile::ReadWrite(f, pushback, err) => {
                 if let Some(b) = pushback.take() {
                     return b as i32;
                 }
                 let mut buf = [0u8; 1];
                 match f.read(&mut buf) {
                     Ok(1) => buf[0] as i32,
-                    _ => -1,
+                    Ok(_) => -1,
+                    Err(e) => {
+                        *err = Some(io_error_info(&e));
+                        -1
+                    }
                 }
             }
             FsFile::Write(_, errored, _) => {
@@ -148,12 +162,12 @@ impl LuaFileHandle for FsFile {
 
     fn unread_byte(&mut self, byte: i32) {
         match self {
-            FsFile::Read(r) => {
+            FsFile::Read(r, _) => {
                 if byte >= 0 {
                     let _ = r.seek_relative(-1);
                 }
             }
-            FsFile::ReadWrite(_, pushback) => {
+            FsFile::ReadWrite(_, pushback, _) => {
                 if byte >= 0 {
                     *pushback = Some(byte as u8);
                 }
@@ -173,24 +187,24 @@ impl LuaFileHandle for FsFile {
                 }
                 Ok(n)
             }
-            FsFile::ReadWrite(f, _) => f.write(data),
-            FsFile::Read(_) => Err(io::Error::new(io::ErrorKind::PermissionDenied, "file not open for writing")),
+            FsFile::ReadWrite(f, _, _) => f.write(data),
+            FsFile::Read(_, _) => Err(io::Error::new(io::ErrorKind::PermissionDenied, "file not open for writing")),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
         match self {
             FsFile::Write(w, _, _) => w.flush(),
-            FsFile::ReadWrite(f, _) => f.flush(),
-            FsFile::Read(_) => Ok(()),
+            FsFile::ReadWrite(f, _, _) => f.flush(),
+            FsFile::Read(_, _) => Ok(()),
         }
     }
 
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match self {
-            FsFile::Read(r) => r.seek(pos),
+            FsFile::Read(r, _) => r.seek(pos),
             FsFile::Write(w, _, _) => w.seek(pos),
-            FsFile::ReadWrite(f, _) => f.seek(pos),
+            FsFile::ReadWrite(f, _, _) => f.seek(pos),
         }
     }
 
@@ -199,13 +213,28 @@ impl LuaFileHandle for FsFile {
     }
 
     fn clear_error(&mut self) {
-        if let FsFile::Write(_, errored, _) = self {
-            *errored = false;
+        match self {
+            FsFile::Read(_, err) => *err = None,
+            FsFile::Write(_, errored, _) => *errored = false,
+            FsFile::ReadWrite(_, _, err) => *err = None,
         }
     }
 
     fn has_error(&self) -> bool {
-        matches!(self, FsFile::Write(_, true, _))
+        match self {
+            FsFile::Read(_, err) => err.is_some(),
+            FsFile::Write(_, errored, _) => *errored,
+            FsFile::ReadWrite(_, _, err) => err.is_some(),
+        }
+    }
+
+    fn last_error_info(&self) -> Option<(i32, String)> {
+        match self {
+            FsFile::Read(_, err) => err.clone(),
+            FsFile::ReadWrite(_, _, err) => err.clone(),
+            FsFile::Write(_, true, _) => Some((0, "file write error".to_string())),
+            FsFile::Write(_, false, _) => None,
+        }
     }
 
     fn set_buf_mode(&mut self, mode: i32, _size: usize) -> io::Result<()> {
@@ -288,6 +317,42 @@ fn file_open_hook(filename: &[u8], mode: &[u8]) -> Result<Box<dyn LuaFileHandle>
             String::from_utf8_lossy(filename),
             err
         ))
+    })
+}
+
+fn os_execute_hook(cmd: &[u8]) -> Result<OsExecuteResult, LuaError> {
+    let cmd_str = std::str::from_utf8(cmd)
+        .map_err(|_| LuaError::runtime(format_args!("os.execute command not valid UTF-8")))?;
+    let status = std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(cmd_str)
+        .status()
+        .map_err(|err| LuaError::runtime(format_args!("os.execute failed: {}", err)))?;
+
+    if let Some(code) = status.code() {
+        return Ok(OsExecuteResult {
+            success: status.success(),
+            reason: OsExecuteReason::Exit,
+            code,
+        });
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return Ok(OsExecuteResult {
+                success: false,
+                reason: OsExecuteReason::Signal,
+                code: signal,
+            });
+        }
+    }
+
+    Ok(OsExecuteResult {
+        success: false,
+        reason: OsExecuteReason::Exit,
+        code: -1,
     })
 }
 
@@ -651,6 +716,7 @@ fn main() -> ExitCode {
         state.global_mut().popen_hook = Some(popen_hook);
         state.global_mut().file_remove_hook = Some(file_remove_hook);
         state.global_mut().file_rename_hook = Some(file_rename_hook);
+        state.global_mut().os_execute_hook = Some(os_execute_hook);
         state.global_mut().dynlib_load_hook = Some(dynlib_load);
         state.global_mut().dynlib_symbol_hook = Some(dynlib_symbol);
         state.global_mut().dynlib_unload_hook = Some(dynlib_unload);
