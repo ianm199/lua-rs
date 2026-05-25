@@ -96,22 +96,27 @@ The per-test debugging history is in
 
 ## Performance
 
-Every benchmarked commit is recorded and plotted on a live, auto-built
-dashboard:
+Performance is measured by a dedicated **benchmark suite** — eight workloads
+(`fibonacci`, `mandelbrot`, `binarytrees`, `closure_ops`, `table_ops`,
+`table_ops_long`, `string_ops`, `string_ops_long`) run against reference
+PUC-Rio Lua 5.4.7 via `harness/bench/compare.sh`. This is separate from the
+[44/44 conformance suite](#conformance) above — it measures speed and memory,
+not correctness. Every benchmarked commit is recorded and plotted:
 
-### → [**ianm199.github.io/lua-rs-port** — live performance dashboard](https://ianm199.github.io/lua-rs-port/harness/bench/history/)
+### → [**Live performance dashboard**](https://ianm199.github.io/lua-rs-port/harness/bench/history/) — `ianm199.github.io/lua-rs-port`
 
-Each point is a `compare.sh` run: the ratio of `lua-rs` wall time to reference
-PUC-Rio Lua on the same workload. **Lower is better; `1.00×` is parity with C.**
-
-At the latest benchmarked commit, across 8 workloads:
+Each point is the ratio of `lua-rs` to reference lua-c on the same workload.
+**Lower is better; `1.00×` is parity with C.** At the latest benchmarked commit,
+across the eight workloads:
 
 | Metric | Value | Reading |
 |---|---|---|
 | Wall-time geomean | **1.27×** | ~27% slower than C on average |
 | RSS geomean | **1.96×** | ~2× the memory of C |
-| Best workload | **0.38×** | faster than C |
-| Worst workload | **2.07×** | slowest relative workload |
+| Best workload (`table_ops_long`) | **0.38×** | faster than C |
+| Worst workload (`binarytrees`) | **2.07×** | slowest relative workload |
+
+[**See the full per-workload trajectory on the dashboard →**](https://ianm199.github.io/lua-rs-port/harness/bench/history/)
 
 The honest summary: this is **not** "faster than C." It is a memory-safe
 reimplementation that is *competitive* with C — within a small constant factor
