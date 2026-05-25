@@ -497,8 +497,10 @@ impl Cli {
                 String::from_utf8_lossy(badoption)
             );
         }
+        let _ = err.write_all(b"usage: ");
+        let _ = err.write_all(prog);
         let _ = err.write_all(
-            b"usage: lua [options] [script [args]]\n\
+            b" [options] [script [args]]\n\
               Available options are:\n\
               \x20 -e stat   execute string 'stat'\n\
               \x20 -i        enter interactive mode after executing 'script'\n\

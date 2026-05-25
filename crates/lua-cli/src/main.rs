@@ -15,7 +15,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use lua_types::closure::LuaLClosure;
-use lua_types::error::LuaError;
+use lua_types::error::{LuaError, LuaExit};
 use lua_types::filehandle::LuaFileHandle;
 use lua_types::gc::GcRef;
 use lua_types::upval::UpVal;
@@ -633,6 +633,13 @@ pub(crate) fn prepend_lua_path(dir: &std::path::Path) {
 }
 
 fn main() -> ExitCode {
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if info.payload().downcast_ref::<LuaExit>().is_none() {
+            previous_hook(info);
+        }
+    }));
+
     let args_os: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let argv: Vec<Vec<u8>> = args_os.iter().map(os_str_bytes).collect();
 
@@ -678,6 +685,9 @@ fn main() -> ExitCode {
             ExitCode::from(1)
         }
         Err(panic) => {
+            if let Some(exit) = panic.downcast_ref::<LuaExit>() {
+                return ExitCode::from(exit.0 as u8);
+            }
             let msg = if let Some(s) = panic.downcast_ref::<String>() {
                 s.clone()
             } else if let Some(s) = panic.downcast_ref::<&str>() {
