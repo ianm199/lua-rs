@@ -147,15 +147,16 @@
 
     <section>
       <h2>Install &amp; run</h2>
-      <pre class="block"><span class="c"># from crates.io (preview release 0.0.1)</span>
+      <pre class="block"><span class="c"># from crates.io (preview release)</span>
 $ cargo install lua-cli            <span class="c"># crate lua-cli → binary lua-rs</span>
 
 $ lua-rs -e 'print(("safe rust"):upper())'
 <span class="o">SAFE RUST</span>
 
 $ lua-rs script.lua                <span class="c"># run a source file</span>
-$ lua-rs 'print(1 + 2)'            <span class="c"># a bare argument is treated as source</span></pre>
-      <p class="muted" style="margin-top:14px;">Supported today: a script file, <code>-e &lt;chunk&gt;</code>, and a bare source-string argument. No REPL, stdin, or <code>--help</code> flag yet — see the roadmap on GitHub.</p>
+$ echo 'print("hi")' | lua-rs -    <span class="c"># read a program from stdin</span>
+$ lua-rs                           <span class="c"># start the interactive REPL</span></pre>
+      <p class="muted" style="margin-top:14px;"><code>lua-rs</code> mirrors the standard <code>lua</code> CLI: a bare argument is a script filename, <code>-e</code> runs a chunk, <code>-</code> reads from stdin, and no arguments on a terminal starts the REPL.</p>
     </section>
 
     <section>
@@ -206,8 +207,8 @@ $ lua-rs 'print(1 + 2)'            <span class="c"># a bare argument is treated 
     <section>
       <h2>Status &amp; roadmap</h2>
       <div class="cards">
-        <div class="card"><span class="badge good">shipping</span><h3>Lua 5.4 runtime</h3><p>Runs real Lua programs, passes 44/44 upstream tests, published to crates.io as <code>lua-cli</code> 0.0.1.</p></div>
-        <div class="card"><span class="badge wip">in progress</span><h3>LuaRocks</h3><p>The LuaRocks 3.11.1 CLI boots and prints version/config under lua-rs; package install still needs fetch/digest/install-path work.</p></div>
+        <div class="card"><span class="badge good">shipping</span><h3>Lua 5.4 runtime</h3><p>Runs real Lua programs, passes 44/44 upstream tests, and is published to crates.io as <code>lua-cli</code>.</p></div>
+        <div class="card"><span class="badge good">working</span><h3>LuaRocks (pure-Lua rocks)</h3><p>lua-rs runs the real LuaRocks 3.11.1 package manager: <code>search</code>, <code>install</code>, <code>show</code>, and <code>require</code> pure-Lua rocks like <code>inspect</code> all work. Native C rocks are the remaining piece.</p></div>
       </div>
     </section>
   </div>

@@ -34,6 +34,10 @@ lua-rs -e 'print("hello from lua-rs")'
   and the optional dynamic-library loader. See [Safety model](#safety-model).
 - **No C runtime.** Running a `.lua` script links no `liblua` and shells out to
   no C interpreter. It is a standalone Rust binary.
+- **Runs LuaRocks.** `lua-rs` runs the real LuaRocks 3.11.1 package manager well
+  enough to `search`, `install`, `show`, and `require` pure-Lua rocks like
+  `inspect` — a real ecosystem workflow, not just language conformance. (Native
+  C rocks aren't supported yet; see [Roadmap](#roadmap).)
 - **Competitive performance, tracked publicly.** Within ~1.3× of reference C on
   a geometric mean of wall time, faster than C on some workloads — and every
   commit's benchmark is plotted on a [live dashboard](https://ianm199.github.io/lua-rs-port/harness/bench/history/).
@@ -43,7 +47,7 @@ lua-rs -e 'print("hello from lua-rs")'
 
 ## Installation
 
-From crates.io (preview release `0.0.1`):
+From crates.io (preview release):
 
 ```bash
 cargo install lua-cli
@@ -68,14 +72,16 @@ cargo build --release --bin lua-rs
 ## Usage
 
 ```bash
+lua-rs                            # start the interactive REPL
 lua-rs script.lua                 # run a Lua source file
 lua-rs -e 'print(1 + 2)'          # run a one-liner
-lua-rs 'print("bare source")'     # a bare non-file argument is treated as source
+echo 'print("hi")' | lua-rs -     # read a program from stdin
+lua-rs -v                         # print the version
 ```
 
-Supported today: running a script file, `-e <chunk>`, and a bare source-string
-argument. There is **no REPL**, no stdin (`-`) execution, and no `--help`/`-v`
-flag yet — see [Limitations](#limitations-and-non-goals).
+`lua-rs` mirrors the standard `lua` CLI: a bare argument is a script filename,
+`-e` runs a chunk, `-` reads from stdin, and running with no arguments on a
+terminal starts the REPL.
 
 ## Conformance
 
@@ -191,7 +197,8 @@ mark a test passing — anti-sycophancy by construction.
   and measure new garbage-collection strategies and other language/runtime
   features against a real conformance suite and benchmark harness — changes are
   validated by the oracle, not by intuition.
-- **CLI surface.** REPL, stdin execution, and a polished `--help`/`--version`.
+- **Native C rocks.** Support LuaRocks packages with C extensions, via a Lua C
+  API/ABI layer or Rust-native module replacements.
 - **Embedding API.** A Rust-native embedding surface; a C API/ABI story is a
   longer-term, separate effort. See [docs/FUTURE_GOALS.md](docs/FUTURE_GOALS.md).
 
@@ -202,7 +209,8 @@ mark a test passing — anti-sycophancy by construction.
   API/ABI, so stock Lua C modules that expect `liblua` will not load unchanged.
 - **Not for Lua 5.1 ecosystems** (OpenResty, Neovim's LuaJIT embedding, WoW
   addons) — this is Lua 5.4.
-- No REPL, stdin execution, or polished CLI help yet.
+- **Native C rocks** (LuaRocks packages with C extensions) aren't supported —
+  only pure-Lua rocks. This needs a Lua C API/ABI layer or Rust-native modules.
 
 ## Project layout
 
