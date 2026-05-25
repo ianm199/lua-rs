@@ -42,9 +42,11 @@ Run the full WASM/package gate:
 Set `WASM_SKIP_BROWSER=1` to skip the Chrome/Chromium smoke on headless systems
 that cannot launch a browser.
 
-`packages/lua-rs-wasm` is the reusable JS side of the harness. It has no Node
-imports, so the same runtime wrapper can be used from a browser embedder after
-it has fetched or bundled the `.wasm` bytes. Its `prepack` script builds
+`packages/lua-rs-wasm` is the reusable JS side of the harness. Its root export
+has no Node imports, so the same runtime wrapper can be used from a browser
+embedder after it has fetched or bundled the `.wasm` bytes. It also exposes
+`lua-rs-wasm/node` as a Node-only convenience helper that reads the packaged
+`.wasm` file before instantiating the same wrapper. Its `prepack` script builds
 `lua-wasm` and copies `dist/lua_wasm.wasm` into the package. The old
 `harness/wasm/lua-rs-host.mjs` path re-exports the package entrypoint for
 compatibility.
@@ -64,6 +66,15 @@ lua.exec('print(require("greeter").answer())');
 
 const result = lua.tryExec('error("boom")');
 console.log(result.ok, result.error);
+```
+
+In Node without a bundler, use the tested package subpath:
+
+```js
+import { loadLuaRsNode } from "lua-rs-wasm/node";
+
+const { lua } = await loadLuaRsNode({ onStdout: (chunk) => console.log(chunk) });
+lua.exec('print("hello from wasm")');
 ```
 
 The runtime smoke covers:

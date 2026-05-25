@@ -4,7 +4,8 @@
   "description": "Browser and JS host wrapper for the lua-rs wasm32 runtime.",
   "type": "module",
   "exports": {
-    ".": "./index.mjs"
+    ".": "./index.mjs",
+    "./node": "./node.mjs"
   },
   "scripts": {
     "build:wasm": "node scripts/build-wasm.mjs",
@@ -15,6 +16,7 @@
   "files": [
     "dist/lua_wasm.wasm",
     "index.mjs",
+    "node.mjs",
     "README.md",
     "scripts/*.mjs"
   ],

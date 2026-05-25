@@ -55,11 +55,10 @@ try {
 
   await writeFile(
     join(appDir, "smoke.mjs"),
-    `
-import { readFile } from "node:fs/promises";
-import { loadLuaRs, luaRsWasmUrl } from "lua-rs-wasm";
+`
+import { loadLuaRsNode } from "lua-rs-wasm/node";
 
-const { lua } = await loadLuaRs(await readFile(luaRsWasmUrl), {
+const { lua } = await loadLuaRsNode({
   env: { LUA_PATH_5_4: "./?.lua" },
   files: { "./installed.lua": "return { value = 14 }" },
   stdin: "installed input\\n",

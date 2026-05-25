@@ -1,10 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { loadLuaRsNode } from "../node.mjs";
 
-import { loadLuaRs } from "../index.mjs";
-
-const wasmPath = new URL("../dist/lua_wasm.wasm", import.meta.url);
-
-const { lua } = await loadLuaRs(await readFile(wasmPath), {
+const { lua } = await loadLuaRsNode({
   env: { LUA_PATH_5_4: "./?.lua" },
   files: {
     "./pkg.lua": "return { value = 21 }",

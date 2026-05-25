@@ -18,6 +18,7 @@ export RUSTFLAGS="${RUSTFLAGS:--Awarnings}"
 echo "[wasm] checking JS syntax"
 node --check harness/check_release_versions.mjs
 node --check packages/lua-rs-wasm/index.mjs
+node --check packages/lua-rs-wasm/node.mjs
 node --check packages/lua-rs-wasm/scripts/build-wasm.mjs
 node --check packages/lua-rs-wasm/scripts/smoke.mjs
 node --check packages/lua-rs-wasm/scripts/install-smoke.mjs
@@ -67,6 +68,7 @@ const byPath = new Map(files.map((file) => [file.path, file]));
 for (const required of [
   "dist/lua_wasm.wasm",
   "index.mjs",
+  "node.mjs",
   "package.json",
   "scripts/build-wasm.mjs",
   "scripts/install-smoke.mjs",
