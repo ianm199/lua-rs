@@ -187,6 +187,42 @@
   </section>
 
   <section class="panel">
+    <h2>External comparison &mdash; vs CppCXY/luars</h2>
+    <p>One-off head-to-head (not part of the per-commit time series) against
+    <a href="https://github.com/CppCXY/lua-rs">CppCXY/lua-rs</a> &mdash; a separate
+    Rust Lua runtime (Lua 5.5, with notable <code>unsafe</code>), raised in
+    <a href="https://github.com/ianm199/lua-rs/issues/12">issue #12</a>. Ratio = wall time &divide;
+    reference C Lua 5.4.7; lower is better, <code>&lt;1.00&times;</code> beats C.
+    Output asserted byte-identical to reference C (drift flagged). Reproduce with
+    <code>harness/bench/compare_luars.sh</code>.</p>
+    <table>
+      <thead>
+        <tr><th>Workload</th><th>C (s)</th><th>lua-rs (s)</th><th>luars (s)</th><th>lua-rs / C</th><th>luars / C</th><th>Note</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>fannkuch_redux</td><td>2.29</td><td>4.75</td><td>2.69</td><td style="font-weight:600;color:var(--warn)">2.07×</td><td style="font-weight:600;color:var(--text)">1.17×</td><td class="subtle"></td></tr>
+        <tr><td>binary_trees</td><td>1.72</td><td>4.53</td><td>1.32</td><td style="font-weight:600;color:var(--warn)">2.63×</td><td style="font-weight:600;color:var(--good)">0.77×</td><td class="subtle">GC/alloc-heavy</td></tr>
+        <tr><td>nbody</td><td>1.77</td><td>3.72</td><td>1.99</td><td style="font-weight:600;color:var(--warn)">2.10×</td><td style="font-weight:600;color:var(--text)">1.12×</td><td class="subtle"></td></tr>
+        <tr><td>spectral_norm</td><td>0.33</td><td>0.59</td><td>0.35</td><td style="font-weight:600;color:var(--text)">1.79×</td><td style="font-weight:600;color:var(--text)">1.06×</td><td class="subtle"></td></tr>
+        <tr><td>mandelbrot</td><td>0.52</td><td>0.93</td><td>0.56</td><td style="font-weight:600;color:var(--text)">1.79×</td><td style="font-weight:600;color:var(--text)">1.08×</td><td class="subtle"></td></tr>
+        <tr><td>partial_sums</td><td>0.18</td><td>0.31</td><td>0.20</td><td style="font-weight:600;color:var(--text)">1.72×</td><td style="font-weight:600;color:var(--text)">1.11×</td><td class="subtle"></td></tr>
+        <tr><td>fibonacci</td><td>2.39</td><td>4.45</td><td>2.31</td><td style="font-weight:600;color:var(--text)">1.86×</td><td style="font-weight:600;color:var(--good)">0.97×</td><td class="subtle"></td></tr>
+        <tr><td>binarytrees (own)</td><td>0.40</td><td>0.94</td><td>0.33</td><td style="font-weight:600;color:var(--warn)">2.35×</td><td style="font-weight:600;color:var(--good)">0.82×</td><td class="subtle">GC/alloc-heavy</td></tr>
+        <tr><td>closure_ops</td><td>0.17</td><td>0.34</td><td>0.17</td><td style="font-weight:600;color:var(--warn)">2.00×</td><td style="font-weight:600;color:var(--text)">1.00×</td><td class="subtle"></td></tr>
+        <tr><td>mandelbrot_long</td><td>0.80</td><td>1.46</td><td>0.85</td><td style="font-weight:600;color:var(--text)">1.82×</td><td style="font-weight:600;color:var(--text)">1.06×</td><td class="subtle"></td></tr>
+        <tr><td>string_ops_long</td><td>0.78</td><td>0.99</td><td>0.86</td><td style="font-weight:600;color:var(--text)">1.27×</td><td style="font-weight:600;color:var(--text)">1.10×</td><td class="subtle"></td></tr>
+        <tr><td>table_ops_long</td><td>2.49</td><td>0.96</td><td>0.59</td><td style="font-weight:600;color:var(--good)">0.39×</td><td style="font-weight:600;color:var(--good)">0.24×</td><td class="subtle">lua-rs &amp; luars both beat C; luars output diverged*</td></tr>
+      </tbody>
+    </table>
+    <dl class="bench-info">
+      <dt>Geomean vs C</dt><dd><strong>lua-rs = 1.68&times;</strong> &nbsp;&middot;&nbsp; <strong>luars = 0.90&times;</strong> (n=12)</dd>
+      <dt>Machine</dt><dd>Apple M3 Max &middot; macOS arm64 &middot; best-of-5 min wall &middot; release builds</dd>
+      <dt>Reading</dt><dd>lua-rs leads only on <code>table_ops</code> (beats C); luars's edge concentrates on GC/alloc-heavy workloads (<code>binary_trees</code>), where lua-rs peak RSS is also markedly higher (402 MB vs 72 MB at trees depth 15).</dd>
+      <dt>Caveat</dt><dd>* luars output diverged on <code>table_ops_long</code> (likely a 5.5 vs 5.4 table semantic), so its number there is not fully trustworthy. macOS is the friendliest platform for both Rust impls; Linux/Windows typically shift ratios upward.</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
     <h2>Recent runs</h2>
     <p>All bench measurements from <code>harness/evidence/ledger.jsonl</code>, newest first.</p>
     <table id="runs-table">
