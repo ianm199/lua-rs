@@ -5,6 +5,11 @@ Handoff spec for the implementation agent. Rationale and design tradeoffs live i
 concrete types, integration points in the current codebase, soundness
 invariants, and acceptance criteria.
 
+Implementation status: this plan has been executed through commit `a096e24`.
+Keep this file as the historical build spec and acceptance-contract record. The
+current implementation status and future work are documented in
+[docs/EMBEDDING_API_IMPLEMENTATION.md](../EMBEDDING_API_IMPLEMENTATION.md).
+
 Goal: a Rust embedding API for lua-rs, mlua-shaped at the handle /
 `create_function` / userdata layers, so the bms backend becomes a port of its
 existing mlua backend rather than a rewrite. Build order targets the

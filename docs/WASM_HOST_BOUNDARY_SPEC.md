@@ -193,9 +193,12 @@ Current good parts:
 Implemented shape:
 
 - Browser/JS embedders can route stdout to `console.log`.
-- The first embedding helper is `lua-rs-runtime::{LuaRuntime, HostHooks}`.
-  Browser and application embedders still need a closure-capable layer if they
-  want hooks that capture per-instance state.
+- The Rust embedding surface is now `lua-rs-runtime::{Lua, LuaRuntime,
+  HostHooks}`. `Lua` handles owned values, captured Rust callbacks, userdata,
+  and conversions; `HostHooks` still provides the current WASM host capability
+  hooks.
+- Browser and application embedders still need closure-capable host hooks if
+  they want hook callbacks that capture per-instance state.
 
 Design note: `print` is so commonly used that a no-op default is tempting, but
 silent output loss is surprising. For first-class support, prefer an explicit

@@ -13,25 +13,39 @@ The current project target is Lua 5.4.7 source/runtime compatibility:
 - provide the Lua standard libraries through the Rust runtime;
 - pass the upstream Lua 5.4.7 official test suite in the repo harness.
 
-As of 2026-05-24, the harnessed official suite passes 44/44 tests.
+As of 2026-05-26, the harnessed official suite passes 44/44 tests.
 
 That is strong evidence for Lua language compatibility. It is not the same as
 being a drop-in replacement for PUC-Rio Lua's C API or binary ABI.
 
-## Near-Term Goal: Rust-Native Embedding
+## Current Rust-Native Embedding API
 
-The natural next public API target is a Rust-native embedding interface:
+`lua-rs-runtime` now has a preview Rust-native embedding interface:
 
 - create a Lua state from Rust;
-- load source or bytecode;
+- load source chunks;
 - call Lua functions from Rust;
-- expose Rust functions and user data to Lua;
-- control resource limits and garbage collection;
+- expose captured Rust functions and user data to Lua;
+- hold Lua values from Rust through owned GC-rooted handles;
+- convert common Rust values to and from Lua values;
+- run explicit garbage collection;
 - report errors without C `longjmp` semantics;
 - keep the public API safe where possible and explicitly isolate unsafe internals.
 
-This should be designed for Rust users first. It does not need to mimic `lua.h`
-exactly to be useful.
+The API is intentionally Rust-first and mlua-shaped at the handle, callback,
+conversion, and userdata layers. It does not mimic `lua.h`, and it is not C API
+compatibility. Current implementation details are in
+[docs/EMBEDDING_API_IMPLEMENTATION.md](EMBEDDING_API_IMPLEMENTATION.md).
+
+Important remaining embedding work:
+
+- stabilize the public API shape and add rustdoc examples;
+- broaden mlua parity where real consumers need it;
+- add scoped handles, richer error variants, serde support, and broader tuple
+  coverage;
+- add Miri and randomized root/GC/callback stress testing;
+- add a sandbox builder for stdlib selection, memory limits, instruction/fuel
+  budgets, and deterministic host hooks.
 
 ## Why a Pure-Rust Lua for Embedding
 
@@ -85,11 +99,12 @@ difference, not a marginal one.
 
 ### Honest status
 
-None of the sandboxing guarantees above exist yet. `lua-rs` today is a runtime
-and CLI, not a hardened embedding sandbox, and its current incremental
-mark-and-sweep GC is not the stackless + fuel design this argument assumes. This
-section is the *destination* that justifies the Rust-native embedding API — not a
-description of what ships today.
+The Rust-native embedding API now exists, but the sandboxing guarantees above do
+not exist yet. `lua-rs` today is a runtime, CLI, WASM package, and preview Rust
+embedding API, not a hardened embedding sandbox. Its current incremental
+mark-and-sweep GC is not the stackless + fuel design this argument assumes.
+Sandboxing remains the destination that justifies continued embedding work, not
+a guarantee that ships today.
 
 ## Possible Long-Term Goal: C API Compatibility
 
@@ -139,15 +154,16 @@ implementation.
 ## Suggested Order
 
 1. Keep source compatibility green with the official suite.
-2. Design and stabilize a Rust-native embedding API.
-3. Build a small C API compatibility crate as an experiment.
-4. Add C fixture programs that cover stack operations, protected calls, registry
+2. Stabilize and harden the Rust-native embedding API.
+3. Add sandbox controls to the Rust embedding API.
+4. Build a small C API compatibility crate as an experiment.
+5. Add C fixture programs that cover stack operations, protected calls, registry
    references, userdata, finalizers, and callbacks.
-5. Add simple native-module loading fixtures.
-6. Decide whether `longjmp`-compatible behavior is feasible without compromising
+6. Add simple native-module loading fixtures.
+7. Decide whether `longjmp`-compatible behavior is feasible without compromising
    the safety model.
-7. Only claim C API compatibility after the C fixture suite is broad and green.
-8. Treat ABI drop-in compatibility as a separate release line unless proven
+8. Only claim C API compatibility after the C fixture suite is broad and green.
+9. Treat ABI drop-in compatibility as a separate release line unless proven
    practical.
 
 ## Public Claim Guidance
@@ -155,8 +171,8 @@ implementation.
 Good current phrasing:
 
 > `lua-rs` is a Lua 5.4.7-compatible runtime implemented in Rust. The preview
-> release targets Lua source/runtime compatibility first. Rust-native embedding
-> and C API compatibility are future goals.
+> release targets Lua source/runtime compatibility first and includes a preview
+> Rust-native embedding API. C API compatibility is a future goal.
 
 Avoid claiming:
 

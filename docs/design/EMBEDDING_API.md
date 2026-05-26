@@ -6,6 +6,12 @@ real consumer (a Bevy Mod Scripting / bms backend, toward a nano9 "PICO-8 in the
 browser" demo). The bms build independently re-derived the same two crux
 decisions, which is the main reason to trust this design.
 
+Implementation status: the core API described here landed in `lua-rs-runtime`
+through commit `a096e24`. This file remains the rationale and product-shape
+note. Current implementation details, verification evidence, known limits, and
+future opportunities live in
+[docs/EMBEDDING_API_IMPLEMENTATION.md](../EMBEDDING_API_IMPLEMENTATION.md).
+
 ## What the API bridges
 
 Two opposite memory models: Lua (GC'd, dynamically typed, single-threaded heap)

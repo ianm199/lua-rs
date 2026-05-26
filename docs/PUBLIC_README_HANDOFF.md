@@ -68,10 +68,11 @@ Current CLI gaps:
 
 Good phrasing:
 
-> The preview release targets Lua source/runtime compatibility first. Rust-native
-> embedding and C API compatibility are future goals.
+> The preview release targets Lua source/runtime compatibility first and includes
+> a preview Rust-native embedding API. C API compatibility is a future goal.
 
-See `docs/FUTURE_GOALS.md` for the API/ABI distinction.
+See `docs/FUTURE_GOALS.md` for the API/ABI distinction and
+`docs/EMBEDDING_API_IMPLEMENTATION.md` for the current embedding API status.
 
 ## Suggested README Shape
 

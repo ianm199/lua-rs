@@ -812,6 +812,7 @@ impl LuaState {
             data: vec![0u8; size].into_boxed_slice(),
             uv: vec![LuaValue::Nil; nuvalue as usize],
             metatable: std::cell::RefCell::new(None),
+            host_value: std::cell::RefCell::new(None),
         });
         self.push(LuaValue::UserData(u.clone()));
         self.gc().check_step();

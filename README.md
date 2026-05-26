@@ -18,6 +18,8 @@ lua-rs -e 'print("hello")'
 
 - Passes the full upstream Lua 5.4.7 test suite (44/44).
 - A standalone binary: no `liblua`, no C interpreter, no C toolchain to build it.
+- Rust-native embedding API with owned handles, captured Rust callbacks, and
+  userdata/metamethod support in `lua-rs-runtime`.
 - Mostly safe Rust, with unsafe isolated to audited GC, dynamic-loading, and
   WASM pointer-ABI boundaries.
 - Competitive with reference C (~1.3× geomean wall time), benchmarked per commit.
@@ -34,6 +36,40 @@ lua-rs -v                       # version
 
 `lua-rs` follows the standard `lua` CLI. Build from source with
 `cargo build --release --bin lua-rs`.
+
+## Rust Embedding API
+
+`lua-rs-runtime` exposes a preview Rust-native embedding API shaped after
+`mlua` at the handle, callback, conversion, and userdata layers. It supports
+owned GC-rooted handles (`Value`, `Table`, `Function`, `LuaString`,
+`AnyUserData`), closure-based `create_function` / `create_function_mut`,
+re-entrant callbacks, userdata methods and metamethods, and conversion traits
+(`IntoLua`, `FromLua`, `IntoLuaMulti`, `FromLuaMulti`).
+
+```rust
+use lua_rs_runtime::{Lua, Result};
+
+fn main() -> Result<()> {
+    let lua = Lua::new();
+    let globals = lua.globals();
+
+    let f = lua.create_function(|_, name: String| {
+        Ok(format!("hello, {name}"))
+    })?;
+    globals.set("greet", f)?;
+
+    let out: String = lua.load(r#"return greet("lua-rs")"#).eval()?;
+    assert_eq!(out, "hello, lua-rs");
+    Ok(())
+}
+```
+
+The implementation status, soundness model, verification evidence, and future
+work are documented in
+[docs/EMBEDDING_API_IMPLEMENTATION.md](docs/EMBEDDING_API_IMPLEMENTATION.md).
+The original design rationale and build spec live in
+[docs/design/EMBEDDING_API.md](docs/design/EMBEDDING_API.md) and
+[docs/design/EMBEDDING_API_SPEC.md](docs/design/EMBEDDING_API_SPEC.md).
 
 ## Conformance
 
@@ -145,9 +181,10 @@ LUA_PATH="/tmp/rocks/share/lua/5.4/?.lua;;" lua-rs -e 'print(require("inspect")(
 - Get to full safety: drive the remaining `unsafe` (in the garbage collector and
   the dynamic-library loader) to zero, so the whole runtime is safe Rust.
 - Reach performance parity with reference Lua 5.4.
-- A polished Rust embedding API: `lua-rs-runtime` now has the first thin helper
-  for running chunks with host hooks; closure-based browser/app embedding is the
-  next layer. See [docs/FUTURE_GOALS.md](docs/FUTURE_GOALS.md).
+- Stabilize and broaden the Rust embedding API: richer mlua parity, scoped
+  handles, better examples, Miri/fuzz coverage, sandbox presets, and future
+  async/fuel hooks. See [docs/FUTURE_GOALS.md](docs/FUTURE_GOALS.md) and
+  [docs/EMBEDDING_API_IMPLEMENTATION.md](docs/EMBEDDING_API_IMPLEMENTATION.md).
 
 ## Project layout
 
@@ -159,7 +196,7 @@ crates/
   lua-gc                         # garbage collector
   lua-stdlib                     # standard library
   lua-coro                       # coroutines
-  lua-rs-runtime                 # embedding helper and host-hook setup
+  lua-rs-runtime                 # Rust embedding API and host-hook setup
   lua-wasm                       # bare wasm32 embedding artifact
   lua-cli                        # the `lua-rs` binary
   lua-wasm-smoke                 # bare wasm32 runtime smoke harness
