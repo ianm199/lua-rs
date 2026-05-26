@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use lua_stdlib::auxlib::load_buffer;
 use lua_stdlib::init::open_libs;
-use lua_types::closure::LuaLClosure;
+use lua_types::closure::{LuaCClosure as RawLuaCClosure, LuaClosure as RawLuaClosure, LuaLClosure};
 use lua_types::gc::GcRef;
 use lua_types::string::LuaString as RawLuaString;
 use lua_types::upval::UpVal;
@@ -190,10 +190,15 @@ pub struct Lua {
 struct LuaInner {
     state: RefCell<LuaState>,
     active_state: Cell<*mut LuaState>,
+    pending_external_unroots: RefCell<Vec<ExternalRootKey>>,
 }
 
 struct UserDataCell<T> {
     value: RefCell<T>,
+}
+
+struct RustCallbackCell {
+    function: LuaRustFunction,
 }
 
 struct ActiveStateGuard<'a> {
@@ -213,6 +218,26 @@ impl LuaInner {
         ActiveStateGuard {
             inner: self,
             previous,
+        }
+    }
+
+    fn flush_pending_external_unroots(&self, state: &mut LuaState) {
+        let pending = self.pending_external_unroots.replace(Vec::new());
+        if pending.is_empty() {
+            return;
+        }
+
+        let mut still_pending = Vec::new();
+        for key in pending {
+            if state.try_external_unroot_value(key).is_err() {
+                still_pending.push(key);
+            }
+        }
+
+        if !still_pending.is_empty() {
+            self.pending_external_unroots
+                .borrow_mut()
+                .extend(still_pending);
         }
     }
 }
@@ -248,6 +273,7 @@ impl Lua {
             inner: Rc::new(LuaInner {
                 state: RefCell::new(state),
                 active_state: Cell::new(std::ptr::null_mut()),
+                pending_external_unroots: RefCell::new(Vec::new()),
             }),
         }
     }
@@ -255,21 +281,54 @@ impl Lua {
     fn with_state<R>(&self, f: impl FnOnce(&mut LuaState) -> R) -> R {
         if let Ok(mut state) = self.inner.state.try_borrow_mut() {
             let _active = self.inner.enter_active(&mut *state);
-            return f(&mut state);
+            self.inner.flush_pending_external_unroots(&mut state);
+            let result = f(&mut state);
+            self.inner.flush_pending_external_unroots(&mut state);
+            return result;
         }
 
+        let state = self
+            .active_state_mut()
+            .expect("re-entrant Lua access without an active state");
+        let result = f(state);
+        self.inner.flush_pending_external_unroots(state);
+        result
+    }
+
+    fn active_state_mut(&self) -> Option<&mut LuaState> {
         let state = self.inner.active_state.get();
-        assert!(
-            !state.is_null(),
-            "re-entrant Lua access without an active state"
-        );
+        if state.is_null() {
+            return None;
+        }
 
         // SAFETY: `active_state` is set only while this `Lua` owns the outer
         // `RefCell` borrow and is executing VM code. Re-entrant access can only
         // happen when that VM frame has synchronously transferred control to a
         // Rust callback and is suspended. The callback path does not touch the
         // suspended `&mut LuaState` while user code re-enters through `Lua`.
-        unsafe { f(&mut *state) }
+        Some(unsafe { &mut *state })
+    }
+
+    fn unroot_external_key(&self, key: ExternalRootKey) {
+        let removed = if let Ok(mut state) = self.inner.state.try_borrow_mut() {
+            let _active = self.inner.enter_active(&mut *state);
+            self.inner.flush_pending_external_unroots(&mut state);
+            let removed = state.try_external_unroot_value(key).is_ok();
+            self.inner.flush_pending_external_unroots(&mut state);
+            removed
+        } else {
+            if let Some(state) = self.active_state_mut() {
+                let removed = state.try_external_unroot_value(key).is_ok();
+                self.inner.flush_pending_external_unroots(state);
+                removed
+            } else {
+                false
+            }
+        };
+
+        if !removed {
+            self.inner.pending_external_unroots.borrow_mut().push(key);
+        }
     }
 
     fn root_raw(&self, value: RawLuaValue) -> RootedValue {
@@ -320,6 +379,7 @@ impl Lua {
     /// Create a new empty table.
     pub fn create_table(&self) -> Result<Table> {
         let root = self.with_state(|state| {
+            let _heap_guard = heap_guard(state);
             let table = state.new_table();
             let raw = RawLuaValue::Table(table);
             let key = state.external_root_value(raw);
@@ -336,6 +396,7 @@ impl Lua {
     pub fn create_string(&self, bytes: impl AsRef<[u8]>) -> Result<LuaString> {
         let bytes = bytes.as_ref();
         let root = self.with_state(|state| {
+            let _heap_guard = heap_guard(state);
             let string = state.new_string(bytes)?;
             let raw = RawLuaValue::Str(string);
             let key = state.external_root_value(raw);
@@ -387,14 +448,38 @@ impl Lua {
 
     fn create_registered_function(&self, callable: LuaRustFunction) -> Result<Function> {
         let root = self.with_state(|state| {
+            let trampoline = rust_callback_trampoline as lua_vm::state::LuaCFunction;
             let idx = {
                 let mut global = state.global_mut();
-                let idx = global.c_functions.len();
-                global.c_functions.push(LuaCallable::rust(callable));
-                idx
+                match global.c_functions.iter().position(|existing| {
+                    existing
+                        .as_bare()
+                        .is_some_and(|existing| std::ptr::fn_addr_eq(existing, trampoline))
+                }) {
+                    Some(idx) => idx,
+                    None => {
+                        let idx = global.c_functions.len();
+                        global.c_functions.push(LuaCallable::bare(trampoline));
+                        idx
+                    }
+                }
             };
-            let raw = RawLuaValue::Function(lua_types::closure::LuaClosure::LightC(idx));
+            let raw = with_heap_guard(state, || {
+                let callback_payload = GcRef::new(RawLuaUserData {
+                    data: Box::new([]),
+                    uv: Vec::new(),
+                    metatable: RefCell::new(None),
+                    host_value: RefCell::new(Some(
+                        Rc::new(RustCallbackCell { function: callable }) as Rc<dyn Any>,
+                    )),
+                });
+                RawLuaValue::Function(RawLuaClosure::C(GcRef::new(RawLuaCClosure {
+                    func: idx,
+                    upvalues: vec![RawLuaValue::UserData(callback_payload)],
+                })))
+            });
             let key = state.external_root_value(raw);
+            state.gc().check_step();
             RootedValue {
                 lua: self.clone(),
                 key,
@@ -567,9 +652,7 @@ impl Clone for RootedValue {
 
 impl Drop for RootedValue {
     fn drop(&mut self) {
-        let _ = self
-            .lua
-            .with_state(|state| state.external_unroot_value(self.key));
+        self.lua.unroot_external_key(self.key);
     }
 }
 
@@ -1034,11 +1117,13 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
         });
         let host_value = cell.clone();
         let root = self.lua.with_state(|state| {
-            let userdata = GcRef::new(RawLuaUserData {
-                data: Box::new([]),
-                uv: Vec::new(),
-                metatable: RefCell::new(None),
-                host_value: RefCell::new(None),
+            let userdata = with_heap_guard(state, || {
+                GcRef::new(RawLuaUserData {
+                    data: Box::new([]),
+                    uv: Vec::new(),
+                    metatable: RefCell::new(None),
+                    host_value: RefCell::new(None),
+                })
             });
             let metatable_raw = metatable.root.raw_for_lua(self.lua, state)?;
             let RawLuaValue::Table(metatable) = metatable_raw else {
@@ -1677,6 +1762,41 @@ where
     }
 }
 
+fn rust_callback_trampoline(state: &mut LuaState) -> Result<usize> {
+    let func_idx = state.current_call_info().func;
+    let callback = match state.get_at(func_idx) {
+        RawLuaValue::Function(RawLuaClosure::C(closure)) => {
+            let Some(RawLuaValue::UserData(userdata)) = closure.upvalues.first() else {
+                return Err(LuaError::runtime(format_args!(
+                    "missing Rust callback payload"
+                )));
+            };
+            let host = userdata
+                .host_value()
+                .ok_or_else(|| LuaError::runtime(format_args!("missing Rust callback payload")))?;
+            host.downcast::<RustCallbackCell>().map_err(|_| {
+                LuaError::runtime(format_args!("Rust callback payload type mismatch"))
+            })?
+        }
+        _ => {
+            return Err(LuaError::runtime(format_args!(
+                "Rust callback trampoline called without C closure"
+            )));
+        }
+    };
+    (callback.function)(state)
+}
+
+fn with_heap_guard<R>(state: &LuaState, f: impl FnOnce() -> R) -> R {
+    let _heap_guard = heap_guard(state);
+    f()
+}
+
+fn heap_guard(state: &LuaState) -> lua_gc::HeapGuard {
+    let global = state.global();
+    lua_gc::HeapGuard::push(&global.heap)
+}
+
 fn callback_args(state: &mut LuaState, lua: &Lua) -> Result<Vec<Value>> {
     let func_idx = state.current_call_info().func;
     let nargs = state.top_idx().0.saturating_sub(func_idx.0 + 1);
@@ -1801,6 +1921,7 @@ fn parser_hook(
     name: &[u8],
     firstchar: i32,
 ) -> Result<GcRef<LuaLClosure>> {
+    let _heap_guard = heap_guard(state);
     let proto = lua_parse::parse(
         state,
         lua_parse::DynData::default(),
@@ -2003,6 +2124,26 @@ mod tests {
             .eval()
             .expect("callback should run");
         assert_eq!(result, (2, 7));
+    }
+
+    #[test]
+    fn dropped_rust_callback_releases_captured_handles_after_gc() {
+        let lua = Lua::new();
+        let table = lua.create_table().expect("table should allocate");
+        table.set("value", 42_i64).expect("set should succeed");
+        assert_eq!(external_root_count(&lua), 1);
+
+        let callback = {
+            let captured = table.clone();
+            lua.create_function(move |_lua, ()| captured.get::<_, i64>("value"))
+                .expect("callback should create")
+        };
+        assert_eq!(external_root_count(&lua), 3);
+
+        drop(callback);
+        lua.gc_collect();
+        assert_eq!(external_root_count(&lua), 1);
+        assert_eq!(table.get::<_, i64>("value").expect("table should live"), 42);
     }
 
     #[test]

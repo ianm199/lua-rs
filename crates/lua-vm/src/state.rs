@@ -1699,6 +1699,17 @@ impl LuaState {
         self.global_mut().external_roots.remove(key)
     }
 
+    /// Best-effort external root removal for destructors that may run while
+    /// the collector holds an immutable `GlobalState` borrow.
+    pub fn try_external_unroot_value(
+        &mut self,
+        key: ExternalRootKey,
+    ) -> std::result::Result<Option<LuaValue>, std::cell::BorrowMutError> {
+        self.global
+            .try_borrow_mut()
+            .map(|mut global| global.external_roots.remove(key))
+    }
+
     /// Create a new empty table and register it with the GC.
     ///
     /// macros.tsv: `lua_newtable → state.new_table()`
