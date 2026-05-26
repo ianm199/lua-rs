@@ -16,7 +16,7 @@ path = "src/lib.rs"
 workspace = true
 
 [dependencies]
-lua-types = { path = "../lua-types", version = "0.0.4" }
-lua-vm = { path = "../lua-vm", version = "0.0.4" }
-lua-stdlib = { path = "../lua-stdlib", version = "0.0.4" }
-lua-parse = { path = "../lua-parse", version = "0.0.4" }
+lua-types = { path = "../lua-types", version = "0.0.5" }
+lua-vm = { path = "../lua-vm", version = "0.0.5" }
+lua-stdlib = { path = "../lua-stdlib", version = "0.0.5" }
+lua-parse = { path = "../lua-parse", version = "0.0.5" }
