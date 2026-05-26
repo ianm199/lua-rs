@@ -615,9 +615,8 @@ fn cg_free_exps(fs: &mut FuncState, e1: &ExprDesc, e2: &ExprDesc) {
 /// `e1`. Non-foldable arithmetic / bitwise binops fall through to the
 /// two-register emit path (`OP_ADD` ... `OP_SHR`) plus an `OP_MMBIN`
 /// metamethod-dispatch instruction. `Concat` is delegated to
-/// `cg_emit_concat`; `Lt` to `cg_emit_order`; remaining logical and
-/// comparison operators still hit `todo!()` so they surface as later
-/// iterations' blockers.
+/// `cg_emit_concat`; comparisons to `cg_emit_order` / `cg_emit_eq`;
+/// `And` / `Or` short-circuit jumps to `cg_concat`.
 fn cg_posfix_fold(
     fs: &mut FuncState,
     op: BinOpr,
@@ -729,10 +728,10 @@ fn cg_posfix_fold(
         BinOpr::BXor => (lua_code::opcodes::OpCode::BXor, lua_types::tagmethod::TagMethod::Bxor),
         BinOpr::Shl  => (lua_code::opcodes::OpCode::Shl,  lua_types::tagmethod::TagMethod::Shl),
         BinOpr::Shr  => (lua_code::opcodes::OpCode::Shr,  lua_types::tagmethod::TagMethod::Shr),
-        _ => todo!(
-            "phase-b: cg_posfix_fold non-foldable binop {:?} ({:?} {:?})",
-            op, e1.k, e2.k
-        ),
+        BinOpr::Concat | BinOpr::Eq | BinOpr::Lt | BinOpr::Le | BinOpr::Ne
+        | BinOpr::Gt | BinOpr::Ge | BinOpr::And | BinOpr::Or | BinOpr::NoBinOpr => {
+            unreachable!("cg_posfix_fold reached opcode match with non-arith op {:?}", op)
+        }
     };
 
     cg_discharge_vars(fs, line, e1)?;
@@ -1993,19 +1992,6 @@ pub fn nvarstack(ls: &LexState, fs: &FuncState) -> i32 {
     reg_level(ls, fs, fs.nactvar as i32)
 }
 
-/// Returns a mutable reference to the debug-info entry for variable `vidx`,
-/// or `None` if it is a compile-time constant (no debug info).
-fn local_debug_info<'a>(ls: &LexState, fs: &'a mut FuncState, vidx: i32) -> Option<&'a mut LocalVar> {
-    let vd = get_local_var_desc(ls, fs, vidx);
-    if vd.kind == VarKind::CompileTimeConst {
-        return None;
-    }
-    let idx = vd.pidx as usize;
-    debug_assert!((idx as i16) < fs.ndebugvars);
-    // TODO(port): borrow conflict — vd borrows ls immutably, idx is a copy; safe to proceed.
-    Some(&mut fs.f.locvars[idx])
-}
-
 fn init_var(ls: &LexState, fs: &FuncState, e: &mut ExprDesc, vidx: i32) {
     e.f = NO_JUMP;
     e.t = NO_JUMP;
@@ -2635,10 +2621,9 @@ fn createlabel(
 
 /// Adjusts pending gotos to outer block level when leaving a block.
 fn movegotosout(ls: &mut LexState, bl_firstgoto: usize, bl_nactvar: u8, bl_upval: bool) {
-    let fs = ls.fs.as_ref().unwrap();
+    let _ = ls.fs.as_ref().unwrap();
     let first_goto = bl_firstgoto;
     let _n_gt = ls.dyd.gt.len();
-    drop(fs); // release borrow before iterating
 
     for i in first_goto..ls.dyd.gt.len() {
         let _gt_nactvar = ls.dyd.gt[i].nactvar;
@@ -3951,7 +3936,7 @@ fn checktoclose(ls: &mut LexState, _state: &mut LuaState, level: i32) -> Result<
 fn localstat(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
     let mut toclose: i32 = -1;
     let mut nvars: i32 = 0;
-    let mut vidx = 0i32;
+    let mut vidx: i32;
     loop {
         let name = str_check_name(ls, state)?;
         vidx = new_local_var(ls, state, name)?;

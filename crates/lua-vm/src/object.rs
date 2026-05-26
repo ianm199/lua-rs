@@ -2,14 +2,11 @@
 //!
 //! Ported from `reference/lua-5.4.7/src/lobject.c` (602 lines, ~20 functions).
 
-// TODO(port): resolve import paths — all `crate::*` paths below are speculative;
-// Phase B will reconcile against the actual module tree.
 use crate::state::LuaState;
 #[allow(unused_imports)] use crate::prelude::*;
 use lua_types::{LuaValue, GcRef, LuaString, StackIdx};
 use lua_types::error::LuaError;
 use lua_types::arith::ArithOp;
-use lua_types::value::F2Imod;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Module-level constants
@@ -19,9 +16,6 @@ use lua_types::value::F2Imod;
 /// single-precision floats).
 const MAX_SIG_DIG: usize = 30;
 
-/// Maximum length of a numeral string accepted for conversion to a number.
-const L_MAX_LEN_NUM: usize = 200;
-
 /// Maximum size of a number-to-string conversion buffer.
 /// Accommodates both `%.14g` float formatting and `%lld` integer formatting.
 pub const MAX_NUMBER_2_STR: usize = 44;
@@ -30,7 +24,7 @@ pub const MAX_NUMBER_2_STR: usize = 44;
 pub const UTF8_BUF_SZ: usize = 8;
 
 /// Maximum length of a chunk source identifier in error messages.
-// TODO(port): verify against luaconf.h; defaulting to 60 here.
+/// Matches `LUA_IDSIZE` in upstream `luaconf.h`.
 pub const LUA_ID_SIZE: usize = 60;
 
 /// Internal buffer size for `push_vfstring`.
@@ -83,14 +77,11 @@ fn int_arith(state: &mut LuaState, op: ArithOp, v1: i64, v2: i64) -> Result<i64,
         ArithOp::Add => Ok((v1 as u64).wrapping_add(v2 as u64) as i64),
         ArithOp::Sub => Ok((v1 as u64).wrapping_sub(v2 as u64) as i64),
         ArithOp::Mul => Ok((v1 as u64).wrapping_mul(v2 as u64) as i64),
-        // TODO(port): confirm function path for integer floor-mod in lvm.rs
         ArithOp::Mod => crate::vm::int_floor_mod(state, v1, v2),
-        // TODO(port): confirm function path for integer floor-div in lvm.rs
         ArithOp::Idiv => crate::vm::int_floor_div(state, v1, v2),
         ArithOp::Band => Ok(v1 & v2),
         ArithOp::Bor => Ok(v1 | v2),
         ArithOp::Bxor => Ok(v1 ^ v2),
-        // TODO(port): confirm function path for shift-left in lvm.rs
         ArithOp::Shl => Ok(crate::vm::shiftl(v1, v2)),
         ArithOp::Shr => Ok(crate::vm::shiftl(v1, -v2)),
         ArithOp::Unm => Ok((0u64).wrapping_sub(v1 as u64) as i64),
@@ -119,7 +110,6 @@ fn float_arith(state: &mut LuaState, op: ArithOp, v1: f64, v2: f64) -> Result<f6
         ArithOp::Pow => Ok(if v2 == 2.0 { v1 * v1 } else { v1.powf(v2) }),
         ArithOp::Idiv => Ok((v1 / v2).floor()),
         ArithOp::Unm => Ok(-v1),
-        // TODO(port): confirm function path for float floor-mod in lvm.rs
         ArithOp::Mod => crate::vm::float_floor_mod(state, v1, v2),
         _ => {
             debug_assert!(false, "float_arith called with non-float op");
@@ -324,12 +314,10 @@ fn str_x2number(s: &[u8]) -> Option<(f64, usize)> {
     if nosigdig + sigdig == 0 {
         return None;
     }
-    // `idx` is now the valid end so far
-    let valid_end = idx;
     e *= 4;
 
     if idx < s.len() && (s[idx] == b'p' || s[idx] == b'P') {
-        idx += 1; // skip 'p'/'P'
+        idx += 1;
         let neg1 = is_neg(s, &mut idx);
         if idx >= s.len() || !s[idx].is_ascii_digit() {
             return None;
@@ -343,8 +331,6 @@ fn str_x2number(s: &[u8]) -> Option<(f64, usize)> {
             exp1 = -exp1;
         }
         e += exp1;
-        // update valid end: the exponent consumed up to here
-        // (valid_end is updated to idx below)
     }
     let result = if neg { -r } else { r };
     Some((result * (2.0f64).powi(e), idx))
@@ -621,7 +607,6 @@ pub fn num_to_string(state: &mut LuaState, val: &LuaValue) -> Result<GcRef<LuaSt
     //    int len = tostringbuff(obj, buff);
     //    setsvalue(L, obj, luaS_newlstr(L, buff, len));
     let bytes = number_to_str_buf(val);
-    // TODO(port): state.intern_str path needs to be confirmed in lua-vm
     state.intern_str(&bytes)
 }
 
@@ -648,9 +633,6 @@ pub enum FmtArg<'a> {
     Float(f64),
     /// `%U` — a Unicode codepoint (u32), encoded as UTF-8.
     Utf8Codepoint(u32),
-    // TODO(port): %p (pointer) omitted — raw pointer in safe Rust is not allowed
-    // outside explicit unsafe-budget crates.  Callers that need pointer formatting must handle
-    // it separately and pass the pre-formatted bytes as FmtArg::Str.
 }
 
 /// Internal accumulator for `push_vfstring`.
@@ -686,7 +668,6 @@ fn pushstr(buf: &mut BufFs, state: &mut LuaState, str_bytes: &[u8]) -> Result<()
     if !buf.pushed {
         buf.pushed = true;
     } else {
-        // TODO(port): confirm path to string concatenation helper in lvm.rs
         crate::vm::concat(state, 2)?;
     }
     Ok(())
@@ -835,7 +816,6 @@ pub fn push_vfstring<'a>(
     // Return the interned string at the top of the stack.
     // PORT NOTE: in C this returns a `const char *` into the TString; in Rust
     // we return the GcRef<LuaString> directly.
-    // TODO(port): state.peek_string_at_top() path needs to be confirmed.
     Ok(state.peek_string_at_top())
 }
 
@@ -869,7 +849,7 @@ pub fn chunk_id(out: &mut [u8], source: &[u8]) -> usize {
     let bufflen = LUA_ID_SIZE;
     let mut written = 0usize;
 
-    let mut write_bytes = |out: &mut [u8], written: &mut usize, bytes: &[u8]| {
+    let write_bytes = |out: &mut [u8], written: &mut usize, bytes: &[u8]| {
         let avail = out.len().saturating_sub(*written);
         let n = bytes.len().min(avail);
         out[*written..*written + n].copy_from_slice(&bytes[..n]);

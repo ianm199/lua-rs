@@ -124,7 +124,7 @@ pub(crate) const BASIC_STACK_SIZE: usize = 2 * LUA_MINSTACK;
 // PORT NOTE: lowered from 200 to 80 because our debug-build Rust frames
 // are ~5–10× larger than C frames (debuginfo, stack-allocated CallInfo
 // arrays, marker state). At 200 we SIGSEGV on cstack's 1000-coroutine
-// close cascade before nCcalls trips. 80 is safe for an 8 MB Rust thread
+// close cascade before n_ccalls trips. 80 is safe for an 8 MB Rust thread
 // stack with a comfortable margin.
 pub(crate) const LUAI_MAXCCALLS: u32 = 200;
 
@@ -140,18 +140,10 @@ pub(crate) const CIST_TAIL: u16 = 1 << 5;
 pub(crate) const CIST_HOOKYIELD: u16 = 1 << 6;
 pub(crate) const CIST_FIN: u16 = 1 << 7;
 pub(crate) const CIST_TRAN: u16 = 1 << 8;
-pub(crate) const CIST_CLSRET: u16 = 1 << 9;
 pub(crate) const CIST_RECST: u32 = 10;
-
-// macros.tsv: LUA_RIDX_MAINTHREAD → const LUA_RIDX_MAINTHREAD: i64 = 1
-pub(crate) const LUA_RIDX_MAINTHREAD: i64 = 1;
-pub(crate) const LUA_RIDX_GLOBALS: i64 = 2;
-pub(crate) const LUA_RIDX_LAST: usize = 2;
 
 // macros.tsv: LUA_NUMTYPES → const LUA_NUMTYPES: usize = 9
 const LUA_NUMTYPES: usize = 9;
-
-const LUA_EXTRASPACE: usize = std::mem::size_of::<*mut ()>();
 
 // TODO(port): import from crate::gc (lgc.c → gc.rs) once it exists in Phase D
 const GCSTPUSR: u8 = 1;
@@ -1520,8 +1512,8 @@ pub struct LuaState {
 
     // ── C-call depth ──
 
-    // types.tsv: lua_State.nCcalls → u32
-    pub nCcalls: u32,
+    // types.tsv: lua_State.n_ccalls → u32
+    pub n_ccalls: u32,
 
     // ── Debug / hooks ──
 
@@ -1584,32 +1576,32 @@ impl LuaState {
         Rc::clone(&self.global)
     }
 
-    /// Return the current C-call recursion depth (lower 16 bits of `nCcalls`).
+    /// Return the current C-call recursion depth (lower 16 bits of `n_ccalls`).
     ///
     /// macros.tsv: `getCcalls → state.c_calls()`
     pub fn c_calls(&self) -> u32 {
-        self.nCcalls & 0xffff
+        self.n_ccalls & 0xffff
     }
 
-    /// Increment the non-yieldable call count (upper 16 bits of `nCcalls`).
+    /// Increment the non-yieldable call count (upper 16 bits of `n_ccalls`).
     ///
     /// macros.tsv: `incnny → state.inc_nny()`
     pub fn inc_nny(&mut self) {
-        self.nCcalls += 0x10000;
+        self.n_ccalls += 0x10000;
     }
 
     /// Decrement the non-yieldable call count.
     ///
     /// macros.tsv: `decnny → state.dec_nny()`
     pub fn dec_nny(&mut self) {
-        self.nCcalls -= 0x10000;
+        self.n_ccalls -= 0x10000;
     }
 
     /// Returns `true` if the thread can yield (no non-yieldable frames on the stack).
     ///
     /// macros.tsv: `yieldable → state.is_yieldable()`
     pub fn is_yieldable(&self) -> bool {
-        (self.nCcalls & 0xffff0000) == 0
+        (self.n_ccalls & 0xffff0000) == 0
     }
 
     /// Reset the hook countdown to the baseline.
@@ -3818,13 +3810,13 @@ pub(crate) fn check_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
 ///
 /// ```c
 ///
-/// //   L->nCcalls++;
+/// //   L->n_ccalls++;
 /// //   if (l_unlikely(getCcalls(L) >= LUAI_MAXCCALLS))
 /// //     luaE_checkcstack(L);
 /// // }
 /// ```
 pub fn inc_c_stack(state: &mut LuaState) -> Result<(), LuaError> {
-    state.nCcalls += 1;
+    state.n_ccalls += 1;
     // macros.tsv: l_unlikely → x (drop branch hint); getCcalls → state.c_calls()
     if state.c_calls() >= LUAI_MAXCCALLS {
         check_c_stack(state)?;
@@ -3953,7 +3945,7 @@ fn preinit_thread(thread: &mut LuaState, global: Rc<RefCell<GlobalState>>) {
     // PORT NOTE: In C, L->twups = L is a self-reference sentinel meaning "no open upvals".
     // In Rust, GlobalState.twups is a Vec<GcRef<LuaState>>; absence from that Vec is the
     // sentinel.  The per-thread `twups` field is removed (types.tsv: lua_State.twups → removed).
-    thread.nCcalls = 0;
+    thread.n_ccalls = 0;
     thread.hook = None;
     thread.hookmask = 0;
     thread.basehookcount = 0;
@@ -4055,7 +4047,7 @@ pub fn new_thread(state: &mut LuaState, initial_body: Option<LuaValue>) -> Resul
         basehookcount: 0,
         hookcount: 0,
         errfunc: 0,
-        nCcalls: 0,
+        n_ccalls: 0,
         oldpc: 0,
         marked: 0,
         cached_thread_id: reserved_id,
@@ -4097,35 +4089,6 @@ pub fn new_thread(state: &mut LuaState, initial_body: Option<LuaValue>) -> Resul
     state.push(LuaValue::Thread(value));
 
     Ok(())
-}
-
-/// Free all resources held by a coroutine thread.
-///
-///
-/// ```c
-///
-/// //   LX *l = fromstate(L1);
-/// //   luaF_closeupval(L1, L1->stack.p);  /* close all upvalues */
-/// //   lua_assert(L1->openupval == NULL);
-/// //   luai_userstatefree(L, L1);
-/// //   freestack(L1);
-/// //   luaM_free(L, l);
-/// // }
-/// ```
-pub(crate) fn free_thread(caller: &mut LuaState, thread: &mut LuaState) {
-    // TODO(port): crate::func::close_upval(thread, StackIdx(0)) — lfunc.c → func.rs
-    let _ = caller; // caller used only for luai_userstatefree (no-op)
-
-    // macros.tsv: lua_assert → debug_assert!
-    debug_assert!(
-        thread.openupval.is_empty(),
-        "free_thread: open upvalues remain after close_upval"
-    );
-
-    // macros.tsv: luai_userstatefree → (extension hook; drop)
-
-    free_stack(thread);
-
 }
 
 /// Reset a thread to its base state, closing all to-be-closed variables.
@@ -4202,7 +4165,7 @@ pub fn reset_thread(state: &mut LuaState, status: i32) -> i32 {
 ///
 /// //   int status;
 /// //   lua_lock(L);
-/// //   L->nCcalls = (from) ? getCcalls(from) : 0;
+/// //   L->n_ccalls = (from) ? getCcalls(from) : 0;
 /// //   status = luaE_resetthread(L, L->status);
 /// //   lua_unlock(L);
 /// //   return status;
@@ -4210,7 +4173,7 @@ pub fn reset_thread(state: &mut LuaState, status: i32) -> i32 {
 /// ```
 pub fn close_thread(state: &mut LuaState, from: Option<&LuaState>) -> i32 {
     // macros.tsv: getCcalls → state.c_calls()
-    state.nCcalls = match from {
+    state.n_ccalls = match from {
         Some(f) => f.c_calls(),
         None => 0,
     };
@@ -4376,7 +4339,7 @@ pub fn new_state() -> Option<LuaState> {
         basehookcount: 0,
         hookcount: 0,
         errfunc: 0,
-        nCcalls: 0,
+        n_ccalls: 0,
         oldpc: 0,
         marked: initial_marked,
         cached_thread_id: 0,
@@ -4385,7 +4348,7 @@ pub fn new_state() -> Option<LuaState> {
 
     preinit_thread(&mut main_thread, global_rc.clone());
 
-    // macros.tsv: incnny → state.inc_nny() → L->nCcalls += 0x10000
+    // macros.tsv: incnny → state.inc_nny() → L->n_ccalls += 0x10000
     main_thread.inc_nny();
 
     // TODO(port): self-referential Rc cycle; Phase D GC handles cycles.
@@ -4459,44 +4422,6 @@ pub(crate) fn warning(state: &mut LuaState, msg: &[u8], to_cont: bool) {
         // Restore the closure.
         state.global_mut().warnf = warnf;
     }
-}
-
-/// Emit a warning composed from the error object on top of the stack and a location.
-///
-///
-/// ```c
-///
-/// //   TValue *errobj = s2v(L->top.p - 1);
-/// //   const char *msg = (ttisstring(errobj))
-/// //                   ? getstr(tsvalue(errobj))
-/// //                   : "error object is not a string";
-/// //   luaE_warning(L, "error in ", 1);
-/// //   luaE_warning(L, where, 1);
-/// //   luaE_warning(L, " (", 1);
-/// //   luaE_warning(L, msg, 1);
-/// //   luaE_warning(L, ")", 0);
-/// // }
-/// ```
-pub(crate) fn warn_error(state: &mut LuaState, where_: &[u8]) {
-    // macros.tsv: s2v → state.stack_at(idx)
-    let top_idx = state.top.0.saturating_sub(1) as usize;
-    let errobj = state.stack.get(top_idx).map(|sv| sv.val.clone()).unwrap_or(LuaValue::Nil);
-
-    // macros.tsv: ttisstring → matches!(o, LuaValue::Str(_))
-    // macros.tsv: getstr → ts.as_bytes(); tsvalue → o.as_string().expect("not string")
-    // PORT NOTE: Clone the message bytes to avoid holding a borrow on `state.stack`
-    // across the subsequent `warning()` calls which mutably borrow `state`.
-    let msg: Vec<u8> = if let LuaValue::Str(ref s) = errobj {
-        s.as_bytes().to_vec()
-    } else {
-        b"error object is not a string".to_vec()
-    };
-
-    warning(state, b"error in ", true);
-    warning(state, where_, true);
-    warning(state, b" (", true);
-    warning(state, &msg, true);
-    warning(state, b")", false);
 }
 
 #[cfg(test)]

@@ -17,10 +17,8 @@ use lua_types::value::LuaValue;
 // PORT NOTE: GcRef<T>, LuaProto, LuaClosure, LuaString, UpvalDesc, LocalVar,
 // AbsLineInfo, and Instruction are expected to live in lua_types or lua_vm
 // crates.  All paths below are provisional for Phase A.
-// TODO(port): confirm concrete module paths for all GC types in Phase B.
 use lua_types::proto::{LuaProto, UpvalDesc, LocalVar, AbsLineInfo};
-use lua_types::closure::{LuaClosure, LuaLClosure};
-use lua_types::upval::UpVal;
+use lua_types::closure::LuaLClosure;
 use lua_types::string::LuaString;
 use lua_types::gc::GcRef;
 use lua_types::opcode::Instruction;
@@ -83,9 +81,6 @@ const TAG_LONG_STR: u8 = 0x14;
 struct LoadState<'a> {
     state: &'a mut LuaState,
     z: &'a mut ZIO,
-    // PORT NOTE: C uses const char * (a C string). In Rust we own a Vec<u8>
-    // because the name slice may be a sub-slice of the caller's &[u8].
-    name: Vec<u8>,
 }
 
 // ── Error helper ───────────────────────────────────────────────────────────
@@ -110,8 +105,7 @@ struct LoadState<'a> {
 /// implement `Display`.  Phase B should add a byte-string formatting path to
 /// `LuaError::syntax_bytes` or similar, so the chunk name is included verbatim
 /// in the message.
-fn load_error(s: &LoadState<'_>, why: &'static str) -> LuaError {
-    // error_sites.tsv: luaD_throw(L, LUA_ERRSYNTAX) → LuaError::syntax(...)
+fn load_error(_s: &LoadState<'_>, why: &'static str) -> LuaError {
     LuaError::syntax(format_args!("bad binary format ({})", why))
 }
 
@@ -902,21 +896,11 @@ fn check_header(s: &mut LoadState<'_>) -> Result<(), LuaError> {
 pub(crate) fn undump(
     state: &mut LuaState,
     z: &mut ZIO,
-    name: &[u8],
+    _name: &[u8],
 ) -> Result<GcRef<LuaLClosure>, LuaError> {
-    let display_name: Vec<u8> = if name.first() == Some(&b'@') || name.first() == Some(&b'=') {
-        // Strip the leading sigil character.
-        name[1..].to_vec()
-    } else if name.first() == Some(&LUA_SIGNATURE[0]) {
-        b"binary string".to_vec()
-    } else {
-        name.to_vec()
-    };
-
     let mut s = LoadState {
         state,
         z,
-        name: display_name,
     };
 
     check_header(&mut s)?;

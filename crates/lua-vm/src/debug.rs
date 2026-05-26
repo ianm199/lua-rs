@@ -10,7 +10,7 @@
 #[allow(unused_imports)] use crate::prelude::*;
 use crate::state::{
     CallInfo, GcRef, LuaClosure, LuaClosureLua, LuaProto, LuaState, LuaTable, LuaValue,
-    UpVal, CIST_C, CIST_FIN, CIST_HOOKED, CIST_HOOKYIELD, CIST_TAIL, CIST_TRAN,
+    CIST_FIN, CIST_HOOKED, CIST_HOOKYIELD, CIST_TAIL, CIST_TRAN,
 };
 use lua_types::{CallInfoIdx, StackIdx, LuaString};
 use lua_types::error::LuaError;
@@ -43,13 +43,9 @@ const LUA_IDSIZE: usize = 60;
 // TODO(port): import from HookEvent enum once defined
 const LUA_MASKLINE: u8 = 1 << 2;
 const LUA_MASKCOUNT: u8 = 1 << 3;
-const LUA_MASKCALL: u8 = 1 << 0;
 
 const LUA_HOOKLINE: i32 = 2;
 const LUA_HOOKCOUNT: i32 = 3;
-
-// TODO(port): replace with LuaStatus::Yield once enum is defined
-const LUA_YIELD_STATUS: i32 = 1;
 
 // macros.tsv: LUA_ENV → const LUA_ENV: &[u8] = b"_ENV"
 const LUA_ENV: &[u8] = b"_ENV";
@@ -240,15 +236,6 @@ pub fn arg_error_impl(state: &mut LuaState, mut arg: i32, extramsg: &[u8]) -> Lu
         String::from_utf8_lossy(extramsg)
     );
     c_api_runtime(state, msg.into_bytes())
-}
-
-/// Build a `LuaError::Runtime` from the top of the Lua stack.
-///
-/// Pops the error value from the stack and wraps it.
-/// TODO(phase-b): expose as `LuaError::from_top` in lua-types.
-fn runtime_from_top(state: &mut crate::state::LuaState) -> LuaError {
-    let v = state.pop();
-    LuaError::Runtime(v)
 }
 
 // ─── Debug info structures ────────────────────────────────────────────────────
@@ -1199,7 +1186,7 @@ fn funcname_from_call<'a>(
 /// PORT NOTE: In C this compares raw pointers. In Rust we compare StackIdx
 /// values. The function signature changes: instead of a `*o` pointer we take
 /// the StackIdx of the value directly.
-fn in_stack(ci: &CallInfo, val_idx: StackIdx, state: &LuaState) -> i32 {
+fn in_stack(ci: &CallInfo, val_idx: StackIdx) -> i32 {
     let base = StackIdx(ci.func.0 + 1);
     // TODO(port): in C this is a pointer-identity check (`o == s2v(base+pos)`).
     // In Rust, `val_idx` IS a StackIdx; we just check whether it falls in range.
@@ -1287,7 +1274,7 @@ fn var_info(state: &LuaState, val_idx: StackIdx) -> Vec<u8> {
         if kind.is_some() {
             name_owned = up_name.to_vec();
         } else {
-            let reg = in_stack(&ci, val_idx, state);
+            let reg = in_stack(&ci, val_idx);
             if reg >= 0 {
                 let proto = ci_lua_proto(&ci, state);
                 let mut nref: &[u8] = b"?";
@@ -1402,25 +1389,6 @@ pub(crate) fn for_error(state: &mut LuaState, val: &LuaValue, what: &[u8]) -> Lu
     prefixed_runtime(state, msg)
 }
 
-/// Raises a concatenation type error for the first non-coercible operand.
-///
-pub(crate) fn concat_error(
-    state: &LuaState,
-    p1: &LuaValue,
-    p1_idx: StackIdx,
-    p2: &LuaValue,
-    p2_idx: StackIdx,
-) -> LuaError {
-    // macros.tsv: ttisstring → matches!(o, LuaValue::Str(_))
-    // macros.tsv: cvt2str → matches!(o, LuaValue::Int(_) | LuaValue::Float(_))
-    let (bad_val, bad_idx) = if matches!(p1, LuaValue::Str(_) | LuaValue::Int(_) | LuaValue::Float(_)) {
-        (p2, p2_idx)
-    } else {
-        (p1, p1_idx)
-    };
-    type_error(state, bad_val, bad_idx, b"concatenate")
-}
-
 /// Raises an arithmetic type error. If `p1` is not a number, blames `p1`;
 /// otherwise blames `p2`.
 ///
@@ -1530,57 +1498,6 @@ pub(crate) fn add_info(
     out
 }
 
-/// Raises the value currently on top of the stack as a runtime error, invoking
-/// the error handler if one is set.
-///
-pub(crate) fn error_msg(state: &mut LuaState) -> Result<(), LuaError> {
-    //    luaD_throw(L, LUA_ERRRUN);
-    // macros.tsv: restorestack(L, L->errfunc) → the StackIdx stored in L->errfunc
-    if state.errfunc() != 0 {
-        let errfunc_idx = StackIdx(state.errfunc() as u32);
-        debug_assert!(
-            matches!(state.get_at(errfunc_idx), LuaValue::Function(_)),
-            "error_msg: error handler is not a function"
-        );
-        let arg = state.get_at(state.top_idx() - 1).clone();
-        state.push(arg);
-        let func = state.get_at(errfunc_idx).clone();
-        state.set_at(state.top_idx() - 2, func);
-        // PORT NOTE: the extra stack slot is guaranteed; push() handles it
-        // TODO(port): luaD_callnoyield lives in crate::do_; call it once available
-        state.call_no_yield(state.top_idx() - 2, 1)?;
-    }
-    // macros.tsv: luaD_throw → return Err(LuaError::with_status(errcode))
-    // error_sites.tsv: luaD_throw(L, LUA_ERRRUN) → return Err(LuaError::with_status(LuaStatus::ErrRun))
-    Err(runtime_from_top(state))
-}
-
-/// Formats and raises a runtime error with printf-style arguments. Prepends
-/// source:line information for Lua frames.
-///
-pub(crate) fn run_error(state: &mut LuaState, msg: Vec<u8>) -> Result<(), LuaError> {
-    // macros.tsv: luaC_checkGC → state.gc().check_step()
-    state.gc().check_step();
-
-    let ci_idx = state.current_ci_idx();
-    let ci = state.get_ci(ci_idx).clone();
-
-    let final_msg = if ci.is_lua() {
-        // TODO(port): access proto.source via ci_lua_proto
-        let line = get_current_line(&ci, state);
-        let proto = ci_lua_proto(&ci, state);
-        let src = proto.source_string();
-        add_info(Some(state), &msg, src.map(|s| &**s), line)
-    } else {
-        msg
-    };
-
-    // Push the final message as a string, then call error_msg.
-    // TODO(port): state.intern_str or state.push_string to get the string on stack
-    let str_val = state.new_string(&final_msg)?;
-    state.push(LuaValue::Str(str_val));
-    error_msg(state)
-}
 
 // ─── Line change detection ────────────────────────────────────────────────────
 

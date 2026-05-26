@@ -984,25 +984,6 @@ impl TableInner {
         }
     }
 
-    /// Write an integer key directly, mirroring C's `luaH_setint`. The
-    /// array-part fast path writes the slot in a single bounds-checked
-    /// store with no intermediate [`TableSlotRef`] enum and no second
-    /// lookup; only when the key falls outside `alimit` do we route
-    /// through the cold helper which handles the alimit-aliased slot,
-    /// hash-part walk, array-grow-on-`#t+1`, and `new_key` insertion.
-    /// Caller is responsible for rejecting `Nil` / `NaN` keys and for
-    /// firing the GC write barrier on the value.
-    #[inline]
-    fn set_int_value(&mut self, key: i64, value: LuaValue) -> Result<(), LuaError> {
-        let alimit = self.alimit as u64;
-        let uk = key as u64;
-        if uk.wrapping_sub(1) < alimit {
-            self.array[(key - 1) as usize] = value;
-            return Ok(());
-        }
-        self.set_int_value_cold(key, value)
-    }
-
     /// Integer-key entry used by [`LuaTable::try_raw_set`] /
     /// [`LuaTable::try_raw_set_int`]. The array fast path writes
     /// directly into a slot that is by definition already allocated

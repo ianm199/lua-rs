@@ -18,10 +18,6 @@
 //! `GlobalState::file_loader_hook`; concrete filesystem access belongs in
 //! `lua-cli` or another host backend.
 
-// TODO(port): LuaState, LuaValue, LuaError, GcRef, LuaString, LuaUserData,
-// LuaDebug, and LuaType are defined across lua-vm / lua-types. Imports will be
-// wired in Phase B. Using local stubs for Phase A so rustc can parse the file.
-
 use lua_types::{
     error::LuaError,
     value::LuaValue,
@@ -30,7 +26,6 @@ use lua_types::{
     userdata::LuaUserData,
     LuaType,
     LuaStatus,
-
 };
 use crate::state_stub::{LuaState, LuaStateStubExt as _, LuaDebug};
 

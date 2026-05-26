@@ -15,8 +15,6 @@
 //! Translated from: `reference/lua-5.4.7/src/lcorolib.c` (210 lines, 12 functions)
 //! Target crate: `lua-stdlib`
 
-// TODO(port): LuaState, GcRef<LuaState>, LuaStatus, and related types live in
-// lua-vm / lua-types; all unresolved imports will be fixed in Phase B.
 use lua_types::{
     error::LuaError,
     value::LuaValue,
@@ -503,7 +501,7 @@ pub fn co_close(state: &mut LuaState) -> Result<usize, LuaError> {
             }
         }
     })();
-    state.nCcalls -= 1;
+    state.n_ccalls -= 1;
     result
 }
 
@@ -550,7 +548,7 @@ fn close_suspended_or_dead(
     let (status, err_value): (i32, Option<LuaValue>) = {
         let mut co_state = entry_rc.borrow_mut();
         co_state.global_mut().current_thread_id = co_id;
-        co_state.nCcalls = caller_c_calls;
+        co_state.n_ccalls = caller_c_calls;
         let in_status = co_state.status as i32;
         let s = lua_vm::state::reset_thread(&mut *co_state, in_status);
         co_state.global_mut().current_thread_id = parent_thread_id;

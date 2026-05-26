@@ -10,12 +10,11 @@
 use std::convert::Infallible;
 #[allow(unused_imports)] use crate::prelude::*;
 
-use crate::state::{LuaState, LuaCFunction, LuaCallable, GlobalState, CallInfo, CallInfoIdx, StackIdx,
+use crate::state::{LuaState, LuaCFunction, LuaCallable, StackIdx,
     LuaValueExt, LuaTypeExt, StackIdxExt,
-    LuaTableRefExt, LuaUserDataRefExt, LuaStringRefExt,
-    LuaLClosureRefExt, LuaClosureExt, LuaProtoExt};
+    LuaTableRefExt, LuaUserDataRefExt};
 use lua_types::{
-    LuaValue, LuaType, LuaError, LuaString, LuaUserData, LuaClosure, UpVal,
+    LuaValue, LuaType, LuaError, LuaString, LuaUserData, LuaClosure,
     GcRef, LuaStatus,
 };
 use lua_types::value::LuaTable;

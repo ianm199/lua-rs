@@ -23,11 +23,9 @@
 // number parsing, utf8 encoding) in Phase B.  Canonical cross-crate type
 // imports are now in place per harness/type-vocabulary.tsv (see below).
 
-use std::rc::Rc;
 use std::io::Write as IoWrite;
 
 // PORT NOTE: GcRef<T> = Rc<T> in Phases A–C; replaced by real GC pointer in Phase D.
-// TODO(port): move GcRef to lua-types once the GC crate is defined (Phase D).
 use lua_types::gc::GcRef;
 
 // Canonical cross-crate types: imported from owner crates per
@@ -1709,28 +1707,6 @@ fn intern_str_stub(
     bytes: &[u8],
 ) -> Result<GcRef<LuaString>, LuaError> {
     state.intern_str(bytes)
-}
-
-/// Result of converting a byte string to a Lua number.
-/// TODO(port): replace with the real `LuaValue` enum variants from lua-types (Phase B).
-enum NumResult {
-    Int(i64),
-    Float(f64),
-}
-
-fn str2num_stub(bytes: &[u8]) -> Option<NumResult> {
-    let s = bytes.iter().position(|&b| b == 0)
-        .map(|n| &bytes[..n])
-        .unwrap_or(bytes);
-    let mut value = lua_types::LuaValue::Nil;
-    if lua_vm::object::str2num(s, &mut value) == 0 {
-        return None;
-    }
-    match value {
-        lua_types::LuaValue::Int(i) => Some(NumResult::Int(i)),
-        lua_types::LuaValue::Float(f) => Some(NumResult::Float(f)),
-        _ => None,
-    }
 }
 
 // TODO(port): replace with lua_vm::object::hex_value(c) in Phase B.

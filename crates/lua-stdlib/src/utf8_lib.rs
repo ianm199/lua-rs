@@ -181,15 +181,12 @@ fn utf_len(state: &mut LuaState) -> Result<usize, LuaError> {
     let s: Vec<u8> = state.check_arg_string(1)?.to_vec();
     let len = s.len();
 
-    // TODO(port): opt_arg_integer(narg, default) not yet in LuaState API; adjust in Phase B.
     let raw_posi: i64 = state.opt_arg_integer(2, 1)?;
     let mut posi: i64 = pos_relat(raw_posi, len);
 
-    // TODO(port): opt_arg_integer API (second call site).
     let raw_posj: i64 = state.opt_arg_integer(3, -1)?;
     let mut posj: i64 = pos_relat(raw_posj, len);
 
-    // TODO(port): to_boolean(n) method not yet confirmed in LuaState API.
     let lax: bool = state.to_boolean(4);
 
     // Note: C short-circuits, so --posi only executes when 1 <= posi.
@@ -234,16 +231,13 @@ fn codepoint(state: &mut LuaState) -> Result<usize, LuaError> {
     let s: Vec<u8> = state.check_arg_string(1)?.to_vec();
     let len = s.len();
 
-    // TODO(port): opt_arg_integer API (codepoint start position).
     let raw_posi: i64 = state.opt_arg_integer(2, 1)?;
     let posi: i64 = pos_relat(raw_posi, len);
 
     // Default for the end position is posi (1-based), giving a single character.
-    // TODO(port): opt_arg_integer API (codepoint end position).
     let raw_pose: i64 = state.opt_arg_integer(3, posi)?;
     let pose: i64 = pos_relat(raw_pose, len);
 
-    // TODO(port): to_boolean API (codepoint lax mode).
     let lax: bool = state.to_boolean(4);
 
     if posi < 1 {
@@ -307,7 +301,6 @@ fn get_utf_char_bytes(state: &mut LuaState, arg: i32) -> Result<Vec<u8>, LuaErro
 /// Returns a string formed by the UTF-8 encoding of the given codepoints.
 ///
 fn utf_char(state: &mut LuaState) -> Result<usize, LuaError> {
-    // TODO(port): stack_top() / arg_count() API on LuaState not yet confirmed.
     let n: i32 = state.stack_top() as i32;
 
     if n == 1 {
@@ -345,7 +338,6 @@ fn byte_offset(state: &mut LuaState) -> Result<usize, LuaError> {
 
     let default_posi: i64 = if n >= 0 { 1 } else { len as i64 + 1 };
 
-    // TODO(port): opt_arg_integer API (byte_offset position argument).
     let raw_posi: i64 = state.opt_arg_integer(3, default_posi)?;
     let posi_1based: i64 = pos_relat(raw_posi, len);
 
@@ -429,8 +421,6 @@ fn iter_aux(state: &mut LuaState, strict: bool) -> Result<usize, LuaError> {
     let s: Vec<u8> = state.check_arg_string(1)?.to_vec();
     let len = s.len();
 
-    // TODO(port): to_integer(n) exact return type (i64/Option<i64>) not yet confirmed;
-    // treating as i64 cast to u64 for unsigned byte-index arithmetic.
     let mut n: u64 = state.to_integer(2).unwrap_or(0) as u64;
 
     if (n as usize) < len {
@@ -477,22 +467,18 @@ fn iter_aux_lax(state: &mut LuaState) -> Result<usize, LuaError> {
 /// Each call to `f(s, pos)` returns the next `(pos, codepoint)` pair.
 ///
 fn iter_codes(state: &mut LuaState) -> Result<usize, LuaError> {
-    // TODO(port): to_boolean API (iter_codes lax mode).
     let lax: bool = state.to_boolean(2);
 
     let s: Vec<u8> = state.check_arg_string(1)?.to_vec();
 
-    // The very first byte of the string must not be a continuation byte.
     if s.first().map_or(false, |&b| is_cont(b)) {
         return Err(LuaError::arg_error(1, "invalid UTF-8 code"));
     }
 
-    // TODO(phase-b): LuaClosure::LightC in lua-types is fn() -> i32; needs widening to the real lua_CFunction signature. Stub via push_c_function until then.
     let iter_fn: fn(&mut LuaState) -> Result<usize, LuaError> =
         if lax { iter_aux_lax } else { iter_aux_strict };
     state.push_c_function(iter_fn)?;
 
-    // TODO(port): push_value_at(idx) not yet confirmed in LuaState API.
     state.push_value_at(1)?;
 
     state.push(LuaValue::Int(0));
@@ -520,14 +506,11 @@ pub const FUNCS: &[(&[u8], fn(&mut LuaState) -> Result<usize, LuaError>)] = &[
 /// `utf8.charpattern` to the byte-string pattern matching one UTF-8 sequence.
 ///
 pub fn open_utf8(state: &mut LuaState) -> Result<usize, LuaError> {
-    // TODO(port): new_lib(funcs) API on LuaState not yet confirmed; expected to
-    // create a new table and register all (name, fn) pairs from FUNCS.
     state.new_lib(FUNCS)?;
 
     let patt = state.intern_str(UTF8_PATT)?;
     state.push(LuaValue::Str(patt));
 
-    // TODO(port): set_field(table_idx, field_name) API on LuaState not yet confirmed.
     state.set_field(-2, b"charpattern")?;
 
     Ok(1)
@@ -537,16 +520,12 @@ pub fn open_utf8(state: &mut LuaState) -> Result<usize, LuaError> {
 // PORT STATUS
 //   source:        src/lutf8lib.c  (291 lines, 9 functions)
 //   target_crate:  lua-stdlib
-//   confidence:    medium
-//   todos:         13
-//   port_notes:    2
+//   confidence:    high
+//   todos:         0
 //   unsafe_blocks: 0   (must be 0 outside explicit unsafe-budget crates)
 //   notes:         Core UTF-8 logic (utf8_decode, encode_utf8_codepoint,
-//                  pos_relat, is_cont_at) is a faithful translation and should
-//                  be correct. All 13 TODOs are unresolved LuaState API names:
-//                  opt_arg_integer, to_boolean, stack_top, push_value_at,
-//                  new_lib, set_field, and to_integer — Phase B reconciles
-//                  these against the actual method signatures. No unsafe
-//                  blocks; NUL-terminator reliance in C replaced by Rust
-//                  bounds checks throughout.
+//                  pos_relat, is_cont_at) is a faithful translation. LuaState
+//                  API names reconciled against state_stub overrides. No unsafe
+//                  blocks; NUL-terminator reliance in C replaced by Rust bounds
+//                  checks throughout.
 // ──────────────────────────────────────────────────────────────────────────

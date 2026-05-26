@@ -3,8 +3,6 @@
 //! Translated from `src/ldo.c` (Lua 5.4.7, ~1029 lines, ~37 functions).
 //! Target crate: lua-vm (`crates/lua-vm/src/do_.rs`).
 
-// TODO(port): imports — exact module paths depend on final crate layout settled in Phase B.
-// All `use` paths below are best-guess from file_deps.txt + types.tsv.
 #[allow(unused_imports)] use crate::prelude::*;
 use crate::{
     func,
@@ -151,28 +149,8 @@ pub(crate) fn set_error_obj(state: &mut LuaState, errcode: LuaStatus, old_top: S
     state.set_top(old_top + 1);
 }
 
-/// Throws an error, escalating to the main thread or panicking if no handler exists.
-///
-///
-/// PORT NOTE: In the Rust port, errors propagate via `Result<T, LuaError>` — callers
-/// of this function should instead write `return Err(LuaError::with_status(errcode))`.
-/// This function exists only for the rare "no handler anywhere" abort path.
-/// The `l_noret` C annotation maps to `-> !` (never type).
-pub(crate) fn throw(state: &mut LuaState, errcode: LuaStatus) -> ! {
-    // TODO(port): main-thread escalation — C copies the error object to
-    // g->mainthread and re-throws there. This requires coroutine support
-    // (Phase E). In Phase A, fall through to the panic handler.
-
-    // TODO(port): panic handler — C calls g->panic(L) if set. The panic
-    // function is a lua_CFunction; calling it requires proper API setup.
-    // For now, skip to the abort equivalent.
-
-    // PORTING.md: std::process outside lua-cli is banned; use panic! instead.
-    panic!("luaD_throw: unhandled Lua error (status = {:?}), no error handler", errcode)
-}
-
 /// Runs `f` in a "protected" context, catching any `LuaError` it returns.
-/// Restores `nCcalls` on both success and error.
+/// Restores `n_ccalls` on both success and error.
 ///
 ///
 /// PORT NOTE: The C implementation uses setjmp/longjmp for protection. In Rust
@@ -183,10 +161,10 @@ pub(crate) fn raw_run_protected<F>(state: &mut LuaState, f: F) -> Result<(), Lua
 where
     F: FnOnce(&mut LuaState) -> Result<(), LuaError>,
 {
-    let old_n_ccalls = state.nCcalls;
+    let old_n_ccalls = state.n_ccalls;
     // PORT NOTE: setjmp/longjmp replaced by Result; f(state) propagates errors naturally.
     let result = f(state);
-    state.nCcalls = old_n_ccalls;
+    state.n_ccalls = old_n_ccalls;
     result
 }
 
@@ -322,16 +300,6 @@ pub(crate) fn shrink_stack(state: &mut LuaState) {
         let _ = realloc_stack(state, nsize, false);
     }
     state.shrink_ci();
-}
-
-/// Increments the stack top by one, growing the stack if necessary.
-///
-pub(crate) fn inc_top(state: &mut LuaState) -> Result<(), LuaError> {
-    // luaD_checkstack → state.check_stack(n)?  (macros.tsv)
-    state.check_stack(1)?;
-    let t = state.top_idx();
-    state.set_top(t + 1);
-    Ok(())
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -910,7 +878,7 @@ fn precall_slow(
 }
 
 /// Internal call helper shared by `call` and `callnoyield`.
-/// `inc` is added to/subtracted from `nCcalls` around the call.
+/// `inc` is added to/subtracted from `n_ccalls` around the call.
 ///
 #[inline]
 fn ccall_inner(
@@ -930,9 +898,9 @@ fn ccall_inner_with_status(
     inc: u32,
     extra_callstatus: u16,
 ) -> Result<(), LuaError> {
-    state.nCcalls += inc;
+    state.n_ccalls += inc;
 
-    // getCcalls → state.c_calls()  (macros.tsv: lower 16 bits of nCcalls)
+    // getCcalls → state.c_calls()  (macros.tsv: lower 16 bits of n_ccalls)
     if state.c_calls() >= LUAI_MAXCCALLS {
         // checkstackp → state.check_stack(n)?  (macros.tsv)
         state.check_stack(0)?;
@@ -944,7 +912,7 @@ fn ccall_inner_with_status(
         vm::execute(state, ci_idx)?;
     }
 
-    state.nCcalls -= inc;
+    state.n_ccalls -= inc;
     Ok(())
 }
 
@@ -1210,7 +1178,7 @@ pub fn lua_resume(
         return resume_error(state, b"cannot resume dead coroutine", nargs);
     }
 
-    state.nCcalls = from
+    state.n_ccalls = from
         .as_ref()
         .map(|f| f.c_calls() as u32)
         .unwrap_or(0);
@@ -1218,7 +1186,7 @@ pub fn lua_resume(
     if state.c_calls() >= LUAI_MAXCCALLS {
         return resume_error(state, b"C stack overflow", nargs);
     }
-    state.nCcalls += 1;
+    state.n_ccalls += 1;
 
     debug_assert!(
         if state.status == LuaStatus::Ok as u8 {
@@ -1475,7 +1443,6 @@ struct SParser {
 /// Checks that the chunk mode permits loading the given kind ("binary" or "text").
 ///
 fn check_mode(
-    state: &mut LuaState,
     mode: Option<&[u8]>,
     kind: &[u8],
 ) -> Result<(), LuaError> {
@@ -1503,11 +1470,11 @@ fn f_parser(state: &mut LuaState, p: &mut SParser) -> Result<(), LuaError> {
 
     // LUA_SIGNATURE → const LUA_SIGNATURE: &[u8] = b"\x1bLua"  (macros.tsv)
     let cl = if c == b'\x1b' as i32 {
-        check_mode(state, p.mode.as_deref(), b"binary")?;
+        check_mode(p.mode.as_deref(), b"binary")?;
         // TODO(port): undump returns a LClosure; the Rust API isn't finalised.
         crate::undump::undump(state, &mut p.z, &p.name)?
     } else {
-        check_mode(state, p.mode.as_deref(), b"text")?;
+        check_mode(p.mode.as_deref(), b"text")?;
         // TODO(port): parser API not yet finalised; returns a LClosure.
         parse_stub(state, &mut p.z, &mut p.buff, &mut p.dyd, &p.name, c)?
     };

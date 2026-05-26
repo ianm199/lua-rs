@@ -27,15 +27,11 @@ use std::rc::Rc;
 // TODO(port): these import paths will resolve once Phase B wires the crate graph.
 // `LuaState` and `GlobalState` live in crate::state (src/state.rs, from lstate.c).
 // `LuaValue` and `LuaError` live in lua_types (crates/lua-types/src/).
-use crate::state::{GlobalState, LuaState};
+use crate::state::LuaState;
 
 // PORT NOTE: `GcRef<T>` is the lua-types newtype around `Rc<T>` per PORT_STRATEGY §3.4.
 // Re-imported here so all string-pool entries share identity with state.rs / api.rs.
 use lua_types::GcRef;
-/// Local alias retained while string.rs's own `LuaStringImpl` is still in use; will
-/// merge with `lua_types::LuaString` in Phase B's string-pool consolidation.
-type LocalGcRef<T> = Rc<T>;
-
 /// Phase-B bridge: converts a lua-vm rich `LuaStringImpl` into a `lua_types::LuaString`.
 /// The two types track different metadata (short/long flag, extra byte) and a real
 /// merge belongs in Phase B once `lua-types::LuaString` grows the needed fields.
@@ -139,6 +135,7 @@ pub struct LuaStringImpl {
 
     // Using Cell<u32> so that `hash_long_str` can cache the hash through a
     // shared `&LuaStringImpl` reference (interior mutability, single-threaded).
+    #[allow(dead_code)]
     hash: Cell<u32>,
 
     // Short strings: reserved-word token index (0 = not a keyword).
@@ -308,36 +305,6 @@ pub struct LuaUserDataImpl {
 // ── Public functions ───────────────────────────────────────────────────────────
 
 // lstring.h: LUAI_FUNC → pub(crate)
-/// Test equality of two long strings.
-///
-/// Two long strings are equal if they have identical byte content.  A pointer
-/// equality short-circuit is also applied: if `a` and `b` share the same
-/// underlying `Rc<[u8]>` allocation, they are trivially equal.
-///
-/// # C source
-/// ```c
-///
-/// //   size_t len = a->u.lnglen;
-/// //   lua_assert(a->tt == LUA_VLNGSTR && b->tt == LUA_VLNGSTR);
-/// //   return (a == b) ||
-/// //     ((len == b->u.lnglen) &&
-/// //      (memcmp(getlngstr(a), getlngstr(b), len) == 0));
-/// // }
-/// ```
-pub(crate) fn eq_long_str(a: &LuaStringImpl, b: &LuaStringImpl) -> bool {
-    // macros.tsv: lua_assert → debug_assert!
-    debug_assert!(a.is_long() && b.is_long(), "eq_long_str: both arguments must be long strings");
-
-    // In Rust: check if the Rc<[u8]> byte buffers are the same allocation
-    if Rc::ptr_eq(&a.bytes, &b.bytes) {
-        return true;
-    }
-
-    // macros.tsv: getlngstr → ts.as_bytes()
-    a.as_bytes() == b.as_bytes()
-}
-
-// lstring.h: LUAI_FUNC → pub(crate)
 /// Hash a byte string with a seed using Lua's FNV-style hash.
 ///
 /// This is a pure function with no allocations.  The algorithm XORs shifts and
@@ -372,43 +339,6 @@ pub(crate) fn hash_bytes(bytes: &[u8], seed: u32) -> u32 {
     }
 
     h
-}
-
-// lstring.h: LUAI_FUNC → pub(crate)
-/// Compute (and cache) the hash of a long string.
-///
-/// The hash for long strings is computed lazily: on first call the hash is
-/// derived from `hash_bytes` using the seed stored in the `hash` field, then
-/// `extra` is set to `1` to record that the hash is now valid.  Subsequent calls
-/// return the cached value directly.
-///
-/// Interior mutability (`Cell<u32>` / `Cell<u8>`) allows mutation through a
-/// shared `&LuaStringImpl` reference, which is necessary because `GcRef<LuaStringImpl>`
-/// is `Rc<LuaStringImpl>` and there is no safe way to get `&mut` through an `Rc`.
-///
-/// # C source
-/// ```c
-///
-/// //   lua_assert(ts->tt == LUA_VLNGSTR);
-/// //   if (ts->extra == 0) {  /* no hash? */
-/// //     size_t len = ts->u.lnglen;
-/// //     ts->hash = luaS_hash(getlngstr(ts), len, ts->hash);
-/// //     ts->extra = 1;  /* now it has its hash */
-/// //   }
-/// //   return ts->hash;
-/// // }
-/// ```
-pub(crate) fn hash_long_str(ts: &LuaStringImpl) -> u32 {
-    debug_assert!(ts.is_long(), "hash_long_str: argument must be a long string");
-
-    if ts.extra.get() == 0 {
-        // The initial ts->hash holds the per-state seed (set at construction).
-        let computed = hash_bytes(ts.as_bytes(), ts.hash.get());
-        ts.hash.set(computed);
-        ts.extra.set(1);
-    }
-
-    ts.hash.get()
 }
 
 //
@@ -470,39 +400,6 @@ pub(crate) fn resize(state: &mut LuaState, nsize: usize) {
 }
 
 // lstring.h: LUAI_FUNC → pub(crate)
-/// Clear the API string cache, replacing any GC-white entries with the
-/// preallocated OOM message (which is never collected).
-///
-/// Called by the GC sweep phase to ensure the cache never holds a pointer to a
-/// collected string.
-///
-/// # C source
-/// ```c
-///
-/// //   int i, j;
-/// //   for (i = 0; i < STRCACHE_N; i++)
-/// //     for (j = 0; j < STRCACHE_M; j++) {
-/// //       if (iswhite(g->strcache[i][j]))  /* will entry be collected? */
-/// //         g->strcache[i][j] = g->memerrmsg;
-/// //     }
-/// // }
-/// ```
-///
-/// PORT NOTE: Takes `&mut GlobalState` directly (same as the C signature which
-/// takes `global_State *g`, not `lua_State *L`).  The caller accesses this via
-/// `state.global_mut()`.
-pub(crate) fn clear_cache(g: &mut GlobalState) {
-    for i in 0..STRCACHE_N {
-        for j in 0..STRCACHE_M {
-            // macros.tsv: iswhite → obj.is_white()
-            if g.strcache[i][j].is_white() {
-                g.strcache[i][j] = g.memerrmsg.clone();
-            }
-        }
-    }
-}
-
-// lstring.h: LUAI_FUNC → pub(crate)
 /// Initialise the string intern table and the API string cache.
 ///
 /// Must be called exactly once during VM startup, before any strings are created.
@@ -551,66 +448,6 @@ pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
     }
 
     Ok(())
-}
-
-// lstring.h: LUAI_FUNC → pub(crate)
-/// Create a new, uninitialized long string of `l` bytes.
-///
-/// The returned string's bytes are all zero.  The caller is responsible for
-/// filling the content, if needed; in practice `new_lstr` calls this and then
-/// copies the source bytes in.
-///
-/// # C source
-/// ```c
-///
-/// //   TString *ts = createstrobj(L, l, LUA_VLNGSTR, G(L)->seed);
-/// //   ts->u.lnglen = l;
-/// //   ts->shrlen = 0xFF;  /* signals that it is a long string */
-/// //   return ts;
-/// // }
-/// ```
-///
-/// PORT NOTE: `ts->u.lnglen = l` and `ts->shrlen = 0xFF` are replaced by the
-/// `StringKind::Long` variant which carries the length implicitly through
-/// `Rc<[u8]>::len()`.  The `0xFF` sentinel is no longer needed.
-pub(crate) fn create_long_str(state: &mut LuaState, l: usize) -> GcRef<LuaStringImpl> {
-    let seed = state.global().seed;
-    // PORT NOTE: C's createstrobj allocates uninitialised storage then the caller
-    // fills bytes via memcpy.  Rust's create_str_obj constructs with zeroed bytes;
-    // callers (e.g. new_lstr) pass the real bytes directly, eliminating the two-step.
-    create_str_obj(state, &vec![0u8; l], StringKind::Long, seed)
-}
-
-// lstring.h: LUAI_FUNC → pub(crate)
-/// Remove a short string from the intern table.
-///
-/// Called by the GC sweep when a short string is about to be collected.
-///
-/// # C source
-/// ```c
-///
-/// //   stringtable *tb = &G(L)->strt;
-/// //   TString **p = &tb->hash[lmod(ts->hash, tb->size)];
-/// //   while (*p != ts)  /* find previous element */
-/// //     p = &(*p)->u.hnext;
-/// //   *p = (*p)->u.hnext;  /* remove element from its list */
-/// //   tb->nuse--;
-/// // }
-/// ```
-///
-/// PORT NOTE: The C implementation walks the intrusive `hnext` chain to unlink
-/// `ts`.  In Rust the chain does not exist; `HashMap::remove` is O(1) average.
-/// `lmod(ts->hash, tb->size)` (the bucket index) is not needed; the map keys by
-/// byte content.
-pub(crate) fn remove_str(state: &mut LuaState, ts: &LuaStringImpl) {
-    let strt = &mut state.global_mut().strt;
-
-    //    while (*p != ts) p = &(*p)->u.hnext;
-    //    *p = (*p)->u.hnext;
-    // PORT NOTE: all of the above replaced by HashMap::remove keyed on bytes
-    strt.map.remove(ts.as_bytes());
-
-    strt.nuse = strt.nuse.saturating_sub(1);
 }
 
 // lstring.h: LUAI_FUNC → pub(crate)
@@ -727,64 +564,6 @@ pub(crate) fn new(state: &mut LuaState, bytes: &[u8]) -> Result<GcRef<LuaStringI
     state.global_mut().strcache[i][0] = impl_to_lt(&new_str);
 
     Ok(new_str)
-}
-
-// lstring.h: LUAI_FUNC → pub(crate)
-/// Allocate a new full userdata of `s` raw bytes with `nuvalue` Lua user values.
-///
-/// The raw byte payload is zeroed.  All user values are initialised to `nil`.
-/// The metatable is `None`.
-///
-/// # C source
-/// ```c
-///
-/// //   Udata *u;
-/// //   int i;
-/// //   GCObject *o;
-/// //   if (l_unlikely(s > MAX_SIZE - udatamemoffset(nuvalue)))
-/// //     luaM_toobig(L);
-/// //   o = luaC_newobj(L, LUA_VUSERDATA, sizeudata(nuvalue, s));
-/// //   u = gco2u(o);
-/// //   u->len = s;
-/// //   u->nuvalue = nuvalue;
-/// //   u->metatable = NULL;
-/// //   for (i = 0; i < nuvalue; i++)
-/// //     setnilvalue(&u->uv[i].uv);
-/// //   return u;
-/// // }
-/// ```
-pub(crate) fn new_userdata(
-    state: &mut LuaState,
-    s: usize,
-    nuvalue: usize,
-) -> Result<GcRef<LuaUserDataImpl>, LuaError> {
-    //        luaM_toobig(L);
-    // macros.tsv: luaM_toobig → return Err(LuaError::Memory)
-    // TODO(port): udatamemoffset(nuvalue) computes C-specific alignment padding
-    // for the flexible-array Udata layout.  In Rust, LuaUserData allocates `data`
-    // and `uv` separately (Box<[u8]> + Vec<LuaValue>); the combined size bound
-    // differs.  Conservative check: reject if s alone exceeds MAX_SIZE.
-    if s > MAX_SIZE {
-        return Err(LuaError::Memory);
-    }
-
-    //    u = gco2u(o);
-    // TODO(port): register with GC tracking (state.gc().new_obj(...));
-    // Phase A–C stub: allocate via Rc without GC registration.
-    // TODO(D-1c-bridge): LuaUserDataImpl is the rich local type; state.new_userdata is still todo!()
-    let u = GcRef::new(LuaUserDataImpl {
-        len: s,
-        nuvalue: nuvalue as u16,
-        metatable: None,
-        // macros.tsv: setnilvalue → *o = LuaValue::Nil
-        // TODO(port): Vec<LuaValue> once LuaValue is defined in lua-types
-        uv: vec![(); nuvalue],
-        // Raw byte payload; zero-initialised.
-        data: vec![0u8; s].into_boxed_slice(),
-    });
-
-    // TODO(port): push into state.global_mut().allgc for GC tracking (Phase D)
-    Ok(u)
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────

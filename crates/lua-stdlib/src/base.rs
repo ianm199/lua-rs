@@ -3,9 +3,7 @@
 //! Translated from: `reference/lua-5.4.7/src/lbaselib.c` (549 lines, 32 functions)
 //! Target crate: `lua-stdlib`
 
-// TODO(port): LuaState and related types live in lua-vm; imports resolved in Phase B.
 use lua_types::{
-
     error::LuaError,
     value::LuaValue,
     LuaType,

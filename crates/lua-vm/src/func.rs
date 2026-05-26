@@ -32,17 +32,11 @@
 //   (b) a custom `GcCell<T>` wrapper with conditional interior mutability.
 // Both `close_upval` and `init_upvals` carry `TODO(port)` at the mutation sites.
 
-use std::rc::Rc;
 #[allow(unused_imports)] use crate::prelude::*;
 
-use crate::{
-    state::{
-        GcRef, LuaClosureC, LuaClosureLua, LuaState, LuaValue, UpVal,
-    },
-    tagmethods::TagMethod,
+use crate::state::{
+    GcRef, LuaState, LuaValue, UpVal,
 };
-// TODO(port): import paths will stabilize in Phase B. LuaError lives in
-// lua_types::error once that crate is populated; for now we import from crate::state.
 use lua_types::error::LuaError;
 pub use lua_types::{CallInfoIdx, StackIdx};
 
@@ -53,77 +47,7 @@ pub use lua_types::{CallInfoIdx, StackIdx};
 /// Passed as `status` to `close` / `prep_call_close_mth`.
 pub(crate) const CLOSE_K_TOP: i32 = -1;
 
-// macros.tsv: MAXUPVAL → const MAX_UPVAL: u8 = 255
-/// Maximum number of upvalues in a single closure (Lua or C).
-/// The value must fit in a VM register (u8).
-pub(crate) const MAX_UPVAL: u8 = 255;
-
-// macros.tsv: MAXMISS → const MAX_MISS: u32 = 10
-/// Maximum consecutive misses before giving up the closure cache in `LuaProto`.
-pub(crate) const MAX_MISS: u32 = 10;
-
 // ── Closure allocation ────────────────────────────────────────────────────────
-
-/// Allocates a new C closure with `nupvals` upvalue slots, all initialised to
-/// `LuaValue::Nil`.
-///
-/// The caller is responsible for setting the function pointer (`f`) and
-/// populating the upvalue slots before exposing the closure to Lua code.
-///
-pub(crate) fn new_c_closure(
-    state: &mut LuaState,
-    nupvals: u8,
-) -> GcRef<crate::state::LuaClosure> {
-    //    CClosure *c = gco2ccl(o);
-    //    c->nupvalues = cast_byte(nupvals);
-    //    return c;
-    //
-    // sizeCclosure is a C allocation-size helper; dropped — Vec handles sizing.
-    // cast_byte(nupvals) → nupvals as u8 (already u8).
-    // luaC_newobj → state.gc().new_obj(...) — in Phase A–C just Rc allocation.
-    // gco2ccl → gc.cast_c_closure() — unnecessary in Rust, enum variant is the cast.
-    //
-    // TODO(port): LuaClosureC.f must be set by the caller. The C pattern allocates
-    // then immediately assigns `c->f = fn`. Either make `f: Option<LuaCFunction>` in
-    // LuaClosureC, or add a `new_c_closure(state, nupvals, f)` parameter. For now we
-    // store a dummy; reconcile in Phase B.
-    let closure = crate::state::LuaClosure::C(GcRef::new(LuaClosureC {
-        // registry index (see lua-types::closure); the caller overwrites it.
-        func: DUMMY_C_FUNCTION_IDX,
-        upvalues: vec![LuaValue::Nil; nupvals as usize],
-    }));
-    GcRef::new(closure)
-}
-
-/// Allocates a new Lua closure with `nupvals` upvalue slots (all `None`).
-///
-/// The caller must set the `proto` field and populate `upvals` before the
-/// closure is executed.
-///
-pub(crate) fn new_lua_closure(
-    state: &mut LuaState,
-    nupvals: u8,
-) -> GcRef<crate::state::LuaClosure> {
-    //    LClosure *c = gco2lcl(o);
-    //    c->p = NULL;
-    //    c->nupvalues = cast_byte(nupvals);
-    //    while (nupvals--) c->upvals[nupvals] = NULL;
-    //    return c;
-    //
-    // sizeLclosure → dropped (Vec handles sizing).
-    // c->p = NULL → proto field will be set by caller.
-    // TODO(port): LuaClosureLua.proto is GcRef<LuaProto> (non-optional per types.tsv).
-    // The C code allows NULL here (set later). Either use Option<GcRef<LuaProto>> in
-    // the Rust struct, or require proto at construction time. Reconcile in Phase B.
-    // For Phase A we use a sentinel value; this line will not compile as-is.
-    let _ = state; // state used for GC registration in Phase D
-    let _ = nupvals;
-    // TODO(phase-b): LuaClosureLua.proto is non-optional; need a placeholder
-    // until the caller assigns. Using LuaProto::placeholder() for Phase B compile.
-    let lcl = GcRef::new(LuaClosureLua::placeholder());
-    let closure = crate::state::LuaClosure::Lua(lcl);
-    GcRef::new(closure)
-}
 
 /// Fills a Lua closure's upvalue slots with freshly-allocated closed upvalues,
 /// each holding `LuaValue::Nil`. Used when compiling closures that capture no
@@ -381,29 +305,6 @@ pub(crate) fn new_tbc_upval(state: &mut LuaState, level: StackIdx) -> Result<(),
     Ok(())
 }
 
-/// Removes the given open upvalue from `state.openupval`.
-///
-/// The C version manipulates intrusive doubly-linked list pointers in O(1). In
-/// Rust we use `Vec::retain` which is O(n) but correct. Phase B can optimise
-/// this if profiling identifies it as hot.
-///
-///
-/// PORT NOTE: The original C signature takes only `UpVal *uv` (no `lua_State *`
-/// needed for intrusive-list surgery). In Rust, state is required to find and
-/// remove from the Vec. The public signature is intentionally extended.
-pub(crate) fn unlink_upval(state: &mut LuaState, uv: &GcRef<UpVal>) {
-    // macros.tsv: upisopen → matches!(uv, UpVal::Open { .. })
-    debug_assert!(
-        uv.is_open(),
-        "unlink_upval called on a closed upvalue"
-    );
-    //    if (uv->u.open.next) uv->u.open.next->u.open.previous = uv->u.open.previous;
-    //
-    // In Rust: find by pointer identity (Rc::ptr_eq) and remove.
-    // PERF(port): O(n) retain vs O(1) intrusive unlink — profile in Phase B.
-    state.openupval.retain(|candidate| !GcRef::ptr_eq(candidate, uv));
-}
-
 /// Closes all open upvalues whose stack index is ≥ `level`, transitioning each
 /// from `UpVal::Open { thread_id: _, idx: thread_stack_idx }` to `UpVal::Closed(value)` by copying
 /// the current stack value into the upvalue's own storage.
@@ -508,61 +409,6 @@ pub(crate) fn close(
     Ok(level)
 }
 
-// ── Prototype management ──────────────────────────────────────────────────────
-
-/// Allocates and zero-initialises a new `LuaProto`.
-///
-/// All slice fields start empty; the caller (parser / compiler) fills them in.
-///
-pub(crate) fn new_proto(state: &mut LuaState) -> GcRef<crate::state::LuaProto> {
-    //    Proto *f = gco2p(o);
-    //    f->k = NULL;    f->sizek = 0;
-    //    f->p = NULL;    f->sizep = 0;
-    //    f->code = NULL; f->sizecode = 0;
-    //    f->lineinfo = NULL;    f->sizelineinfo = 0;
-    //    f->abslineinfo = NULL; f->sizeabslineinfo = 0;
-    //    f->upvalues = NULL;    f->sizeupvalues = 0;
-    //    f->numparams = 0;
-    //    f->is_vararg = 0;
-    //    f->maxstacksize = 0;
-    //    f->locvars = NULL;     f->sizelocvars = 0;
-    //    f->linedefined = 0;
-    //    f->lastlinedefined = 0;
-    //    f->source = NULL;
-    //    return f;
-    //
-    // In Rust: Vec and Option field types subsume all size companions and NULL checks.
-    // TODO(port): LuaProto in crate::state is currently a stub (`pub struct LuaProto;`).
-    // The full struct definition (with all fields from types.tsv) must land in
-    // object.rs (lobject.c → crate::object). The Rc::new below will only work once
-    // that struct has fields. This translation captures the intended initialisation.
-    state.new_proto()
-}
-
-/// Frees a function prototype and all its sub-arrays.
-///
-/// In C this explicitly calls `luaM_freearray` for each sub-array and then
-/// `luaM_free` for the proto itself. In Rust, `Drop` releases all memory when
-/// the last `GcRef<LuaProto>` (i.e., `Rc<LuaProto>`) is dropped.
-///
-pub(crate) fn free_proto(_state: &mut LuaState, _f: GcRef<crate::state::LuaProto>) {
-    //    luaM_freearray(L, f->p,    f->sizep);
-    //    luaM_freearray(L, f->k,    f->sizek);
-    //    luaM_freearray(L, f->lineinfo,    f->sizelineinfo);
-    //    luaM_freearray(L, f->abslineinfo, f->sizeabslineinfo);
-    //    luaM_freearray(L, f->locvars,  f->sizelocvars);
-    //    luaM_freearray(L, f->upvalues, f->sizeupvalues);
-    //    luaM_free(L, f);
-    //
-    // macros.tsv: luaM_freearray → no-op (Rust Drop handles deallocation)
-    //             luaM_free      → no-op
-    //
-    // PORT NOTE: All explicit frees are no-ops. The GcRef (Rc) reference count drops
-    // to zero when `_f` is dropped at the end of this function, which in turn drops
-    // all Vec fields recursively. No action needed in Phase A–D; Phase D GC will
-    // call this via the `Collectable` finaliser interface.
-}
-
 // ── Debug helpers ─────────────────────────────────────────────────────────────
 
 /// Returns the byte-string name of the `local_number`-th local variable that is
@@ -609,12 +455,6 @@ pub(crate) fn get_local_name(
 }
 
 // ── Private helpers (Rust-only) ───────────────────────────────────────────────
-
-/// Sentinel index into `GlobalState.c_functions` used as a placeholder when a
-/// CClosure is first allocated, before its real function pointer is set by
-/// the caller. Calling through this index is a bug; the caller must overwrite
-/// the slot before the closure is invoked.
-const DUMMY_C_FUNCTION_IDX: crate::state::LuaCFnPtr = usize::MAX;
 
 /// Returns `true` if this thread is already registered in `global.twups`.
 ///

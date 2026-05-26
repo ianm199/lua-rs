@@ -196,35 +196,6 @@ pub(crate) fn init(state: &mut LuaState) -> Result<(), LuaError> {
     Ok(())
 }
 
-// ── luaT_gettm ───────────────────────────────────────────────────────────────
-
-/// Fast-path metamethod lookup using the table's flags cache.
-///
-/// If the metamethod is absent, sets the corresponding bit in `events.flags`
-/// so future lookups via `fasttm` / `gfasttm` skip the hash entirely.
-///
-/// Returns `Some(value)` when found, `None` when absent.
-///
-/// Precondition: `event <= TagMethod::Eq` (only fast-access metamethods use
-/// the flags cache).
-pub(crate) fn get_tm(
-    events: &mut lua_types::value::LuaTable,
-    event: TagMethod,
-    ename: &GcRef<lua_types::LuaString>,
-) -> Option<LuaValue> {
-    let tm: LuaValue = events.get_short_str(ename);
-    debug_assert!((event as u8) <= (TagMethod::Eq as u8));
-    //     events->flags |= cast_byte(1u<<event);  /* cache this fact */
-    //     return NULL;
-    // }
-    if tm.is_nil() {
-        let _ = (events, event);
-        None
-    } else {
-        Some(tm)
-    }
-}
-
 // ── luaT_gettmbyobj ──────────────────────────────────────────────────────────
 
 /// Look up a metamethod for any Lua value by dispatching on its type.

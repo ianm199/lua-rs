@@ -5,7 +5,6 @@
 //! reconciling cross-module references against the `lua-types` foundation.
 
 pub mod api;
-pub mod ctype;
 pub mod debug;
 pub mod do_;
 pub mod dump;

@@ -5,10 +5,13 @@
 //! embedder.
 
 use std::cell::RefCell;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use std::io::{self, SeekFrom};
 use std::slice;
 
-use lua_rs_runtime::{HostHooks, LuaError, LuaFileHandle, LuaRuntime};
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use lua_rs_runtime::LuaFileHandle;
+use lua_rs_runtime::{HostHooks, LuaError, LuaRuntime};
 use lua_types::LuaValue;
 
 thread_local! {

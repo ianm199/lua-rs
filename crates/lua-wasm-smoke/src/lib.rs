@@ -3,11 +3,15 @@
 //! This crate deliberately avoids `lua-cli` and native OS-backed defaults. It is
 //! built as a `cdylib` and instantiated by `harness/wasm/unknown-smoke.mjs`.
 
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use std::io::{self, SeekFrom};
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use std::slice;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use lua_rs_runtime::{HostHooks, LuaError, LuaFileHandle, LuaRuntime};
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use lua_rs_runtime::{LuaError, LuaFileHandle};
+use lua_rs_runtime::{HostHooks, LuaRuntime};
 
 static OUTPUT_BYTES: AtomicUsize = AtomicUsize::new(0);
 static INPUT_POS: AtomicUsize = AtomicUsize::new(0);

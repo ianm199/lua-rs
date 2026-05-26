@@ -2114,7 +2114,6 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                         state.set_top(ra + n as i32);
                         state.set_ci_savedpc(ci, pc); // ProtectNT: save pc only
                         concat(state, n)?;
-                        trap = state.ci_trap(ci);
                         let top = state.top_idx();
                         state.set_ci_savedpc(ci, pc);
                         state.set_top(top);
@@ -2645,12 +2644,6 @@ pub(crate) fn execute(state: &mut LuaState, mut ci: CallInfoIdx) -> Result<(), L
                     // ── OP_EXTRAARG ────────────────────────────────────────────
                     OpCode::ExtraArg => {
                         debug_assert!(false, "OP_EXTRAARG executed directly");
-                    }
-                    // Unknown opcode
-                    #[allow(unreachable_patterns)]
-                    _ => {
-                        // TODO(port): unrecognised opcode {:?} — add to match
-                        todo!("unrecognised opcode");
                     }
                 } // end match opcode
             } // end 'dispatch loop
