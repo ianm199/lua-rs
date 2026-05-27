@@ -1036,6 +1036,7 @@ pub enum MetaMethod {
     Concat,
     Call,
     ToString,
+    Pairs,
 }
 
 impl MetaMethod {
@@ -1057,6 +1058,7 @@ impl MetaMethod {
             MetaMethod::Concat => "__concat",
             MetaMethod::Call => "__call",
             MetaMethod::ToString => "__tostring",
+            MetaMethod::Pairs => "__pairs",
         }
     }
 }
