@@ -49,12 +49,6 @@
 //!
 //! # Known limitations and planned work
 //!
-//! - The userdata method and field callbacks capture a strong [`Lua`] handle,
-//!   which forms a `LuaInner -> state -> heap -> closure -> Rc<LuaInner>`
-//!   reference cycle. A state that keeps any userdata-with-callbacks reachable
-//!   for its lifetime therefore does not free on drop. This is invisible for
-//!   long-lived embeddings (the target), but the right fix is to capture
-//!   `Weak<LuaInner>` and upgrade on call across the callback constructors.
 //! - `#[lua_methods]` does not yet special-case methods that return
 //!   `Result<T, E>`, associated functions and constructors (`Type::new`), or
 //!   `Option<T>` parameters and returns.
@@ -481,8 +475,16 @@ impl Lua {
         R: IntoLuaMulti + 'static,
         F: Fn(&Lua, A) -> Result<R> + 'static,
     {
-        let lua = self.clone();
+        let lua_weak = Rc::downgrade(&self.inner);
         let callable: LuaRustFunction = Rc::new(move |state| {
+            let lua = match lua_weak.upgrade() {
+                Some(inner) => Lua { inner },
+                None => {
+                    return Err(LuaError::runtime(format_args!(
+                        "Lua callback fired after the state was dropped"
+                    )))
+                }
+            };
             match catch_unwind(AssertUnwindSafe(|| {
                 let args = callback_args(state, &lua)?;
                 let args = A::from_lua_multi(args, &lua)?;
@@ -561,8 +563,16 @@ impl Lua {
         R: IntoLuaMulti + 'static,
         F: Fn(&Lua, &T, A) -> Result<R> + 'static,
     {
-        let lua = self.clone();
+        let lua_weak = Rc::downgrade(&self.inner);
         let callable: LuaRustFunction = Rc::new(move |state| {
+            let lua = match lua_weak.upgrade() {
+                Some(inner) => Lua { inner },
+                None => {
+                    return Err(LuaError::runtime(format_args!(
+                        "Lua callback fired after the state was dropped"
+                    )))
+                }
+            };
             match catch_unwind(AssertUnwindSafe(|| {
                 let (userdata, args) = callback_userdata_args(state, &lua)?;
                 let args = A::from_lua_multi(args, &lua)?;
@@ -590,8 +600,16 @@ impl Lua {
         R: IntoLuaMulti + 'static,
         F: Fn(&Lua, &mut T, A) -> Result<R> + 'static,
     {
-        let lua = self.clone();
+        let lua_weak = Rc::downgrade(&self.inner);
         let callable: LuaRustFunction = Rc::new(move |state| {
+            let lua = match lua_weak.upgrade() {
+                Some(inner) => Lua { inner },
+                None => {
+                    return Err(LuaError::runtime(format_args!(
+                        "Lua callback fired after the state was dropped"
+                    )))
+                }
+            };
             match catch_unwind(AssertUnwindSafe(|| {
                 let (userdata, args) = callback_userdata_args(state, &lua)?;
                 let args = A::from_lua_multi(args, &lua)?;
@@ -1197,6 +1215,20 @@ impl MetaMethod {
     }
 }
 
+/// Root `value` on the state for as long as the state itself lives.
+///
+/// The returned [`ExternalRootKey`] is intentionally discarded: this helper is
+/// the explicit name for the "cached per-type metadata" rooting pattern used by
+/// [`UserDataMethodRegistry::build_metatable`] (the metatable itself, the
+/// field-getter / method / field-setter tables, and any raw `__index`/`__newindex`
+/// referenced by the composed dispatch closures). Those values must stay
+/// reachable for the state's whole lifetime and only ever free together with the
+/// state. Do not call this for any value you want the GC to be able to collect
+/// later: it is by design an un-undoable root.
+fn root_for_state_lifetime(state: &mut LuaState, value: RawLuaValue) {
+    let _ = state.external_root_value(value);
+}
+
 struct UserDataMethodRegistry<'lua, T: UserData> {
     lua: &'lua Lua,
     methods: Vec<(String, Function)>,
@@ -1269,14 +1301,56 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
             }
         }
 
-        // __index: field getter, then method, then raw __index. When there are no
-        // fields and no raw __index, the method table is the __index directly (the
-        // fast path, unchanged behavior for method-only types).
-        if !self.fields_get.is_empty() || raw_index.is_some() {
-            let getters = field_getters.clone();
-            let methods = method_table.clone();
-            let raw = raw_index.clone();
-            let index_fn = lua.create_function(move |_lua, (ud, key): (Value, Value)| {
+        // __index: field getter, then method, then raw __index.
+        //
+        // - fields → must compose (field → method → raw via a single closure)
+        // - raw_index + methods (no fields) → must compose (method → raw)
+        // - raw_index only (no fields, no methods) → set raw __index directly,
+        //   skipping the composed closure entirely. This is the common shape
+        //   for bridges that bind reflected state via a raw `add_meta_method`
+        //   (e.g. bms-lua-rs's `LuaRef`) and the lookup is on the hot path.
+        // - method-only → method_table as __index (existing fast path)
+        //
+        // The composed closure deliberately captures raw `GcRef`/`RawLuaValue`
+        // handles, not high-level `Table`/`Function`: each high-level wrapper
+        // holds a `RootedValue` with a strong `Rc<LuaInner>`, which would cycle
+        // through the heap-resident closure back to the state and leak it on
+        // drop. Raw handles are rooted permanently via
+        // [`root_for_state_lifetime`], and `Table`/`Function` views are rebuilt
+        // per call from the closure's `&lua`.
+        let has_fields_get = !self.fields_get.is_empty();
+        let has_methods = !self.methods.is_empty();
+        let needs_index_composition = has_fields_get || (raw_index.is_some() && has_methods);
+
+        if needs_index_composition {
+            let (getters_raw, methods_raw, raw_index_raw) = lua.with_state(|state| {
+                let g = match field_getters.root.raw_for_lua(lua, state)? {
+                    RawLuaValue::Table(g) => g,
+                    v => return Err(type_error_raw(&v, "table")),
+                };
+                root_for_state_lifetime(state, RawLuaValue::Table(g.clone()));
+                let m = match method_table.root.raw_for_lua(lua, state)? {
+                    RawLuaValue::Table(m) => m,
+                    v => return Err(type_error_raw(&v, "table")),
+                };
+                root_for_state_lifetime(state, RawLuaValue::Table(m.clone()));
+                let r = match &raw_index {
+                    Some(f) => {
+                        let rv = f.root.raw_for_lua(lua, state)?;
+                        root_for_state_lifetime(state, rv.clone());
+                        Some(rv)
+                    }
+                    None => None,
+                };
+                Ok::<_, LuaError>((g, m, r))
+            })?;
+            let index_fn = lua.create_function(move |lua, (ud, key): (Value, Value)| {
+                let getters = Table {
+                    root: lua.root_raw(RawLuaValue::Table(getters_raw.clone())),
+                };
+                let methods = Table {
+                    root: lua.root_raw(RawLuaValue::Table(methods_raw.clone())),
+                };
                 if let Value::Function(getter) = getters.get::<_, Value>(key.clone())? {
                     return getter.call::<_, Value>(ud);
                 }
@@ -1284,33 +1358,63 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
                 if !matches!(method, Value::Nil) {
                     return Ok(method);
                 }
-                if let Some(raw) = &raw {
-                    return raw.call::<_, Value>((ud, key));
+                if let Some(raw_idx) = &raw_index_raw {
+                    let raw_fn = Function {
+                        root: lua.root_raw(raw_idx.clone()),
+                    };
+                    return raw_fn.call::<_, Value>((ud, key));
                 }
                 Ok(Value::Nil)
             })?;
             metatable.set(MetaMethod::Index.name(), &index_fn)?;
+        } else if let Some(raw) = raw_index.as_ref() {
+            metatable.set(MetaMethod::Index.name(), raw)?;
         } else {
             metatable.set(MetaMethod::Index.name(), &method_table)?;
         }
 
-        // __newindex: field setter, then raw __newindex, else an error.
-        if !self.fields_set.is_empty() || raw_newindex.is_some() {
-            let setters = field_setters.clone();
-            let raw = raw_newindex.clone();
+        // __newindex: field setter, then raw __newindex, else error. Same
+        // composed-vs-pass-through choice as __index above.
+        let has_fields_set = !self.fields_set.is_empty();
+
+        if has_fields_set {
+            let (setters_raw, raw_newindex_raw) = lua.with_state(|state| {
+                let s = match field_setters.root.raw_for_lua(lua, state)? {
+                    RawLuaValue::Table(s) => s,
+                    v => return Err(type_error_raw(&v, "table")),
+                };
+                root_for_state_lifetime(state, RawLuaValue::Table(s.clone()));
+                let r = match &raw_newindex {
+                    Some(f) => {
+                        let rv = f.root.raw_for_lua(lua, state)?;
+                        root_for_state_lifetime(state, rv.clone());
+                        Some(rv)
+                    }
+                    None => None,
+                };
+                Ok::<_, LuaError>((s, r))
+            })?;
             let newindex_fn =
-                lua.create_function(move |_lua, (ud, key, value): (Value, Value, Value)| {
+                lua.create_function(move |lua, (ud, key, value): (Value, Value, Value)| {
+                    let setters = Table {
+                        root: lua.root_raw(RawLuaValue::Table(setters_raw.clone())),
+                    };
                     if let Value::Function(setter) = setters.get::<_, Value>(key.clone())? {
                         return setter.call::<_, Value>((ud, value));
                     }
-                    if let Some(raw) = &raw {
-                        return raw.call::<_, Value>((ud, key, value));
+                    if let Some(raw) = &raw_newindex_raw {
+                        let raw_fn = Function {
+                            root: lua.root_raw(raw.clone()),
+                        };
+                        return raw_fn.call::<_, Value>((ud, key, value));
                     }
                     Err(LuaError::runtime(format_args!(
                         "cannot assign to unknown or read-only userdata field"
                     )))
                 })?;
             metatable.set(MetaMethod::NewIndex.name(), &newindex_fn)?;
+        } else if let Some(raw) = raw_newindex.as_ref() {
+            metatable.set(MetaMethod::NewIndex.name(), raw)?;
         }
 
         self.lua.with_state(|state| {
@@ -1318,10 +1422,7 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
             let RawLuaValue::Table(metatable) = metatable_raw else {
                 return Err(type_error_raw(&metatable_raw, "table"));
             };
-            // Permanent root: the returned key is intentionally dropped (it is a
-            // `Copy` token with no `Drop`), so the metatable stays alive for the
-            // life of the state. It frees when the state's external-root set frees.
-            let _key = state.external_root_value(RawLuaValue::Table(metatable.clone()));
+            root_for_state_lifetime(state, RawLuaValue::Table(metatable.clone()));
             Ok(metatable)
         })
     }
@@ -2387,6 +2488,306 @@ mod tests {
         globals.set("c", &c).unwrap();
         let sum: i64 = lua.load("return a:n() + b:n() + c:n()").eval().unwrap();
         assert_eq!(sum, 6);
+    }
+
+    /// Reproducer for the callback-to-`Lua` reference cycle:
+    /// `create_userdata_method` captures a strong `Lua` (`Rc<LuaInner>`) into each
+    /// callback closure, the closure lives in a heap GC object owned by `LuaState`,
+    /// and `LuaState` is owned by `LuaInner` — so dropping every external `Lua`
+    /// handle still leaves the closures holding a strong `Rc<LuaInner>` to the
+    /// state that owns them. Per-type metatable caching makes this permanent for
+    /// any type a userdata is ever created for.
+    ///
+    /// This test holds a `Weak<LuaInner>`, drops every external `Lua`, and asserts
+    /// the inner has actually been freed. It fails today and is what the
+    /// `Weak`-capture fix in the callback constructors is meant to make pass.
+    #[test]
+    fn lua_state_frees_after_userdata_with_methods_is_dropped() {
+        use std::rc::Rc;
+
+        let weak_inner = {
+            let lua = Lua::new();
+            let weak = Rc::downgrade(&lua.inner);
+            // Create + drop a userdata of a type that registers methods. This
+            // primes the per-type metatable cache and installs method closures
+            // that capture `Lua` strongly.
+            let _ = lua
+                .create_userdata(Counter { value: 1 })
+                .expect("userdata should create");
+            weak
+        };
+
+        assert!(
+            weak_inner.upgrade().is_none(),
+            "LuaInner is still alive after every external Lua handle dropped: \
+             internal callback closures hold a strong Rc<LuaInner>, leaking the state"
+        );
+    }
+
+    /// Same cycle issue as above, on the `create_function` path: the Rust
+    /// callback closure used to capture a strong `Lua`, so a function that
+    /// outlived all external handles would keep the state pinned.
+    #[test]
+    fn lua_state_frees_after_create_function_handle_drops() {
+        use std::rc::Rc;
+
+        let weak_inner = {
+            let lua = Lua::new();
+            let weak = Rc::downgrade(&lua.inner);
+            let _f = lua
+                .create_function(|_, ()| Ok(()))
+                .expect("create_function should succeed");
+            weak
+        };
+
+        assert!(
+            weak_inner.upgrade().is_none(),
+            "LuaInner is still alive after the only Lua handle dropped: \
+             the create_function callback held a strong Rc<LuaInner>"
+        );
+    }
+
+    /// Field-bearing types take the composed `__index` path in `build_metatable`,
+    /// where the composing closure is itself passed to `create_function` and
+    /// captures the field-getter table, method table, and optional raw
+    /// `__index` function. Each of those is a `Table` or `Function` whose
+    /// `RootedValue` holds a strong `Rc<LuaInner>`. Even with the outer
+    /// `Weak` fix, that user closure still leaks the state.
+    #[test]
+    fn lua_state_frees_after_userdata_with_fields_drops() {
+        use std::rc::Rc;
+
+        struct Point {
+            x: f64,
+        }
+        impl UserData for Point {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_field_method_get("x", |_, this| Ok(this.x));
+                m.add_field_method_set("x", |_, this, v: f64| {
+                    this.x = v;
+                    Ok(())
+                });
+            }
+        }
+
+        let weak_inner = {
+            let lua = Lua::new();
+            let weak = Rc::downgrade(&lua.inner);
+            let _ = lua
+                .create_userdata(Point { x: 1.0 })
+                .expect("userdata should create");
+            weak
+        };
+
+        assert!(
+            weak_inner.upgrade().is_none(),
+            "LuaInner leaked via the composed __index/__newindex closures: \
+             they capture Table/Function values whose RootedValue holds a \
+             strong Rc<LuaInner>"
+        );
+    }
+
+    /// Maximal mixed shape: field getter + field setter + regular method +
+    /// raw `__index` + raw `__newindex` all on one type. Exercises every
+    /// branch of the composed dispatch and every permanently rooted handle.
+    /// If a future change reintroduces a captured wrapper anywhere in the
+    /// composition path, this is the test most likely to catch it.
+    #[test]
+    fn lua_state_frees_with_fields_methods_and_raw_meta() {
+        use std::rc::Rc;
+
+        struct Mixed {
+            x: f64,
+            log: Vec<String>,
+        }
+        impl UserData for Mixed {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_field_method_get("x", |_, this| Ok(this.x));
+                m.add_field_method_set("x", |_, this, v: f64| {
+                    this.x = v;
+                    Ok(())
+                });
+                m.add_method("log_len", |_, this, ()| Ok(this.log.len() as i64));
+                m.add_method_mut("push_log", |_, this, s: String| {
+                    this.log.push(s);
+                    Ok(())
+                });
+                m.add_meta_method(MetaMethod::Index, |_, _this, key: String| {
+                    Ok(::std::format!("dynamic:{key}"))
+                });
+                m.add_meta_method_mut(
+                    MetaMethod::NewIndex,
+                    |_, _this, (_k, _v): (String, Value)| Ok(()),
+                );
+            }
+        }
+
+        let weak_inner = {
+            let lua = Lua::new();
+            let weak = Rc::downgrade(&lua.inner);
+            let _ = lua
+                .create_userdata(Mixed {
+                    x: 1.0,
+                    log: Vec::new(),
+                })
+                .expect("create");
+            weak
+        };
+
+        assert!(
+            weak_inner.upgrade().is_none(),
+            "maximal-composition userdata leaked LuaInner: \
+             check the composed __index / __newindex captures"
+        );
+    }
+
+    /// The composed `__index` allocates two or three temporary external roots
+    /// per call (for the per-call `Table`/`Function` views) and relies on
+    /// `pending_external_unroots` being flushed by the next `with_state`. If
+    /// that plumbing ever breaks, every field read silently leaks a root. Hammer
+    /// it in a loop and assert `external_roots.len()` returns to baseline.
+    #[test]
+    fn composed_dispatch_does_not_accumulate_external_roots() {
+        struct Probe {
+            x: i64,
+        }
+        impl UserData for Probe {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_field_method_get("x", |_, this| Ok(this.x));
+            }
+        }
+
+        let lua = Lua::new();
+        lua.globals()
+            .set("v", lua.create_userdata(Probe { x: 1 }).unwrap())
+            .unwrap();
+        let baseline = external_root_count(&lua);
+
+        for _ in 0..1000 {
+            let _: i64 = lua.load("return v.x").eval().unwrap();
+        }
+        // The last iteration's temp roots queue for unroot on exit of its
+        // outer with_state; force one more so the flush definitely runs.
+        let after = external_root_count(&lua);
+
+        assert!(
+            after <= baseline + 2,
+            "external roots grew under composed __index churn: baseline={baseline} after={after}"
+        );
+    }
+
+    /// A Rust userdata method takes a Lua `Function` and calls it. Exercises
+    /// the Weak<LuaInner> upgrade plus the `active_state` reentrancy pointer
+    /// together. The bms-lua-rs reflection bridge hits this shape on every
+    /// component access; an existing test covers `create_function` reentry but
+    /// not the userdata-method path.
+    #[test]
+    fn userdata_method_can_reenter_lua_from_callback() {
+        struct Calc;
+        impl UserData for Calc {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_method("apply", |_lua, _this, f: Function| {
+                    let r: i64 = f.call(7_i64)?;
+                    Ok(r + 1)
+                });
+            }
+        }
+
+        let lua = Lua::new();
+        lua.globals()
+            .set("c", lua.create_userdata(Calc).unwrap())
+            .unwrap();
+        let r: i64 = lua
+            .load("return c:apply(function(n) return n * 2 end)")
+            .eval()
+            .unwrap();
+        assert_eq!(r, 15);
+    }
+
+    /// Two `Lua::new()` instances must each build their own metatable for the
+    /// same Rust type. Counts calls to `add_methods` across both states and
+    /// asserts each state builds independently while still de-duplicating
+    /// within its own scope.
+    #[test]
+    fn metatable_cache_is_per_lua_state() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static BUILDS: AtomicUsize = AtomicUsize::new(0);
+
+        struct Marker {
+            v: i64,
+        }
+        impl UserData for Marker {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                BUILDS.fetch_add(1, Ordering::SeqCst);
+                m.add_method("v", |_, this, ()| Ok(this.v));
+            }
+        }
+
+        let start = BUILDS.load(Ordering::SeqCst);
+
+        let lua_a = Lua::new();
+        let _a1 = lua_a.create_userdata(Marker { v: 1 }).unwrap();
+        assert_eq!(BUILDS.load(Ordering::SeqCst) - start, 1, "state A first build");
+        let _a2 = lua_a.create_userdata(Marker { v: 2 }).unwrap();
+        assert_eq!(BUILDS.load(Ordering::SeqCst) - start, 1, "state A reuses cache");
+
+        let lua_b = Lua::new();
+        let _b1 = lua_b.create_userdata(Marker { v: 3 }).unwrap();
+        assert_eq!(BUILDS.load(Ordering::SeqCst) - start, 2, "state B is independent");
+
+        let _a3 = lua_a.create_userdata(Marker { v: 4 }).unwrap();
+        assert_eq!(BUILDS.load(Ordering::SeqCst) - start, 2, "state A still cached");
+    }
+
+    /// Field beats method when names collide. The composed `__index` looks up
+    /// field getters before the method table; pin that order so a future
+    /// refactor of the dispatch closure does not silently swap precedence.
+    #[test]
+    fn field_shadows_method_of_same_name() {
+        struct Shadow {
+            x: i64,
+        }
+        impl UserData for Shadow {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_field_method_get("x", |_, this| Ok(this.x));
+                m.add_method("x", |_, _this, ()| Ok(999_i64));
+            }
+        }
+
+        let lua = Lua::new();
+        lua.globals()
+            .set("v", lua.create_userdata(Shadow { x: 42 }).unwrap())
+            .unwrap();
+
+        let r: i64 = lua.load("return v.x").eval().unwrap();
+        assert_eq!(r, 42, "the field getter should beat the method of the same name");
+    }
+
+    /// Direct Lua-side proof the cache is real: two userdata of the same type
+    /// share the same metatable object as observed by `getmetatable`. If the
+    /// cache regressed to per-value metatables this returns false.
+    #[test]
+    fn cached_metatable_is_shared_across_values_in_lua() {
+        struct Twin;
+        impl UserData for Twin {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_method("ping", |_, _this, ()| Ok(1_i64));
+            }
+        }
+
+        let lua = Lua::new();
+        lua.globals()
+            .set("a", lua.create_userdata(Twin).unwrap())
+            .unwrap();
+        lua.globals()
+            .set("b", lua.create_userdata(Twin).unwrap())
+            .unwrap();
+
+        let same: bool = lua
+            .load("return getmetatable(a) == getmetatable(b)")
+            .eval()
+            .unwrap();
+        assert!(same, "cached metatable must be shared across values of the same type");
     }
 
     #[test]
