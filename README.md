@@ -41,10 +41,9 @@ lua-rs -v                       # version
 ## Rust embedding API
 
 `lua-rs-runtime` is a Rust-native embedding API shaped after `mlua`, for
-running Lua scripts inside a Rust program. Because the whole runtime is Rust,
-it embeds where `mlua` can't: `wasm32-unknown-unknown`, no C toolchain, no
-`liblua` to link. That is the reason to reach for it over a C binding (you do
-not get LuaJIT, and the project is younger).
+running Lua scripts inside a Rust program. Being pure Rust, it builds for
+`wasm32-unknown-unknown` and needs no C toolchain or `liblua`. It's young and
+it isn't LuaJIT, so if you need either, use `mlua`.
 
 It supports owned GC-rooted handles (`Value`, `Table`, `Function`,
 `LuaString`, `AnyUserData`), closure callbacks (`create_function` /
@@ -69,10 +68,10 @@ fn main() -> Result<()> {
 
 ### Scope: lending non-`'static` borrows
 
-`Lua::scope` lends Lua a value that lives on the Rust stack for one call (the
-classic case is a game engine's `&mut World`). The borrow is invalidated when
-the scope returns, so a script that stashes a handle and uses it later gets a
-clean Lua error instead of touching freed memory.
+`Lua::scope` lends Lua a value that lives on the Rust stack for one call
+(typically a game engine's `&mut World`). The borrow is invalidated when the
+scope returns, so a script that stashes a handle and uses it later gets a clean
+Lua error instead of touching freed memory.
 
 ```rust
 lua.scope(|s| {

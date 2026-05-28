@@ -163,7 +163,7 @@ $ lua-rs                           <span class="c"># start the interactive REPL<
 
     <section>
       <h2>Embed it in Rust</h2>
-      <p class="lead"><code>lua-rs-runtime</code> is a Rust-native embedding API shaped after <code>mlua</code>: owned handles, Rust closure callbacks, conversion traits, and <code>UserData</code> for binding Rust types with methods and metamethods. Because the whole runtime is Rust, it embeds where a C binding can't: <code>wasm32-unknown-unknown</code>, no C toolchain, no <code>liblua</code> to link. You give up LuaJIT speed and years of maturity in exchange.</p>
+      <p class="lead"><code>lua-rs-runtime</code> is a Rust-native embedding API shaped after <code>mlua</code>: owned handles, Rust closure callbacks, conversion traits, and <code>UserData</code> for binding Rust types with methods and metamethods. Being pure Rust, it builds for <code>wasm32-unknown-unknown</code> and needs no C toolchain or <code>liblua</code>. It's young and it isn't LuaJIT, so if you need either, use <code>mlua</code>.</p>
       <pre class="block"><span class="c">// Call Rust from Lua</span>
 let lua = Lua::new();
 let f = lua.create_function(|_, name: String| Ok(format!(<span class="o">"hello, {name}"</span>)))?;

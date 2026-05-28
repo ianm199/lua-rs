@@ -51,7 +51,7 @@
 //!
 //! [`Lua::create_userdata`] takes its value by ownership, so the type must be
 //! `'static`. When you instead want to lend Lua a value that lives on the Rust
-//! stack for the duration of one call (the classic case is a game engine's
+//! stack for the duration of one call (typically a game engine's
 //! `&mut World`), use [`Lua::scope`]. A scope hands Lua a borrow that is
 //! invalidated the moment the scope closure returns: any Lua reference that
 //! escaped the scope fails with a clean runtime error on next use instead of

@@ -2,9 +2,9 @@
 
 Embed Lua 5.4 in a Rust program. `lua-rs-runtime` is the embedding API for
 [lua-rs](https://github.com/ianm199/lua-rs), a Lua 5.4 implementation written in
-safe Rust. Because the whole runtime is Rust, it embeds where a C binding can't:
-`wasm32-unknown-unknown`, no C toolchain, no `liblua` to link. You give up
-LuaJIT speed and years of maturity in exchange.
+safe Rust. Being pure Rust, it builds for `wasm32-unknown-unknown` and needs no
+C toolchain or `liblua`. It's young and it isn't LuaJIT, so if you need either,
+use `mlua`.
 
 ```toml
 [dependencies]
@@ -35,10 +35,10 @@ boilerplate.
 
 ## Scope: lending non-`'static` borrows
 
-`Lua::scope` lends Lua a value that lives on the Rust stack for one call (the
-classic case is a game engine's `&mut World`). The borrow is invalidated when
-the scope returns, so a script that stashes a handle and uses it later gets a
-clean Lua error instead of touching freed memory.
+`Lua::scope` lends Lua a value that lives on the Rust stack for one call
+(typically a game engine's `&mut World`). The borrow is invalidated when the
+scope returns, so a script that stashes a handle and uses it later gets a clean
+Lua error instead of touching freed memory.
 
 ```rust
 lua.scope(|s| {
