@@ -1290,11 +1290,42 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
         // __index: field getter, then method, then raw __index. When there are no
         // fields and no raw __index, the method table is the __index directly (the
         // fast path, unchanged behavior for method-only types).
+        //
+        // We deliberately do NOT capture the high-level `Table`/`Function` handles
+        // in the closure: each of those holds a `RootedValue` with a strong
+        // `Rc<LuaInner>`, which would cycle through the heap-resident closure back
+        // to the state and leak it on drop. Instead we capture raw arena handles
+        // (rooted permanently on the state) and rebuild `Table`/`Function` views
+        // per call from the closure's `&lua`.
         if !self.fields_get.is_empty() || raw_index.is_some() {
-            let getters = field_getters.clone();
-            let methods = method_table.clone();
-            let raw = raw_index.clone();
-            let index_fn = lua.create_function(move |_lua, (ud, key): (Value, Value)| {
+            let (getters_raw, methods_raw, raw_index_raw) = lua.with_state(|state| {
+                let g = match field_getters.root.raw_for_lua(lua, state)? {
+                    RawLuaValue::Table(g) => g,
+                    v => return Err(type_error_raw(&v, "table")),
+                };
+                let _ = state.external_root_value(RawLuaValue::Table(g.clone()));
+                let m = match method_table.root.raw_for_lua(lua, state)? {
+                    RawLuaValue::Table(m) => m,
+                    v => return Err(type_error_raw(&v, "table")),
+                };
+                let _ = state.external_root_value(RawLuaValue::Table(m.clone()));
+                let r = match &raw_index {
+                    Some(f) => {
+                        let rv = f.root.raw_for_lua(lua, state)?;
+                        let _ = state.external_root_value(rv.clone());
+                        Some(rv)
+                    }
+                    None => None,
+                };
+                Ok::<_, LuaError>((g, m, r))
+            })?;
+            let index_fn = lua.create_function(move |lua, (ud, key): (Value, Value)| {
+                let getters = Table {
+                    root: lua.root_raw(RawLuaValue::Table(getters_raw.clone())),
+                };
+                let methods = Table {
+                    root: lua.root_raw(RawLuaValue::Table(methods_raw.clone())),
+                };
                 if let Value::Function(getter) = getters.get::<_, Value>(key.clone())? {
                     return getter.call::<_, Value>(ud);
                 }
@@ -1302,8 +1333,11 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
                 if !matches!(method, Value::Nil) {
                     return Ok(method);
                 }
-                if let Some(raw) = &raw {
-                    return raw.call::<_, Value>((ud, key));
+                if let Some(raw_idx) = &raw_index_raw {
+                    let raw_fn = Function {
+                        root: lua.root_raw(raw_idx.clone()),
+                    };
+                    return raw_fn.call::<_, Value>((ud, key));
                 }
                 Ok(Value::Nil)
             })?;
@@ -1312,17 +1346,38 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
             metatable.set(MetaMethod::Index.name(), &method_table)?;
         }
 
-        // __newindex: field setter, then raw __newindex, else an error.
+        // __newindex: field setter, then raw __newindex, else an error. Same
+        // raw-capture pattern as __index above.
         if !self.fields_set.is_empty() || raw_newindex.is_some() {
-            let setters = field_setters.clone();
-            let raw = raw_newindex.clone();
+            let (setters_raw, raw_newindex_raw) = lua.with_state(|state| {
+                let s = match field_setters.root.raw_for_lua(lua, state)? {
+                    RawLuaValue::Table(s) => s,
+                    v => return Err(type_error_raw(&v, "table")),
+                };
+                let _ = state.external_root_value(RawLuaValue::Table(s.clone()));
+                let r = match &raw_newindex {
+                    Some(f) => {
+                        let rv = f.root.raw_for_lua(lua, state)?;
+                        let _ = state.external_root_value(rv.clone());
+                        Some(rv)
+                    }
+                    None => None,
+                };
+                Ok::<_, LuaError>((s, r))
+            })?;
             let newindex_fn =
-                lua.create_function(move |_lua, (ud, key, value): (Value, Value, Value)| {
+                lua.create_function(move |lua, (ud, key, value): (Value, Value, Value)| {
+                    let setters = Table {
+                        root: lua.root_raw(RawLuaValue::Table(setters_raw.clone())),
+                    };
                     if let Value::Function(setter) = setters.get::<_, Value>(key.clone())? {
                         return setter.call::<_, Value>((ud, value));
                     }
-                    if let Some(raw) = &raw {
-                        return raw.call::<_, Value>((ud, key, value));
+                    if let Some(raw) = &raw_newindex_raw {
+                        let raw_fn = Function {
+                            root: lua.root_raw(raw.clone()),
+                        };
+                        return raw_fn.call::<_, Value>((ud, key, value));
                     }
                     Err(LuaError::runtime(format_args!(
                         "cannot assign to unknown or read-only userdata field"
@@ -2461,6 +2516,46 @@ mod tests {
             weak_inner.upgrade().is_none(),
             "LuaInner is still alive after the only Lua handle dropped: \
              the create_function callback held a strong Rc<LuaInner>"
+        );
+    }
+
+    /// Field-bearing types take the composed `__index` path in `build_metatable`,
+    /// where the composing closure is itself passed to `create_function` and
+    /// captures the field-getter table, method table, and optional raw
+    /// `__index` function. Each of those is a `Table` or `Function` whose
+    /// `RootedValue` holds a strong `Rc<LuaInner>`. Even with the outer
+    /// `Weak` fix, that user closure still leaks the state.
+    #[test]
+    fn lua_state_frees_after_userdata_with_fields_drops() {
+        use std::rc::Rc;
+
+        struct Point {
+            x: f64,
+        }
+        impl UserData for Point {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_field_method_get("x", |_, this| Ok(this.x));
+                m.add_field_method_set("x", |_, this, v: f64| {
+                    this.x = v;
+                    Ok(())
+                });
+            }
+        }
+
+        let weak_inner = {
+            let lua = Lua::new();
+            let weak = Rc::downgrade(&lua.inner);
+            let _ = lua
+                .create_userdata(Point { x: 1.0 })
+                .expect("userdata should create");
+            weak
+        };
+
+        assert!(
+            weak_inner.upgrade().is_none(),
+            "LuaInner leaked via the composed __index/__newindex closures: \
+             they capture Table/Function values whose RootedValue holds a \
+             strong Rc<LuaInner>"
         );
     }
 
