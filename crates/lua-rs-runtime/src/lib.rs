@@ -553,6 +553,52 @@ impl ScopeInvalidate for ScopedFnCell {
 }
 
 // ---------------------------------------------------------------------------
+// Delegated cell: a sub-userdata that re-acquires a fresh `&mut S` from a
+// parent cell on every method call. Lives at the same scope as the parent.
+//
+// The cell stores no live borrow itself. Instead it holds a closure that
+// knows how to enter the parent (`try_borrow_mut`), apply the user's
+// accessor (`|p: &mut P| -> &mut S`), invoke a caller-supplied callback
+// with the derived `&mut S`, then release the parent's borrow. Methods on
+// the sub-userdata's metatable invoke `enter_mut` to do their work; if a
+// nested Lua call tries to re-enter the parent during a delegate call, the
+// inner `try_borrow_mut` surfaces the same "already borrowed" error path
+// `ScopedCell` already uses.
+//
+// Invalidation: the cell holds an `Rc<dyn ScopeInvalidate>` for the parent
+// so the scope drop chain still works. The cell's own `invalidate` also
+// nulls the `enter_mut` closure to short-circuit any caller that managed
+// to retain a `Rc<DelegatedCell<S>>` past scope end (the closure captures
+// the parent cell's `Rc`, which we want to release).
+//
+// Generic over `S` only — the parent type `P` is type-erased inside the
+// closure so that one `Rc<DelegatedCell<S>>` covers any chain of accessors
+// regardless of where it bottomed out (`App -> World`, `World -> Inner`,
+// etc.). Composition (`delegate` on a delegated userdata) builds a fresh
+// closure that wraps the parent's `enter_mut` plus the new accessor.
+struct DelegatedCell<S: 'static> {
+    enter_mut: RefCell<Option<Box<dyn Fn(&mut dyn FnMut(&mut S)) -> Result<()>>>>,
+}
+
+impl<S: 'static> DelegatedCell<S> {
+    fn enter_mut(&self, f: &mut dyn FnMut(&mut S)) -> Result<()> {
+        let guard = self.enter_mut.borrow();
+        let inner = guard.as_ref().ok_or_else(|| {
+            LuaError::runtime(format_args!(
+                "scoped userdata is no longer valid (its scope has ended)"
+            ))
+        })?;
+        inner(f)
+    }
+}
+
+impl<S: 'static> ScopeInvalidate for DelegatedCell<S> {
+    fn invalidate(&self) {
+        *self.enter_mut.borrow_mut() = None;
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 struct RustCallbackCell {
     function: LuaRustFunction,
@@ -1044,9 +1090,12 @@ impl Lua {
         result
     }
 
-    /// Build (or reuse) the per-`TypeId` *scoped* metatable for `T` and attach
-    /// it to a fresh userdata whose `host_value` is the given `ScopedCell`.
-    fn create_scoped_userdata<T>(&self, cell: Rc<ScopedCell<T>>) -> Result<AnyUserData>
+    /// Build (or reuse) the per-`TypeId` *scoped* metatable for `T`. Same
+    /// metatable serves both `Scope::create_userdata_ref_mut` userdata and
+    /// `AnyUserData::delegate` sub-userdata of type `T`, because the
+    /// dispatch closures are cell-variant-polymorphic via
+    /// `dispatch_scoped_borrow*`.
+    fn scoped_metatable_for<T>(&self) -> Result<GcRef<RawLuaTable>>
     where
         T: UserData,
     {
@@ -1057,21 +1106,60 @@ impl Lua {
             .borrow()
             .get(&type_id)
             .cloned();
-        let metatable = match cached {
-            Some(mt) => mt,
-            None => {
-                let mut methods = UserDataMethodRegistry::<T>::new_scoped(self);
-                T::add_methods(&mut methods);
-                T::add_meta_methods(&mut methods);
-                let mt = methods.build_metatable()?;
-                self.inner
-                    .userdata_scoped_metatables
-                    .borrow_mut()
-                    .insert(type_id, mt.clone());
-                mt
-            }
-        };
+        if let Some(mt) = cached {
+            return Ok(mt);
+        }
+        let mut methods = UserDataMethodRegistry::<T>::new_scoped(self);
+        T::add_methods(&mut methods);
+        T::add_meta_methods(&mut methods);
+        let mt = methods.build_metatable()?;
+        self.inner
+            .userdata_scoped_metatables
+            .borrow_mut()
+            .insert(type_id, mt.clone());
+        Ok(mt)
+    }
+
+    /// Attach the scoped metatable for `T` to a fresh userdata whose
+    /// `host_value` is the given `ScopedCell<T>`.
+    fn create_scoped_userdata<T>(&self, cell: Rc<ScopedCell<T>>) -> Result<AnyUserData>
+    where
+        T: UserData,
+    {
+        let metatable = self.scoped_metatable_for::<T>()?;
         self.attach_scoped_userdata::<T>(cell, metatable)
+    }
+
+    /// Same as `create_scoped_userdata` but the `host_value` is a
+    /// `DelegatedCell<S>`. The metatable is the same per-`TypeId` cached
+    /// metatable for `S`; dispatch handles both cell variants.
+    fn create_delegated_userdata<S>(&self, cell: Rc<DelegatedCell<S>>) -> Result<AnyUserData>
+    where
+        S: UserData,
+    {
+        let metatable = self.scoped_metatable_for::<S>()?;
+        let host_value: Rc<dyn Any> = cell;
+        let root = self.with_state(|state| {
+            let userdata = with_heap_guard(state, || {
+                GcRef::new(RawLuaUserData {
+                    data: Box::new([]),
+                    uv: Vec::new(),
+                    metatable: RefCell::new(None),
+                    host_value: RefCell::new(None),
+                })
+            });
+            userdata.set_metatable(Some(metatable));
+            userdata.set_host_value(Some(host_value.clone()));
+            let key = state.external_root_value(RawLuaValue::UserData(userdata));
+            RootedValue {
+                lua: self.clone(),
+                key,
+            }
+        });
+        Ok(AnyUserData {
+            root,
+            host_value: Some(host_value),
+        })
     }
 
     /// Same shape as [`Self::attach_userdata`] but the `host_value` is the
@@ -1108,27 +1196,90 @@ impl Lua {
         })
     }
 
-    fn scoped_userdata_cell<T: 'static>(
+    /// Polymorphic borrow over the cell variants reachable by a scoped
+    /// userdata: `Rc<ScopedCell<T>>` (created via
+    /// `Scope::create_userdata_ref_mut`) and `Rc<DelegatedCell<T>>`
+    /// (created via `AnyUserData::delegate`).
+    ///
+    /// Each variant has its own borrow protocol, but from the caller's
+    /// perspective both produce a `&T` (or `&mut T`) for the duration of
+    /// the closure. The result is threaded back out via an `Option` slot
+    /// to satisfy `FnMut`'s constraint on the inner callback. The slot is
+    /// always populated by the enter path before it returns.
+    fn dispatch_scoped_borrow<T, F, R>(
         &self,
         userdata: &AnyUserData,
-    ) -> Result<Rc<ScopedCell<T>>> {
-        if !Rc::ptr_eq(&self.inner, &userdata.root.lua.inner) {
-            return Err(LuaError::runtime(format_args!(
-                "Lua userdata belongs to a different state"
-            )));
+        f: F,
+    ) -> Result<R>
+    where
+        T: 'static,
+        F: FnOnce(&T) -> Result<R>,
+    {
+        let host = userdata
+            .host_value
+            .as_ref()
+            .ok_or_else(|| LuaError::runtime(format_args!("missing Rust userdata payload")))?;
+
+        if let Ok(scoped) = Rc::clone(host).downcast::<ScopedCell<T>>() {
+            let borrow = scoped.try_borrow()?;
+            return f(&*borrow);
         }
-        let host = userdata.host_value.as_ref().ok_or_else(|| {
-            LuaError::runtime(format_args!("missing Rust userdata payload"))
-        })?;
-        Rc::clone(host)
-            .downcast::<ScopedCell<T>>()
-            .map_err(|_| LuaError::runtime(format_args!("scoped userdata type mismatch")))
+
+        if let Ok(delegated) = Rc::clone(host).downcast::<DelegatedCell<T>>() {
+            let mut slot: Option<Result<R>> = None;
+            let mut f_slot = Some(f);
+            delegated.enter_mut(&mut |t| {
+                if let Some(f) = f_slot.take() {
+                    slot = Some(f(&*t));
+                }
+            })?;
+            return slot.expect("delegated enter_mut must invoke its callback");
+        }
+
+        Err(LuaError::runtime(format_args!(
+            "scoped userdata type mismatch"
+        )))
+    }
+
+    fn dispatch_scoped_borrow_mut<T, F, R>(
+        &self,
+        userdata: &AnyUserData,
+        f: F,
+    ) -> Result<R>
+    where
+        T: 'static,
+        F: FnOnce(&mut T) -> Result<R>,
+    {
+        let host = userdata
+            .host_value
+            .as_ref()
+            .ok_or_else(|| LuaError::runtime(format_args!("missing Rust userdata payload")))?;
+
+        if let Ok(scoped) = Rc::clone(host).downcast::<ScopedCell<T>>() {
+            let mut borrow = scoped.try_borrow_mut()?;
+            return f(&mut *borrow);
+        }
+
+        if let Ok(delegated) = Rc::clone(host).downcast::<DelegatedCell<T>>() {
+            let mut slot: Option<Result<R>> = None;
+            let mut f_slot = Some(f);
+            delegated.enter_mut(&mut |t| {
+                if let Some(f) = f_slot.take() {
+                    slot = Some(f(t));
+                }
+            })?;
+            return slot.expect("delegated enter_mut must invoke its callback");
+        }
+
+        Err(LuaError::runtime(format_args!(
+            "scoped userdata type mismatch"
+        )))
     }
 
     /// Scoped variants of the four `create_userdata_method*` constructors. Each
-    /// downcasts `host_value` to `Rc<ScopedCell<T>>`, borrows the cell, and
-    /// calls the user closure with the dereferenced pointer. The `Weak<LuaInner>`
-    /// capture pattern from v0.0.9 is preserved.
+    /// uses `dispatch_scoped_borrow*` so the same registered metatable serves
+    /// both `Scope::create_userdata_ref_mut` userdata and
+    /// `AnyUserData::delegate` sub-userdata.
     fn create_scoped_userdata_method<T, A, R, F>(&self, method: F) -> Result<Function>
     where
         T: UserData,
@@ -1149,9 +1300,9 @@ impl Lua {
             match catch_unwind(AssertUnwindSafe(|| {
                 let (userdata, args) = callback_userdata_args(state, &lua)?;
                 let args = A::from_lua_multi(args, &lua)?;
-                let cell = lua.scoped_userdata_cell::<T>(&userdata)?;
-                let borrow = cell.try_borrow()?;
-                let returns = method(&lua, &*borrow, args)?;
+                let returns = lua.dispatch_scoped_borrow::<T, _, _>(&userdata, |t| {
+                    method(&lua, t, args)
+                })?;
                 let returns = returns.into_lua_multi(&lua)?;
                 push_callback_returns(state, &lua, returns)
             })) {
@@ -1184,9 +1335,9 @@ impl Lua {
             match catch_unwind(AssertUnwindSafe(|| {
                 let (userdata, args) = callback_userdata_args(state, &lua)?;
                 let args = A::from_lua_multi(args, &lua)?;
-                let cell = lua.scoped_userdata_cell::<T>(&userdata)?;
-                let mut borrow = cell.try_borrow_mut()?;
-                let returns = method(&lua, &mut *borrow, args)?;
+                let returns = lua.dispatch_scoped_borrow_mut::<T, _, _>(&userdata, |t| {
+                    method(&lua, t, args)
+                })?;
                 let returns = returns.into_lua_multi(&lua)?;
                 push_callback_returns(state, &lua, returns)
             })) {
@@ -1615,6 +1766,67 @@ impl AnyUserData {
         let mut guard = cell.try_borrow_mut()?;
         Ok(f(&mut *guard))
     }
+
+    /// Create a sub-userdata in the same scope that re-acquires `&mut S`
+    /// from this userdata's payload via `accessor` on every method call.
+    /// The sub-userdata holds no long-lived `&mut S`: every Lua method call
+    /// borrows the parent (mut), applies `accessor`, runs the method,
+    /// releases. If a script tries to call a parent method while inside a
+    /// sub-userdata method body, the inner `try_borrow_mut` surfaces the
+    /// same "already borrowed" error path scoped cells already use.
+    ///
+    /// Receiver must be a [`Scope::create_userdata_ref_mut`] userdata of
+    /// type `P`, or another delegated userdata of type `P` (chains
+    /// compose).
+    ///
+    /// Scope invalidation propagates: when the originating scope drops,
+    /// both the parent and every delegated descendant become invalid.
+    pub fn delegate<P, S, F>(&self, lua: &Lua, accessor: F) -> Result<AnyUserData>
+    where
+        P: UserData,
+        S: UserData,
+        F: Fn(&mut P) -> &mut S + 'static,
+    {
+        let host = self
+            .host_value
+            .as_ref()
+            .ok_or_else(|| LuaError::runtime(format_args!("missing Rust userdata payload")))?;
+
+        // Two parent variants are allowed: a direct `ScopedCell<P>` from
+        // `Scope::create_userdata_ref_mut`, or another `DelegatedCell<P>`
+        // for multi-level chains.
+        if let Ok(parent_cell) = Rc::clone(host).downcast::<ScopedCell<P>>() {
+            let parent_for_closure = Rc::clone(&parent_cell);
+            let enter: Box<dyn Fn(&mut dyn FnMut(&mut S)) -> Result<()>> =
+                Box::new(move |f| {
+                    let mut guard = parent_for_closure.try_borrow_mut()?;
+                    f(accessor(&mut *guard));
+                    Ok(())
+                });
+            let cell = Rc::new(DelegatedCell::<S> {
+                enter_mut: RefCell::new(Some(enter)),
+            });
+            return lua.create_delegated_userdata::<S>(cell);
+        }
+
+        if let Ok(parent_cell) = Rc::clone(host).downcast::<DelegatedCell<P>>() {
+            let parent_for_closure = Rc::clone(&parent_cell);
+            let enter: Box<dyn Fn(&mut dyn FnMut(&mut S)) -> Result<()>> =
+                Box::new(move |f| {
+                    parent_for_closure.enter_mut(&mut |p| {
+                        f(accessor(p));
+                    })
+                });
+            let cell = Rc::new(DelegatedCell::<S> {
+                enter_mut: RefCell::new(Some(enter)),
+            });
+            return lua.create_delegated_userdata::<S>(cell);
+        }
+
+        Err(LuaError::runtime(format_args!(
+            "delegate: receiver is not a scoped userdata of the expected type"
+        )))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1738,6 +1950,29 @@ pub trait UserDataMethods<T: UserData> {
     where
         A: FromLuaMulti + 'static,
         F: Fn(&Lua, &mut T, A) -> Result<()> + 'static;
+
+    /// Register a "function-shape" method whose callback does not extract the
+    /// typed `&T` automatically. The userdata handle (and any other args) is
+    /// passed to the closure as a regular [`FromLuaMulti`] tuple, so `A` is
+    /// usually `(AnyUserData, X, Y, ...)`.
+    ///
+    /// Equivalent to mlua's `UserDataMethods::add_function`. The main reason
+    /// to reach for this over [`Self::add_method`] is when the callback body
+    /// needs the [`AnyUserData`] handle for the receiver — most commonly to
+    /// build a sub-userdata via [`AnyUserData::delegate`].
+    fn add_function<A, R, F>(&mut self, name: &str, function: F)
+    where
+        A: FromLuaMulti + 'static,
+        R: IntoLuaMulti + 'static,
+        F: Fn(&Lua, A) -> Result<R> + 'static;
+
+    /// `FnMut` variant of [`Self::add_function`]. Re-entrant calls into the
+    /// same closure are rejected with an "already borrowed" runtime error.
+    fn add_function_mut<A, R, F>(&mut self, name: &str, function: F)
+    where
+        A: FromLuaMulti + 'static,
+        R: IntoLuaMulti + 'static,
+        F: FnMut(&Lua, A) -> Result<R> + 'static;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -2110,6 +2345,35 @@ impl<T: UserData> UserDataMethods<T> for UserDataMethodRegistry<'_, T> {
         };
         self.record(result, move |this, function| {
             this.fields_set.push((name, function));
+        });
+    }
+
+    fn add_function<A, R, F>(&mut self, name: &str, function: F)
+    where
+        A: FromLuaMulti + 'static,
+        R: IntoLuaMulti + 'static,
+        F: Fn(&Lua, A) -> Result<R> + 'static,
+    {
+        let name = name.to_string();
+        // Function-shape entries don't extract `&T` from the receiver, so
+        // they reuse the existing top-level `Lua::create_function` directly
+        // for both Owned and Scoped registry modes.
+        let result = self.lua.create_function(function);
+        self.record(result, move |this, function| {
+            this.methods.push((name, function));
+        });
+    }
+
+    fn add_function_mut<A, R, F>(&mut self, name: &str, function: F)
+    where
+        A: FromLuaMulti + 'static,
+        R: IntoLuaMulti + 'static,
+        F: FnMut(&Lua, A) -> Result<R> + 'static,
+    {
+        let name = name.to_string();
+        let result = self.lua.create_function_mut(function);
+        self.record(result, move |this, function| {
+            this.methods.push((name, function));
         });
     }
 }
