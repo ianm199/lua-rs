@@ -11,9 +11,14 @@ homepage.workspace = true
 [lints.rust]
 unsafe_code = "allow"
 
+[features]
+# Re-export the derive macros (LuaUserData, lua_methods) from this crate.
+derive = ["dep:lua-rs-derive"]
+
 [dependencies]
 lua-gc.workspace = true
 lua-types.workspace = true
 lua-vm.workspace = true
 lua-stdlib.workspace = true
 lua-parse.workspace = true
+lua-rs-derive = { workspace = true, optional = true }

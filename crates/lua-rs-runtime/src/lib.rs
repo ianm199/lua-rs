@@ -5,7 +5,7 @@
 //! create a state, install the parser hook, install host hooks, open stdlib,
 //! and run chunks.
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -32,6 +32,9 @@ use lua_vm::state::{
 
 pub use lua_types::{LuaError, LuaFileHandle};
 pub use lua_vm::state::{DynLibId, DynamicSymbol, OsExecuteReason, OsExecuteResult};
+
+#[cfg(feature = "derive")]
+pub use lua_rs_derive::{lua_methods, LuaUserData};
 
 pub type Error = LuaError;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -191,6 +194,11 @@ struct LuaInner {
     state: RefCell<LuaState>,
     active_state: Cell<*mut LuaState>,
     pending_external_unroots: RefCell<Vec<ExternalRootKey>>,
+    /// One metatable per `UserData` type, built on first `create_userdata::<T>`
+    /// and reused for every later value of that type. Each entry is permanently
+    /// rooted in the state's external-root set, so it survives even when no
+    /// instance currently exists, and frees with the state.
+    userdata_metatables: RefCell<HashMap<TypeId, GcRef<RawLuaTable>>>,
 }
 
 struct UserDataCell<T> {
@@ -274,6 +282,7 @@ impl Lua {
                 state: RefCell::new(state),
                 active_state: Cell::new(std::ptr::null_mut()),
                 pending_external_unroots: RefCell::new(Vec::new()),
+                userdata_metatables: RefCell::new(HashMap::new()),
             }),
         }
     }
@@ -551,10 +560,63 @@ impl Lua {
     where
         T: UserData,
     {
-        let mut methods = UserDataMethodRegistry::<T>::new(self);
-        T::add_methods(&mut methods);
-        T::add_meta_methods(&mut methods);
-        methods.finish(data)
+        let type_id = TypeId::of::<T>();
+        let cached = self
+            .inner
+            .userdata_metatables
+            .borrow()
+            .get(&type_id)
+            .cloned();
+        let metatable = match cached {
+            Some(metatable) => metatable,
+            None => {
+                let mut methods = UserDataMethodRegistry::<T>::new(self);
+                T::add_methods(&mut methods);
+                T::add_meta_methods(&mut methods);
+                let metatable = methods.build_metatable()?;
+                self.inner
+                    .userdata_metatables
+                    .borrow_mut()
+                    .insert(type_id, metatable.clone());
+                metatable
+            }
+        };
+        self.attach_userdata(data, metatable)
+    }
+
+    /// Wrap `data` in a fresh Lua userdata that shares `metatable` (built once per
+    /// type by [`Lua::create_userdata`]). Only the per-value data cell is allocated
+    /// here; the binding closures live on the shared, cached metatable.
+    fn attach_userdata<T: UserData>(
+        &self,
+        data: T,
+        metatable: GcRef<RawLuaTable>,
+    ) -> Result<AnyUserData> {
+        let cell: Rc<dyn Any> = Rc::new(UserDataCell {
+            value: RefCell::new(data),
+        });
+        let host_value = cell.clone();
+        let root = self.with_state(|state| {
+            let userdata = with_heap_guard(state, || {
+                GcRef::new(RawLuaUserData {
+                    data: Box::new([]),
+                    uv: Vec::new(),
+                    metatable: RefCell::new(None),
+                    host_value: RefCell::new(None),
+                })
+            });
+            userdata.set_metatable(Some(metatable));
+            userdata.set_host_value(Some(cell));
+            let key = state.external_root_value(RawLuaValue::UserData(userdata));
+            RootedValue {
+                lua: self.clone(),
+                key,
+            }
+        });
+        Ok(AnyUserData {
+            root,
+            host_value: Some(host_value),
+        })
     }
 
     /// Run a full garbage-collection cycle.
@@ -1016,6 +1078,21 @@ pub trait UserDataMethods<T: UserData> {
         A: FromLuaMulti + 'static,
         R: IntoLuaMulti + 'static,
         F: Fn(&Lua, &mut T, A) -> Result<R> + 'static;
+
+    /// Register a getter for `obj.name`. The runtime composes all field getters,
+    /// the method table, and any raw `__index` into a single `__index` so fields
+    /// and methods coexist (lookup order: field, then method, then raw `__index`).
+    fn add_field_method_get<R, F>(&mut self, name: &str, getter: F)
+    where
+        R: IntoLuaMulti + 'static,
+        F: Fn(&Lua, &T) -> Result<R> + 'static;
+
+    /// Register a setter for `obj.name = value`. Assigning a field with no setter
+    /// (or an unknown field) errors unless a raw `__newindex` handles it.
+    fn add_field_method_set<A, F>(&mut self, name: &str, setter: F)
+    where
+        A: FromLuaMulti + 'static,
+        F: Fn(&Lua, &mut T, A) -> Result<()> + 'static;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1067,6 +1144,8 @@ struct UserDataMethodRegistry<'lua, T: UserData> {
     lua: &'lua Lua,
     methods: Vec<(String, Function)>,
     meta_methods: Vec<(MetaMethod, Function)>,
+    fields_get: Vec<(String, Function)>,
+    fields_set: Vec<(String, Function)>,
     error: Option<LuaError>,
     _marker: std::marker::PhantomData<T>,
 }
@@ -1077,6 +1156,8 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
             lua,
             methods: Vec::new(),
             meta_methods: Vec::new(),
+            fields_get: Vec::new(),
+            fields_set: Vec::new(),
             error: None,
             _marker: std::marker::PhantomData,
         }
@@ -1092,56 +1173,99 @@ impl<'lua, T: UserData> UserDataMethodRegistry<'lua, T> {
         }
     }
 
-    fn finish(mut self, data: T) -> Result<AnyUserData> {
+    /// Build this type's metatable once: a method table plus any meta-methods,
+    /// returning the raw table handle permanently rooted in the external-root set
+    /// so it can be cached and shared by every value of the type.
+    fn build_metatable(mut self) -> Result<GcRef<RawLuaTable>> {
         if let Some(err) = self.error.take() {
             return Err(err);
         }
 
-        let method_table = self.lua.create_table()?;
+        let lua = self.lua;
+
+        let method_table = lua.create_table()?;
         for (name, function) in &self.methods {
             method_table.set(name.as_str(), function)?;
         }
 
-        let metatable = self.lua.create_table()?;
-        let mut has_index = false;
-        for (metamethod, function) in &self.meta_methods {
-            if *metamethod == MetaMethod::Index {
-                has_index = true;
-            }
-            metatable.set(metamethod.name(), function)?;
+        let field_getters = lua.create_table()?;
+        for (name, function) in &self.fields_get {
+            field_getters.set(name.as_str(), function)?;
         }
-        if !has_index {
+        let field_setters = lua.create_table()?;
+        for (name, function) in &self.fields_set {
+            field_setters.set(name.as_str(), function)?;
+        }
+
+        // Raw __index/__newindex are escape hatches that compose as the final
+        // fallback; every other meta-method is set directly.
+        let metatable = lua.create_table()?;
+        let mut raw_index: Option<Function> = None;
+        let mut raw_newindex: Option<Function> = None;
+        for (metamethod, function) in &self.meta_methods {
+            match metamethod {
+                MetaMethod::Index => raw_index = Some(function.clone()),
+                MetaMethod::NewIndex => raw_newindex = Some(function.clone()),
+                other => {
+                    metatable.set(other.name(), function)?;
+                }
+            }
+        }
+
+        // __index: field getter, then method, then raw __index. When there are no
+        // fields and no raw __index, the method table is the __index directly (the
+        // fast path, unchanged behavior for method-only types).
+        if !self.fields_get.is_empty() || raw_index.is_some() {
+            let getters = field_getters.clone();
+            let methods = method_table.clone();
+            let raw = raw_index.clone();
+            let index_fn = lua.create_function(move |_lua, (ud, key): (Value, Value)| {
+                if let Value::Function(getter) = getters.get::<_, Value>(key.clone())? {
+                    return getter.call::<_, Value>(ud);
+                }
+                let method = methods.get::<_, Value>(key.clone())?;
+                if !matches!(method, Value::Nil) {
+                    return Ok(method);
+                }
+                if let Some(raw) = &raw {
+                    return raw.call::<_, Value>((ud, key));
+                }
+                Ok(Value::Nil)
+            })?;
+            metatable.set(MetaMethod::Index.name(), &index_fn)?;
+        } else {
             metatable.set(MetaMethod::Index.name(), &method_table)?;
         }
 
-        let cell: Rc<dyn Any> = Rc::new(UserDataCell {
-            value: RefCell::new(data),
-        });
-        let host_value = cell.clone();
-        let root = self.lua.with_state(|state| {
-            let userdata = with_heap_guard(state, || {
-                GcRef::new(RawLuaUserData {
-                    data: Box::new([]),
-                    uv: Vec::new(),
-                    metatable: RefCell::new(None),
-                    host_value: RefCell::new(None),
-                })
-            });
+        // __newindex: field setter, then raw __newindex, else an error.
+        if !self.fields_set.is_empty() || raw_newindex.is_some() {
+            let setters = field_setters.clone();
+            let raw = raw_newindex.clone();
+            let newindex_fn =
+                lua.create_function(move |_lua, (ud, key, value): (Value, Value, Value)| {
+                    if let Value::Function(setter) = setters.get::<_, Value>(key.clone())? {
+                        return setter.call::<_, Value>((ud, value));
+                    }
+                    if let Some(raw) = &raw {
+                        return raw.call::<_, Value>((ud, key, value));
+                    }
+                    Err(LuaError::runtime(format_args!(
+                        "cannot assign to unknown or read-only userdata field"
+                    )))
+                })?;
+            metatable.set(MetaMethod::NewIndex.name(), &newindex_fn)?;
+        }
+
+        self.lua.with_state(|state| {
             let metatable_raw = metatable.root.raw_for_lua(self.lua, state)?;
             let RawLuaValue::Table(metatable) = metatable_raw else {
                 return Err(type_error_raw(&metatable_raw, "table"));
             };
-            userdata.set_metatable(Some(metatable));
-            userdata.set_host_value(Some(cell));
-            let key = state.external_root_value(RawLuaValue::UserData(userdata));
-            Ok::<_, LuaError>(RootedValue {
-                lua: self.lua.clone(),
-                key,
-            })
-        })?;
-        Ok(AnyUserData {
-            root,
-            host_value: Some(host_value),
+            // Permanent root: the returned key is intentionally dropped (it is a
+            // `Copy` token with no `Drop`), so the metatable stays alive for the
+            // life of the state. It frees when the state's external-root set frees.
+            let _key = state.external_root_value(RawLuaValue::Table(metatable.clone()));
+            Ok(metatable)
         })
     }
 }
@@ -1194,6 +1318,34 @@ impl<T: UserData> UserDataMethods<T> for UserDataMethodRegistry<'_, T> {
         let result = self.lua.create_userdata_method_mut(method);
         self.record(result, move |this, function| {
             this.meta_methods.push((metamethod, function));
+        });
+    }
+
+    fn add_field_method_get<R, F>(&mut self, name: &str, getter: F)
+    where
+        R: IntoLuaMulti + 'static,
+        F: Fn(&Lua, &T) -> Result<R> + 'static,
+    {
+        let name = name.to_string();
+        let result = self
+            .lua
+            .create_userdata_method(move |lua, this, ()| getter(lua, this));
+        self.record(result, move |this, function| {
+            this.fields_get.push((name, function));
+        });
+    }
+
+    fn add_field_method_set<A, F>(&mut self, name: &str, setter: F)
+    where
+        A: FromLuaMulti + 'static,
+        F: Fn(&Lua, &mut T, A) -> Result<()> + 'static,
+    {
+        let name = name.to_string();
+        let result = self
+            .lua
+            .create_userdata_method_mut(move |lua, this, arg: A| setter(lua, this, arg));
+        self.record(result, move |this, function| {
+            this.fields_set.push((name, function));
         });
     }
 }
@@ -2146,6 +2298,88 @@ mod tests {
         lua.gc_collect();
         assert_eq!(external_root_count(&lua), 1);
         assert_eq!(table.get::<_, i64>("value").expect("table should live"), 42);
+    }
+
+    #[test]
+    fn metatable_is_built_once_per_type() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static BUILDS: AtomicUsize = AtomicUsize::new(0);
+
+        struct Widget {
+            n: i64,
+        }
+        impl UserData for Widget {
+            fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
+                BUILDS.fetch_add(1, Ordering::SeqCst);
+                methods.add_method("n", |_lua, this, ()| Ok(this.n));
+            }
+        }
+
+        let lua = Lua::new();
+        let a = lua.create_userdata(Widget { n: 1 }).expect("first");
+        let b = lua.create_userdata(Widget { n: 2 }).expect("second");
+        let c = lua.create_userdata(Widget { n: 3 }).expect("third");
+
+        // Built exactly once despite three values of the same type.
+        assert_eq!(BUILDS.load(Ordering::SeqCst), 1);
+
+        // Each value still carries its own data and dispatches correctly.
+        let globals = lua.globals();
+        globals.set("a", &a).unwrap();
+        globals.set("b", &b).unwrap();
+        globals.set("c", &c).unwrap();
+        let sum: i64 = lua.load("return a:n() + b:n() + c:n()").eval().unwrap();
+        assert_eq!(sum, 6);
+    }
+
+    #[test]
+    fn fields_and_methods_coexist() {
+        struct Vec2 {
+            x: f64,
+            y: f64,
+        }
+        impl UserData for Vec2 {
+            fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+                m.add_field_method_get("x", |_, this| Ok(this.x));
+                m.add_field_method_get("y", |_, this| Ok(this.y));
+                m.add_field_method_set("x", |_, this, v: f64| {
+                    this.x = v;
+                    Ok(())
+                });
+                m.add_field_method_set("y", |_, this, v: f64| {
+                    this.y = v;
+                    Ok(())
+                });
+                m.add_method("length", |_, this, ()| {
+                    Ok((this.x * this.x + this.y * this.y).sqrt())
+                });
+                m.add_method_mut("scale", |_, this, k: f64| {
+                    this.x *= k;
+                    this.y *= k;
+                    Ok(())
+                });
+            }
+        }
+
+        let lua = Lua::new();
+        let v = lua.create_userdata(Vec2 { x: 3.0, y: 4.0 }).unwrap();
+        lua.globals().set("v", &v).unwrap();
+
+        // method call and field reads on the same value
+        assert_eq!(lua.load("return v:length()").eval::<f64>().unwrap(), 5.0);
+        assert_eq!(lua.load("return v.x + v.y").eval::<f64>().unwrap(), 7.0);
+
+        // field write
+        lua.load("v.x = 6").exec().unwrap();
+        assert_eq!(lua.load("return v.x").eval::<f64>().unwrap(), 6.0);
+
+        // method mutation is visible through field reads
+        lua.load("v:scale(2)").exec().unwrap();
+        assert_eq!(lua.load("return v.x").eval::<f64>().unwrap(), 12.0);
+        assert_eq!(lua.load("return v.y").eval::<f64>().unwrap(), 8.0);
+
+        // unknown field assignment errors
+        assert!(lua.load("v.z = 1").exec().is_err());
     }
 
     #[test]

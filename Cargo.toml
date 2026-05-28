@@ -13,6 +13,7 @@ members = [
     "crates/lua-cli-test-rust-module",
     "crates/lua-rs-lfs",
     "crates/lua-rs-runtime",
+    "crates/lua-rs-derive",
     "crates/lua-hlua-shim",
     "crates/lua-wasm",
     "crates/lua-wasm-smoke",
@@ -42,6 +43,7 @@ lua-gc      = { path = "crates/lua-gc", version = "0.0.7" }
 lua-coro    = { path = "crates/lua-coro", version = "0.0.7" }
 lua-rs-lfs  = { path = "crates/lua-rs-lfs", version = "0.0.7" }
 lua-rs-runtime = { path = "crates/lua-rs-runtime", version = "0.0.7" }
+lua-rs-derive = { path = "crates/lua-rs-derive", version = "0.0.7" }
 lua-wasm = { path = "crates/lua-wasm", version = "0.0.7" }
 
 [profile.release]

@@ -1,0 +1,23 @@
+[package]
+name = "lua-rs-derive"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Derive macros for the lua-rs embedding API (LuaUserData, lua_methods)."
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"
+
+[dev-dependencies]
+lua-rs-runtime = { path = "../lua-rs-runtime" }
