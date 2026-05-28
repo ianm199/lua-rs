@@ -10,9 +10,23 @@
 "lua-code"   = 0
 "lua-vm"     = 0
 "lua-stdlib" = 0
-"lua-rs-runtime" = 1 # Re-entrant embedding boundary. The single block
-                     # dereferences the active LuaState pointer while the
-                     # outer VM call frame is suspended inside a Rust callback.
+"lua-rs-runtime" = 5 # Re-entrant embedding boundary + scope API.
+                     # 1 block: dereferences the active LuaState pointer while
+                     #   the outer VM call frame is suspended inside a Rust
+                     #   callback.
+                     # 2026-05-28: raised 1 to 5 for the scope API (v0.0.10,
+                     #   PRs #27/#29). The 4 added blocks:
+                     #   - ScopedRef::deref / ScopedRefMut::deref / deref_mut:
+                     #     NonNull reborrow of a &'scope mut T whose validity
+                     #     is guarded by the cell's borrow flag; nulled on
+                     #     scope drop so post-scope access errors cleanly.
+                     #   - Scope::install_function: transmute laundering a
+                     #     `+ 'scope` boxed closure to `+ 'static`; the box is
+                     #     owned by a cell that drops it (and its captures)
+                     #     when the scope ends.
+                     #   All four carry `// SAFETY:` notes and are exercised
+                     #   under Miri (Stacked + Tree Borrows) via the
+                     #   scope_cell_* / scope_fn_cell_* tests, zero UB.
 "lua-gc"     = 13   # production heap/collector substrate. Historical
                     # reference-only partial ports were removed from src/ so
                     # this ceiling tracks only active heap.rs unsafe. Each
