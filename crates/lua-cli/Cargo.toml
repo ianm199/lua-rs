@@ -21,6 +21,9 @@ unsafe_code = "allow"
 name = "lua-rs"
 path = "src/main.rs"
 
+[features]
+dhat-heap = ["dep:dhat"]
+
 [dependencies]
 lua-types.workspace = true
 lua-vm.workspace = true
@@ -29,3 +32,4 @@ lua-parse.workspace = true
 lua-rs-lfs.workspace = true
 libloading = "0.9"
 rustyline = "14"
+dhat = { version = "0.3", optional = true }

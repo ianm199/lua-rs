@@ -791,7 +791,14 @@ pub(crate) fn prepend_lua_path(dir: &std::path::Path) {
     std::env::set_var("LUA_PATH", new_val);
 }
 
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() -> ExitCode {
+    #[cfg(feature = "dhat-heap")]
+    let _dhat = dhat::Profiler::new_heap();
+
     CLI_START.get_or_init(std::time::Instant::now);
 
     let previous_hook = std::panic::take_hook();
