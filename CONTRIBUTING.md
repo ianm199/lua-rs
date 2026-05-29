@@ -36,8 +36,32 @@ There is no REPL or stdin execution yet — see the roadmap in the
 A change is **unverified** until an oracle says it behaves like reference C.
 Build success is not signal.
 
+One command runs everything CI runs (it builds its own binary, so there is no
+stale-binary trap):
+
 ```bash
-# Full upstream Lua 5.4.7 suite (the headline gate; currently 44/44)
+make test          # build + Rust tests + full conformance suite
+```
+
+The other Makefile targets:
+
+```bash
+make rust          # workspace unit/integration tests + embedding doctests
+make conformance   # official Lua 5.4 suite only
+make perf          # benchmark vs reference C Lua (measurement, not a gate)
+make scaling       # flag superlinear (O(n^2)) behavior in hot operations
+make setup         # recreate the reference/lua-c/testes symlink if missing
+```
+
+`make scaling` and `make perf` are how you check a change for complexity or
+throughput regressions. `make scaling` runs each operation in
+`harness/bench/scaling/` at growing sizes and fails if any goes superlinear;
+that is the gate that catches O(n^2) bugs.
+
+Under the hood, the conformance harness:
+
+```bash
+# Full upstream Lua 5.4.7 suite (the headline gate)
 TEST_TIMEOUT_S=90 ./harness/run_official_all.sh
 
 # A single official test

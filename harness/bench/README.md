@@ -16,14 +16,28 @@ workload is the only fair comparison.
 harness/bench/
 ├── README.md            <- this file
 ├── compare.sh           <- main ledgered bench: run all workloads vs reference
-└── workloads/           <- self-contained .lua microbenchmarks
-    ├── binarytrees.lua  <- GC pressure (CLBG-style)
-    ├── closure_ops.lua  <- closure allocation + upvalue access
-    ├── fibonacci.lua    <- recursive call dispatch + small-int math
-    ├── mandelbrot.lua   <- float math + nested loops
-    ├── string_ops.lua   <- concat/find/gsub/byte ops
-    └── table_ops.lua    <- table insert/remove/iterate, array + hash
+├── scaling-check.py     <- complexity gate: flag superlinear (O(n^2)) behavior
+├── workloads/           <- self-contained .lua microbenchmarks (timed vs C)
+│   ├── binarytrees.lua  <- GC pressure (CLBG-style)
+│   ├── closure_ops.lua  <- closure allocation + upvalue access
+│   ├── fibonacci.lua    <- recursive call dispatch + small-int math
+│   ├── gc_pressure.lua  <- allocation/collection throughput under churn
+│   ├── mandelbrot.lua   <- float math + nested loops
+│   ├── string_ops.lua   <- concat/find/gsub/byte ops
+│   ├── table_hash_pressure.lua <- hash-part insertion (#38 regression guard)
+│   └── table_ops.lua    <- table insert/remove/iterate, array + hash
+└── scaling/             <- size-parameterized workloads for scaling-check.py
+    ├── array_insert.lua
+    ├── gc_churn.lua
+    ├── hash_insert.lua
+    └── pairs_iter.lua
 ```
+
+`compare.sh` measures the lua-rs/C ratio at one size. `scaling-check.py`
+(`make scaling`) is complementary: it runs each `scaling/` workload at 1x..8x
+of a base size and fits the complexity exponent, failing if an operation that
+should be linear goes superlinear. That gate catches O(n^2) regressions a
+single-size ratio would miss (it is what would have caught the #38 table bug).
 
 Generated artifacts land under `results/` and `profiles/` (gitignored).
 The static dashboard at `history/index.html` IS tracked so it can be viewed

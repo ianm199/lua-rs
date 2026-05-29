@@ -4,6 +4,8 @@
 #   make rust          workspace unit/integration tests + embedding doctests
 #   make conformance   official Lua 5.4 suite against the lua-rs binary
 #   make perf          benchmark vs reference C Lua (measurement, not a gate)
+#   make scaling       flag superlinear (O(n^2)) behavior in hot operations
+#   make profile F=... sample a hotpath profile of running script F (needs samply)
 #   make build         debug lua-rs binary
 #   make setup         bootstrap the conformance test directory
 #
@@ -14,7 +16,7 @@ CARGO ?= cargo
 TEST_TIMEOUT_S ?= 90
 export TEST_TIMEOUT_S
 
-.PHONY: help test build setup rust conformance perf clean
+.PHONY: help test build setup rust conformance perf scaling profile clean
 
 help:
 	@grep -E '^#   make ' Makefile | sed 's/^#   /  /'
@@ -43,6 +45,17 @@ perf:
 	@[ -x reference/lua-5.4.7/src/lua ] || $(MAKE) -C reference/lua-5.4.7 guess
 	$(CARGO) build --release --bin lua-rs
 	bash harness/bench/compare.sh
+
+scaling:
+	$(CARGO) build --release --bin lua-rs
+	python3 harness/bench/scaling-check.py
+
+# Hotpath profile of a script: make profile F=harness/bench/workloads/gc_pressure.lua
+profile:
+	@command -v samply >/dev/null 2>&1 || { echo "samply not found: cargo install samply"; exit 1; }
+	@[ -n "$(F)" ] || { echo "usage: make profile F=<script.lua>"; exit 1; }
+	$(CARGO) build --release --bin lua-rs
+	samply record target/release/lua-rs $(F)
 
 clean:
 	$(CARGO) clean
