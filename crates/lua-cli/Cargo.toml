@@ -23,6 +23,7 @@ path = "src/main.rs"
 
 [features]
 dhat-heap = ["dep:dhat"]
+fast-alloc = ["dep:mimalloc"]
 
 [dependencies]
 lua-types.workspace = true
@@ -33,3 +34,4 @@ lua-rs-lfs.workspace = true
 libloading = "0.9"
 rustyline = "14"
 dhat = { version = "0.3", optional = true }
+mimalloc = { version = "0.1", optional = true }

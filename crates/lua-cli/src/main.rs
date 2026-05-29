@@ -795,6 +795,15 @@ pub(crate) fn prepend_lua_path(dir: &std::path::Path) {
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+/// Opt-in faster global allocator. The default build stays pure Rust (system
+/// allocator, no C toolchain); `--features fast-alloc` swaps in mimalloc, which
+/// measures ~9% faster on allocation-heavy scripts (binarytrees) and ~20% on
+/// `gc_pressure`. Off by default so the pure-Rust, no-C-dependency build is
+/// the standard one. Suppressed under `dhat-heap` (only one global allocator).
+#[cfg(all(feature = "fast-alloc", not(feature = "dhat-heap")))]
+#[global_allocator]
+static FAST_ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> ExitCode {
     #[cfg(feature = "dhat-heap")]
     let _dhat = dhat::Profiler::new_heap();
