@@ -61,14 +61,18 @@ const BIT_RAS: u8 = 1 << 7;
 /// `MAXASIZE` and the rehash density heuristic.
 pub const ARRAY_GROW_CAP: u32 = 1u32 << 20;
 
-/// Soft cap on total entries (array + hash) used to emulate C-Lua's
-/// `malloc`-NULL termination of unbounded `for i = 1, math.huge do a[i] = ... end`
-/// loops. C-Lua hits real malloc failure at multi-gigabyte allocations; we
-/// raise `LuaError::Memory` (which pcall catches as `"not enough memory"`)
-/// once the table exceeds this size. Sized well above any realistic test
-/// workload (`big.lua` uses ~264K entries) while bounded enough that
-/// `heavy.lua` terminates within the harness timeout.
-pub const TOTAL_GROW_CAP: usize = 1usize << 20;
+/// Cap on total entries (array + hash). Growing a table past this with a
+/// fresh key raises `LuaError::Memory` (pcall reports `"not enough memory"`),
+/// emulating C-Lua's `malloc`-NULL termination of an unbounded
+/// `for i = 1, math.huge do a[i] = ... end` loop.
+///
+/// Ideally this would be a byte budget rather than an entry count, but the
+/// GC's byte counter does not track a table's internal `Vec` capacity, so a
+/// byte budget cannot see table growth. Until table memory is GC-accounted,
+/// this stays an entry cap, sized to comfortably hold realistic large tables
+/// (a 10M-element array, issue #37) while keeping the unbounded-loop stress
+/// tests terminating within the harness time and memory limits.
+pub const TOTAL_GROW_CAP: usize = 1usize << 24;
 
 const WEAK_KEYS: u8 = 1 << 0;
 const WEAK_VALUES: u8 = 1 << 1;
