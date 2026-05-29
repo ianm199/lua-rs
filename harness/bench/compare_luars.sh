@@ -86,12 +86,16 @@ row spectral_norm   "$CLBG_DIR/spectral_norm.lua"  500
 row mandelbrot      "$CLBG_DIR/mandelbrot.lua"     1000
 row partial_sums    "$CLBG_DIR/partial_sums.lua"   2000000
 echo "-- this repo's own workloads (harness/bench/workloads) ------------------------------------"
-row fibonacci       "$OWN/fibonacci.lua"
-row binarytrees_own "$OWN/binarytrees.lua"
-row closure_ops     "$OWN/closure_ops.lua"
-row mandelbrot_long "$OWN/mandelbrot_long.lua"
-row string_ops_long "$OWN/string_ops_long.lua"
-row table_ops_long  "$OWN/table_ops_long.lua"
+row fibonacci          "$OWN/fibonacci.lua"
+row binarytrees_own    "$OWN/binarytrees.lua"
+row closure_ops        "$OWN/closure_ops.lua"
+row gc_pressure        "$OWN/gc_pressure.lua"
+row mandelbrot_own     "$OWN/mandelbrot.lua"
+row string_ops         "$OWN/string_ops.lua"
+row string_ops_long    "$OWN/string_ops_long.lua"
+row table_ops          "$OWN/table_ops.lua"
+row table_ops_long     "$OWN/table_ops_long.lua"
+row table_hash_pressure "$OWN/table_hash_pressure.lua"
 
 echo
 awk -v go="$geo_o" -v gl="$geo_l" -v n="$cnt" 'BEGIN{
