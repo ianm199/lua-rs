@@ -485,6 +485,14 @@ impl StepBudget {
 
 /// The heap. One per `GlobalState`. Owns the intrusive allgc list of every
 /// allocated `GcBox`, tracks total bytes, and runs collections.
+/// Floor for the post-collection threshold. Without it, a tight
+/// allocation loop drives the live set near zero, so `bytes * pause/100`
+/// collapses toward zero and a full stop-the-world collection fires every
+/// few allocations, re-tracing all roots each time (issue #38, GC path).
+/// The floor bounds the wasted work: the collector waits until at least
+/// this many bytes of garbage accumulate before collecting a small heap.
+const GC_MIN_THRESHOLD: usize = 256 * 1024;
+
 pub struct Heap {
     /// Head of the singly-linked allgc list (every live `GcBox`).
     head: Cell<Option<NonNull<GcBox<dyn Trace>>>>,
@@ -883,8 +891,12 @@ impl Heap {
     fn finish_cycle(&self) {
         *self.marker.borrow_mut() = None;
         self.sweep_prev_next.set(None);
-        self.threshold
-            .set(self.bytes.get() * self.pause_multiplier.get() / 100);
+        let next = self
+            .bytes
+            .get()
+            .saturating_mul(self.pause_multiplier.get())
+            / 100;
+        self.threshold.set(next.max(GC_MIN_THRESHOLD));
         self.collections.set(self.collections.get() + 1);
     }
 
@@ -1106,6 +1118,29 @@ mod tests {
         heap.step(&ManyRoots(&keeps));
         // step is a no-op below threshold; all roots retained.
         assert!(heap.bytes_used() > 0);
+    }
+
+    #[test]
+    fn threshold_floored_after_collecting_tiny_heap() {
+        let heap = Heap::new();
+        heap.unpause();
+        struct NoRoots;
+        impl Trace for NoRoots {
+            fn trace(&self, _m: &mut Marker) {}
+        }
+        for _ in 0..200 {
+            heap.allocate(Cell0 {
+                next: Cell::new(None),
+                marker_calls: Cell::new(0),
+            });
+        }
+        heap.full_collect(&NoRoots);
+        assert!(
+            heap.threshold_bytes() >= GC_MIN_THRESHOLD,
+            "threshold {} collapsed below floor {}; a churning program would full-collect per allocation",
+            heap.threshold_bytes(),
+            GC_MIN_THRESHOLD
+        );
     }
 
     fn build_chain(heap: &Heap, len: usize) -> Gc<Cell0> {
