@@ -648,17 +648,14 @@ impl TableInner {
             }
             let idx = lf - 1;
             self.lastfree = Some(idx);
-            if self.node[idx].key_is_nil() && !self.node_has_chain_link(idx) {
+            // A node is free iff its key is nil, exactly as upstream Lua's
+            // `getfreepos`. The previous version also scanned the whole node
+            // vector for a chain predecessor on every probe, making each hash
+            // insert O(n) and the table O(n^2) (issue #38).
+            if self.node[idx].key_is_nil() {
                 return Some(idx);
             }
         }
-    }
-
-    fn node_has_chain_link(&self, idx: usize) -> bool {
-        if self.node[idx].next != 0 {
-            return true;
-        }
-        self.find_chain_predecessor(idx).is_some()
     }
 
     fn find_chain_predecessor(&self, idx: usize) -> Option<usize> {
