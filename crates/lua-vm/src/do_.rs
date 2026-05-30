@@ -78,8 +78,7 @@ const LUA_MULTRET: i32 = -1;
 
 const NYCI: u32 = 0x10001;
 
-// TODO(port): confirm from luaconf.h or a constants module.
-const LUAI_MAXCCALLS: u32 = 200;
+use crate::state::LUAI_MAXCCALLS;
 
 // CallStatus bit flags (macros.tsv)
 const CIST_C: u16 = 1 << 1;

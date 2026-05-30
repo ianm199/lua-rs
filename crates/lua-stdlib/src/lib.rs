@@ -16,6 +16,7 @@ pub mod coro_lib;
 pub mod loadlib;
 pub mod auxlib;
 pub mod init;
+pub mod sandbox;
 
 // ──────────────────────────────────────────────────────────────────────────
 // PORT STATUS

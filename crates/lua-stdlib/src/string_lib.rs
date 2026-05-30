@@ -93,16 +93,29 @@ struct MatchState<'a> {
     level: u8,
     /// Capture records indexed `0..level`.
     captures: [Capture; LUA_MAX_CAPTURES],
+    /// Total `match_pat` invocations across the whole operation. Used to bound
+    /// catastrophic backtracking under a sandbox; charged against the
+    /// instruction budget by the caller.
+    steps: u64,
+    /// Maximum `steps` before the matcher stops. `0` means unlimited (no active
+    /// instruction budget), preserving non-sandboxed behavior exactly.
+    step_limit: u64,
+    /// Set when `step_limit` is reached; the matcher then unwinds to the caller,
+    /// which charges the budget and raises the uncatchable sandbox abort.
+    aborted: bool,
 }
 
 impl<'a> MatchState<'a> {
-    fn new(src: &'a [u8], pat: &'a [u8]) -> Self {
+    fn new(src: &'a [u8], pat: &'a [u8], step_limit: u64) -> Self {
         MatchState {
             src,
             pat,
             matchdepth: MAX_CC_CALLS,
             level: 0,
             captures: [Capture::default(); LUA_MAX_CAPTURES],
+            steps: 0,
+            step_limit,
+            aborted: false,
         }
     }
 
@@ -343,6 +356,10 @@ pub fn str_rep(state: &mut LuaState) -> Result<usize, LuaError> {
             return Err(LuaError::runtime(format_args!("resulting string too large")));
         }
         let total = per * (n as usize) - lsep;
+
+        if let Some(err) = state.sandbox_reserve(total) {
+            return Err(err);
+        }
 
         let mut buf: Vec<u8> = Vec::with_capacity(total);
         for i in 0..(n as usize) {
@@ -782,6 +799,14 @@ fn match_capture(ms: &MatchState, s: usize, l: u8) -> Result<Option<usize>, LuaE
 ///
 /// The C code uses `goto init` for tail calls; here we use a loop.
 fn match_pat(ms: &mut MatchState, mut s: usize, mut p: usize) -> Result<Option<usize>, LuaError> {
+    if ms.aborted {
+        return Ok(None);
+    }
+    ms.steps += 1;
+    if ms.step_limit != 0 && ms.steps > ms.step_limit {
+        ms.aborted = true;
+        return Ok(None);
+    }
     ms.matchdepth -= 1;
     if ms.matchdepth < 0 {
         ms.matchdepth = 0;
@@ -1071,32 +1096,39 @@ fn str_find_aux(state: &mut LuaState, find: bool) -> Result<usize, LuaError> {
             return Ok(2);
         }
     } else {
-        let mut ms = MatchState::new(s, p);
+        let step_limit = state.sandbox_match_step_limit();
+        let mut ms = MatchState::new(s, p, step_limit);
         let anchor = p.first() == Some(&b'^');
-        let (_p_start, p_slice) = if anchor {
-            (0, &p[1..])
-        } else {
-            (0, p)
-        };
+        let p_slice = if anchor { &p[1..] } else { p };
         ms.pat = p_slice;
 
         let mut s1 = init;
+        let mut matched: Option<usize> = None;
         loop {
             ms.reset_level();
             if let Some(res) = match_pat(&mut ms, s1, 0)? {
-                if find {
-                    state.push(LuaValue::Int((s1 + 1) as i64));
-                    state.push(LuaValue::Int(res as i64));
-                    let nc = push_captures(state, &ms, 0, 0)?;
-                    return Ok(nc + 2);
-                } else {
-                    return push_captures(state, &ms, s1, res);
-                }
+                matched = Some(res);
+                break;
             }
-            if s1 >= ms.src.len() || anchor {
+            if ms.aborted || s1 >= ms.src.len() || anchor {
                 break;
             }
             s1 += 1;
+        }
+
+        if let Some(err) = state.sandbox_charge(ms.steps) {
+            return Err(err);
+        }
+
+        if let Some(res) = matched {
+            if find {
+                state.push(LuaValue::Int((s1 + 1) as i64));
+                state.push(LuaValue::Int(res as i64));
+                let nc = push_captures(state, &ms, 0, 0)?;
+                return Ok(nc + 2);
+            } else {
+                return push_captures(state, &ms, s1, res);
+            }
         }
     }
 
@@ -1171,20 +1203,34 @@ pub fn gmatch_aux(state: &mut LuaState) -> Result<usize, LuaError> {
     let ls = s.len();
     let start_pos = if pos < 1 { 0usize } else { (pos - 1) as usize };
 
-    let mut ms = MatchState::new(s, p);
+    let step_limit = state.sandbox_match_step_limit();
+    let mut ms = MatchState::new(s, p, step_limit);
 
     let mut src = start_pos;
+    let mut hit: Option<(usize, usize)> = None;
     while src <= ls {
         ms.reset_level();
         if let Some(e) = match_pat(&mut ms, src, 0)? {
             if Some(e) != last_match {
-                let e_val = LuaValue::Int((e + 1) as i64);
-                tbl.raw_set_int(state, 3, e_val.clone())?;
-                tbl.raw_set_int(state, 4, e_val)?;
-                return push_captures(state, &ms, src, e);
+                hit = Some((src, e));
+                break;
             }
         }
+        if ms.aborted {
+            break;
+        }
         src += 1;
+    }
+
+    if let Some(err) = state.sandbox_charge(ms.steps) {
+        return Err(err);
+    }
+
+    if let Some((src, e)) = hit {
+        let e_val = LuaValue::Int((e + 1) as i64);
+        tbl.raw_set_int(state, 3, e_val.clone())?;
+        tbl.raw_set_int(state, 4, e_val)?;
+        return push_captures(state, &ms, src, e);
     }
 
     Ok(0)
@@ -1353,7 +1399,8 @@ pub fn str_gsub(state: &mut LuaState) -> Result<usize, LuaError> {
     let anchor = pat_owned.first() == Some(&b'^');
     let pat_slice = if anchor { &pat_owned[1..] } else { &pat_owned[..] };
 
-    let mut ms = MatchState::new(&src_owned, pat_slice);
+    let step_limit = state.sandbox_match_step_limit();
+    let mut ms = MatchState::new(&src_owned, pat_slice, step_limit);
     let mut buf: Vec<u8> = Vec::new();
     let mut src_pos = 0usize;
     let mut last_match: Option<usize> = None;
@@ -1382,9 +1429,13 @@ pub fn str_gsub(state: &mut LuaState) -> Result<usize, LuaError> {
         } else {
             break;
         }
-        if anchor {
+        if ms.aborted || anchor {
             break;
         }
+    }
+
+    if let Some(err) = state.sandbox_charge(ms.steps) {
+        return Err(err);
     }
 
     if !changed {

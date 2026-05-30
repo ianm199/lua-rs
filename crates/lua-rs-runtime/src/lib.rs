@@ -3239,6 +3239,171 @@ fn parser_hook(
     }))
 }
 
+// ────────────────────────────── Sandboxing ──────────────────────────────
+//
+// Bounded, untrusted execution for embedders. Three independent controls:
+//
+//   1. Instruction budget   — abort after N executed VM instructions.
+//   2. Memory ceiling        — abort once GC-tracked bytes exceed a limit.
+//   3. Capability stripping   — remove dangerous globals (`os.execute`, `io`,
+//                               `load`, `require`, …) from the environment.
+//
+// (1) and (2) are enforced by a runtime-wide budget stored in the shared
+// `GlobalState` (`SandboxLimits`). `install_sandbox_limits` arms the VM
+// count-hook mask on every thread — including coroutines, via `preinit_thread`
+// — and the VM charges the shared budget once per `check_interval` instructions
+// directly in `trace_exec`. When a limit is crossed the VM returns a `LuaError`
+// that unwinds the dispatch loop and surfaces to the embedder as an ordinary
+// runtime error from `exec`/`eval`/`call`. Because the budget is shared and
+// every thread is armed, code inside `coroutine.wrap(...)` is metered too.
+//
+// Cost: when no sandbox is active the count mask is unset, `trap` stays false,
+// and the dispatch loop is byte-for-byte unchanged — zero overhead. Inside a
+// sandbox, the VM pays the standard count-hook cost (a per-instruction trap
+// dispatch); `check_interval` trades enforcement precision, not throughput.
+//
+// Enforcement granularity is `check_interval` instructions: a budget trips
+// within `check_interval` of the true limit, and memory is sampled at the same
+// cadence — so a single allocation between two samples (e.g. `string.rep` with
+// a huge count) can momentarily exceed the ceiling before the next check sees
+// it. A hard, per-allocation memory cap would require enforcement inside
+// `Heap::allocate`; that is the natural next step.
+
+/// Why a sandboxed run was aborted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TripReason {
+    /// The instruction budget reached zero.
+    Instructions,
+    /// GC-tracked memory exceeded the configured ceiling.
+    Memory,
+}
+
+/// A live handle to a sandbox's budget. The budget itself lives in the
+/// runtime's shared `GlobalState`, so it spans every thread (main and
+/// coroutines); this handle just reads and resets it through the `Lua`.
+#[derive(Clone)]
+pub struct Sandbox {
+    lua: Lua,
+}
+
+impl Sandbox {
+    /// Instructions left before the budget trips, or `None` if no instruction
+    /// limit was configured.
+    pub fn instructions_remaining(&self) -> Option<u64> {
+        self.lua.with_state(|state| {
+            if state.sandbox_instr_limited() {
+                Some(state.sandbox_instr_remaining())
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Instructions consumed so far (rounded to the check interval), or `None`
+    /// if no instruction limit was configured.
+    pub fn instructions_used(&self) -> Option<u64> {
+        self.lua.with_state(|state| {
+            if state.sandbox_instr_limited() {
+                Some(state.sandbox_instr_limit() - state.sandbox_instr_remaining())
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Why the last run aborted, if it was the sandbox that stopped it.
+    pub fn tripped(&self) -> Option<TripReason> {
+        self.lua.with_state(|state| match state.sandbox_tripped_code() {
+            lua_vm::state::SANDBOX_TRIP_INSTRUCTIONS => Some(TripReason::Instructions),
+            lua_vm::state::SANDBOX_TRIP_MEMORY => Some(TripReason::Memory),
+            _ => None,
+        })
+    }
+
+    /// Refill the instruction budget to its configured limit and clear the
+    /// tripped flag. Call before re-running a chunk in the same `Lua` state.
+    pub fn reset(&self) {
+        self.lua.with_state(|state| state.sandbox_reset());
+    }
+}
+
+/// Configuration for [`Lua::sandboxed`].
+#[derive(Debug, Clone)]
+pub struct SandboxConfig {
+    /// Maximum VM instructions a run may execute. `None` = unlimited.
+    pub instruction_limit: Option<u64>,
+    /// Maximum GC-tracked bytes. `None` = unlimited.
+    pub memory_limit_bytes: Option<usize>,
+    /// Instructions between budget/memory checks. Lower = tighter enforcement,
+    /// higher hook overhead. Clamped to at least 1.
+    pub check_interval: u32,
+    /// Global paths to delete before running, e.g. `b"os.execute"` or `b"io"`.
+    /// A `.`-separated path nils a field of a sub-table; a bare name nils a
+    /// top-level global.
+    pub remove_globals: Vec<Vec<u8>>,
+}
+
+impl SandboxConfig {
+    /// A strict default: 10M instructions, 64 MiB, and removal of the
+    /// code-loading and host-access globals. Tune fields as needed.
+    pub fn strict() -> Self {
+        Self {
+            instruction_limit: Some(10_000_000),
+            memory_limit_bytes: Some(64 * 1024 * 1024),
+            check_interval: 1000,
+            remove_globals: lua_stdlib::sandbox::STRICT_REMOVED_GLOBALS
+                .iter()
+                .map(|s| s.to_vec())
+                .collect(),
+        }
+    }
+}
+
+impl Default for SandboxConfig {
+    fn default() -> Self {
+        Self::strict()
+    }
+}
+
+fn strip_globals(state: &mut LuaState, names: &[Vec<u8>]) -> Result<()> {
+    let refs: Vec<&[u8]> = names.iter().map(|n| n.as_slice()).collect();
+    lua_stdlib::sandbox::strip_globals(state, &refs)
+}
+
+impl Lua {
+    /// Create a Lua runtime with no host capabilities (no file, process, or
+    /// dynamic-library hooks), the configured globals stripped, and an
+    /// instruction/memory budget installed. Returns the runtime and a
+    /// [`Sandbox`] handle for inspecting and resetting the budget.
+    pub fn sandboxed(config: SandboxConfig) -> Result<(Self, Sandbox)> {
+        let lua = Self::with_hooks(HostHooks::default())?;
+        let sandbox = lua.install_sandbox(config)?;
+        Ok((lua, sandbox))
+    }
+
+    /// Apply sandbox limits to this runtime: strip the configured globals and,
+    /// if any runtime limit is set, install the runtime-wide budget. The budget
+    /// lives in the shared `GlobalState` and is enforced natively in the VM on
+    /// every thread, so code inside coroutines is metered too. Use this when
+    /// you want to grant *some* host capabilities (build the `Lua` with selected
+    /// [`HostHooks`]) but still bound execution.
+    pub fn install_sandbox(&self, config: SandboxConfig) -> Result<Sandbox> {
+        let interval = config.check_interval.max(1) as i32;
+        self.with_state(|state| -> Result<()> {
+            strip_globals(state, &config.remove_globals)?;
+            if config.instruction_limit.is_some() || config.memory_limit_bytes.is_some() {
+                state.install_sandbox_limits(
+                    interval,
+                    config.instruction_limit,
+                    config.memory_limit_bytes,
+                );
+            }
+            Ok(())
+        })?;
+        Ok(Sandbox { lua: self.clone() })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

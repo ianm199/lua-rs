@@ -121,11 +121,25 @@ pub(crate) const LUA_MINSTACK: usize = 20;
 // macros.tsv: BASIC_STACK_SIZE → const BASIC_STACK_SIZE: u32 = 2 * LUA_MINSTACK
 pub(crate) const BASIC_STACK_SIZE: usize = 2 * LUA_MINSTACK;
 
-// PORT NOTE: lowered from 200 to 80 because our debug-build Rust frames
-// are ~5–10× larger than C frames (debuginfo, stack-allocated CallInfo
-// arrays, marker state). At 200 we SIGSEGV on cstack's 1000-coroutine
-// close cascade before n_ccalls trips. 80 is safe for an 8 MB Rust thread
-// stack with a comfortable margin.
+/// Maximum nested non-yielding C-call recursion depth — the single source of
+/// truth for the call-depth guard (also used by `do_::ccall_inner` and
+/// `do_::lua_resume`).
+///
+/// This is the structural defense that keeps a recursive interpreter sound for
+/// untrusted code: a recursive Rust interpreter consumes host (Rust) stack per
+/// nested Lua→Lua call, so unbounded Lua recursion would otherwise overflow the
+/// OS thread stack and crash the process. Tripping this limit instead raises a
+/// catchable `"stack overflow"` / `"C stack overflow"` Lua error.
+///
+/// Safe margin: each nested call frame consumes a bounded amount of Rust stack,
+/// so `MAXCCALLS` frames fit within the default ~8 MiB thread stack with room to
+/// spare — verified on macOS/Linux release builds against deep non-tail
+/// recursion, infinite `__index`/`__concat`/`__tostring` metamethod chains, and
+/// nested-coroutine `__close` cascades, all of which error cleanly rather than
+/// SIGSEGV (see the `recursion_*` sandbox tests). Embedders that run the VM on a
+/// smaller thread stack should lower this constant proportionally (roughly
+/// `stack_bytes / 40_000`).
+
 pub(crate) const LUAI_MAXCCALLS: u32 = 200;
 
 // macros.tsv: CIST_C → const CIST_C: u16 = 1 << 1
@@ -1066,6 +1080,10 @@ pub struct GlobalState {
     // types.tsv: global_State.totalbytes → isize
     pub totalbytes: isize,
 
+    /// Per-runtime sandbox budget shared across all threads. Inactive by
+    /// default (`interval == 0`); see [`SandboxLimits`].
+    pub sandbox: SandboxLimits,
+
     // types.tsv: global_State.GCdebt → isize
     pub gc_debt: isize,
 
@@ -1302,7 +1320,50 @@ pub struct GlobalState {
     pub suspended_parent_open_upvals: Vec<Vec<GcRef<UpVal>>>,
 }
 
+/// `LUA_MASKCOUNT` (`1 << LUA_HOOKCOUNT`) — the count-hook event mask the
+/// sandbox arms on every thread to drive per-interval budget enforcement.
+const SANDBOX_COUNT_MASK: u8 = 1 << 3;
+
+/// Sandbox trip code: not tripped.
+pub const SANDBOX_TRIP_NONE: u8 = 0;
+/// Sandbox trip code: the instruction budget reached zero.
+pub const SANDBOX_TRIP_INSTRUCTIONS: u8 = 1;
+/// Sandbox trip code: GC-tracked memory exceeded the configured ceiling.
+pub const SANDBOX_TRIP_MEMORY: u8 = 2;
+
+/// Per-runtime sandbox budget, shared by every thread (main + coroutines) via
+/// the `Rc<RefCell<GlobalState>>` they all hold. Every field is a `Cell` so the
+/// VM can charge the budget through the shared `Ref` it borrows in the
+/// count-hook path — no `&mut` and no write-borrow on the hot path.
+/// `interval == 0` means inactive; in that case the VM never sets the
+/// count-hook mask, so there is zero overhead.
+#[derive(Default)]
+pub struct SandboxLimits {
+    /// Count-hook interval in instructions; `0` = sandbox inactive.
+    pub interval: std::cell::Cell<i32>,
+    /// Whether an instruction budget is enforced.
+    pub instr_limited: std::cell::Cell<bool>,
+    /// Instructions left before the budget trips.
+    pub instr_remaining: std::cell::Cell<u64>,
+    /// Configured instruction limit, retained so `reset` can refill.
+    pub instr_limit: std::cell::Cell<u64>,
+    /// GC-byte ceiling; `None` = no memory limit.
+    pub mem_limit: std::cell::Cell<Option<usize>>,
+    /// One of the `SANDBOX_TRIP_*` codes.
+    pub tripped: std::cell::Cell<u8>,
+    /// Sticky once a limit trips: the abort is *uncatchable*. While set,
+    /// `pcall`/`xpcall`/`coroutine.resume` re-raise the trip error instead of
+    /// swallowing it, so untrusted code cannot defeat the budget by catching
+    /// it in a loop. Cleared only by [`LuaState::sandbox_reset`].
+    pub aborting: std::cell::Cell<bool>,
+}
+
 impl GlobalState {
+    /// True while a sandbox instruction/memory budget is active on this runtime.
+    pub fn sandbox_active(&self) -> bool {
+        self.sandbox.interval.get() != 0
+    }
+
     /// Total live bytes allocated (GCdebt + totalbytes).
     ///
     /// macros.tsv: `gettotalbytes → g.total_bytes()`
@@ -1628,6 +1689,158 @@ impl LuaState {
     /// macros.tsv: `resethookcount → state.reset_hook_count()`
     pub fn reset_hook_count(&mut self) {
         self.hookcount = self.basehookcount;
+    }
+
+    /// Activate the per-runtime sandbox budget and arm the current thread.
+    ///
+    /// Stores the budget in `GlobalState` (shared across every thread) and
+    /// sets the count-hook mask on this thread so the dispatch loop traps every
+    /// `interval` instructions. Coroutines created afterwards inherit the mask
+    /// via `preinit_thread`, so metering spans all threads — closing the
+    /// coroutine-escape that a per-thread closure could not. Pass `None` for a
+    /// limit to leave that dimension unbounded.
+    pub fn install_sandbox_limits(
+        &mut self,
+        interval: i32,
+        instr_limit: Option<u64>,
+        mem_limit: Option<usize>,
+    ) {
+        let interval = interval.max(1);
+        {
+            let g = self.global();
+            g.sandbox.interval.set(interval);
+            g.sandbox.instr_limited.set(instr_limit.is_some());
+            g.sandbox.instr_remaining.set(instr_limit.unwrap_or(0));
+            g.sandbox.instr_limit.set(instr_limit.unwrap_or(0));
+            g.sandbox.mem_limit.set(mem_limit);
+            g.sandbox.tripped.set(SANDBOX_TRIP_NONE);
+        }
+        self.hookmask |= SANDBOX_COUNT_MASK;
+        self.basehookcount = interval;
+        self.hookcount = interval;
+        crate::debug::arm_traps(self);
+    }
+
+    /// Charge the shared budget for one count-hook interval. Returns the abort
+    /// error if a limit has been crossed (and records why in `tripped`).
+    /// Called from `trace_exec` on every thread, once per `interval`
+    /// instructions — never on the budget-disabled hot path.
+    pub fn sandbox_charge_interval(&self) -> Option<LuaError> {
+        let interval = self.global().sandbox.interval.get();
+        self.sandbox_charge(interval as u64)
+    }
+
+    /// Charge `amount` instructions against the runtime-wide budget and sample
+    /// the memory ceiling. Returns the uncatchable abort error if a limit is
+    /// crossed (recording the reason and arming the sticky `aborting` flag), or
+    /// `None` otherwise. No-op when no sandbox is active.
+    ///
+    /// Used both by the per-interval VM charge and by loop-heavy stdlib
+    /// functions (the pattern matcher) so a single native call cannot run for
+    /// longer than the instruction budget allows.
+    pub fn sandbox_charge(&self, amount: u64) -> Option<LuaError> {
+        let g = self.global();
+        if g.sandbox.interval.get() == 0 {
+            return None;
+        }
+        if g.sandbox.instr_limited.get() {
+            let rem = g.sandbox.instr_remaining.get().saturating_sub(amount);
+            g.sandbox.instr_remaining.set(rem);
+            if rem == 0 {
+                g.sandbox.tripped.set(SANDBOX_TRIP_INSTRUCTIONS);
+                g.sandbox.aborting.set(true);
+                return Some(LuaError::runtime(format_args!(
+                    "sandbox: instruction budget exhausted"
+                )));
+            }
+        }
+        if let Some(limit) = g.sandbox.mem_limit.get() {
+            if g.total_bytes() > limit {
+                g.sandbox.tripped.set(SANDBOX_TRIP_MEMORY);
+                g.sandbox.aborting.set(true);
+                return Some(LuaError::runtime(format_args!(
+                    "sandbox: memory limit exceeded"
+                )));
+            }
+        }
+        None
+    }
+
+    /// Reject a size-known-upfront allocation that would push GC-tracked memory
+    /// past the ceiling, *before* the buffer is built. Returns the uncatchable
+    /// memory abort if `total_bytes() + additional` exceeds the limit. Used by
+    /// stdlib functions that allocate a large buffer of a computed size in one
+    /// instruction (e.g. `string.rep`, `string.pack`, `table.concat`), where the
+    /// per-instruction `sandbox_check_memory` would only fire *after* the
+    /// allocation already happened.
+    pub fn sandbox_reserve(&self, additional: usize) -> Option<LuaError> {
+        let g = self.global();
+        if g.sandbox.interval.get() == 0 {
+            return None;
+        }
+        if let Some(limit) = g.sandbox.mem_limit.get() {
+            let projected = g.total_bytes().saturating_add(additional);
+            if projected > limit {
+                g.sandbox.tripped.set(SANDBOX_TRIP_MEMORY);
+                g.sandbox.aborting.set(true);
+                return Some(LuaError::runtime(format_args!(
+                    "sandbox: memory limit exceeded"
+                )));
+            }
+        }
+        None
+    }
+
+    /// Upper bound on the work a single pattern-match call may do before it must
+    /// stop and let the caller charge the budget. Equal to the remaining
+    /// instruction budget when an instruction limit is active, else `0` meaning
+    /// "unlimited" (preserving non-sandboxed behavior exactly).
+    pub fn sandbox_match_step_limit(&self) -> u64 {
+        let g = self.global();
+        if g.sandbox.interval.get() != 0 && g.sandbox.instr_limited.get() {
+            g.sandbox.instr_remaining.get()
+        } else {
+            0
+        }
+    }
+
+    /// Whether a sandbox abort is in flight. While true, protected-call builtins
+    /// (`pcall`/`xpcall`/`coroutine.resume`) must re-raise rather than catch, so
+    /// the budget trip is uncatchable. Set on trip, cleared by `sandbox_reset`.
+    pub fn sandbox_aborting(&self) -> bool {
+        self.global().sandbox.aborting.get()
+    }
+
+    /// Whether an instruction budget is active (vs. only a memory limit / none).
+    pub fn sandbox_instr_limited(&self) -> bool {
+        self.global().sandbox.instr_limited.get()
+    }
+
+    /// Instructions left before the budget trips (meaningful only when
+    /// [`sandbox_instr_limited`](Self::sandbox_instr_limited)).
+    pub fn sandbox_instr_remaining(&self) -> u64 {
+        self.global().sandbox.instr_remaining.get()
+    }
+
+    /// The configured instruction limit (for computing "used").
+    pub fn sandbox_instr_limit(&self) -> u64 {
+        self.global().sandbox.instr_limit.get()
+    }
+
+    /// The current trip code (one of the `SANDBOX_TRIP_*` constants).
+    pub fn sandbox_tripped_code(&self) -> u8 {
+        self.global().sandbox.tripped.get()
+    }
+
+    /// Refill the instruction budget to its configured limit and clear the
+    /// trip flag, so the same runtime can run another chunk.
+    pub fn sandbox_reset(&self) {
+        let g = self.global();
+        if g.sandbox.instr_limited.get() {
+            g.sandbox.instr_remaining.set(g.sandbox.instr_limit.get());
+        }
+        g.sandbox.tripped.set(SANDBOX_TRIP_NONE);
+        g.sandbox.aborting.set(false);
     }
 
     /// Returns the current stack capacity (slots between base and stack_last).
@@ -3982,6 +4195,22 @@ fn preinit_thread(thread: &mut LuaState, global: Rc<RefCell<GlobalState>>) {
     thread.allowhook = true;
     // macros.tsv: resethookcount → state.reset_hook_count()
     thread.hookcount = thread.basehookcount;
+
+    // Sandbox inheritance: a coroutine joins the runtime-wide instruction/memory
+    // budget so metering spans every thread, not just the main one. The budget
+    // itself lives in `GlobalState` (shared); the new thread only needs the
+    // count-hook mask armed so the dispatch loop traps and charges it.
+    {
+        let (active, interval) = {
+            let g = thread.global.borrow();
+            (g.sandbox_active(), g.sandbox.interval.get())
+        };
+        if active {
+            thread.hookmask = SANDBOX_COUNT_MASK;
+            thread.basehookcount = interval;
+            thread.hookcount = interval;
+        }
+    }
     thread.openupval = Vec::new();
     thread.status = LuaStatus::Ok as u8;
     thread.errfunc = 0;
@@ -4297,6 +4526,7 @@ pub fn new_state() -> Option<LuaState> {
         dynlib_symbol_hook: None,
         dynlib_unload_hook: None,
         totalbytes: std::mem::size_of::<GlobalState>() as isize,
+        sandbox: SandboxLimits::default(),
         gc_debt: 0,
         gc_estimate: 0,
         lastatomic: 0,

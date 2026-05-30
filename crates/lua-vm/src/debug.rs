@@ -384,6 +384,13 @@ fn get_current_line(ci: &CallInfo, state: &LuaState) -> i32 {
 ///
 /// PORT NOTE: In C this walks an intrusive doubly-linked list. In Rust,
 /// `LuaState.call_stack` is a `Vec<CallInfo>`, so we iterate the slice.
+/// Marks every Lua call-frame on `state` as trapped so the dispatch loop
+/// re-reads the hook mask on its next iteration. Exposed for the sandbox,
+/// which arms the count-hook mask directly rather than through [`set_hook`].
+pub(crate) fn arm_traps(state: &mut LuaState) {
+    set_traps(state);
+}
+
 fn set_traps(state: &mut LuaState) {
     //      if (isLua(ci)) ci->u.l.trap = 1;
     // TODO(port): call_stack iteration API not yet finalised; this will change
@@ -1590,6 +1597,16 @@ pub(crate) fn trace_exec(state: &mut LuaState, pc: u32) -> Result<i32, LuaError>
         state.reset_hook_count();
     } else if mask & LUA_MASKLINE == 0 {
         return Ok(1);
+    }
+
+    // Sandbox enforcement: charge the runtime-wide budget once per count-hook
+    // interval, on every thread. Native (returns `Err` directly) and
+    // independent of any user `debug.sethook` closure — the count mask may be
+    // armed purely for the sandbox with no user hook installed.
+    if counthook {
+        if let Some(err) = state.sandbox_charge_interval() {
+            return Err(err);
+        }
     }
 
     if ci.callstatus & CIST_HOOKYIELD != 0 {

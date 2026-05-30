@@ -323,6 +323,14 @@ pub fn co_resume(state: &mut LuaState) -> Result<usize, LuaError> {
     let narg = state.get_top() - 1;
     let r = aux_resume(state, co, narg);
     if r < 0 {
+        // A sandbox budget trip is uncatchable: re-raise into the caller frame
+        // instead of returning `false, msg`, so code cannot keep a runaway
+        // coroutine alive by resuming it in a loop.
+        if state.sandbox_aborting() {
+            let top = state.get_top();
+            let err_val = state.value_at(top);
+            return Err(LuaError::from_value(err_val));
+        }
         state.push(LuaValue::Bool(false));
         state.insert(-2)?;
         Ok(2)

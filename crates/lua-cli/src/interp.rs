@@ -216,6 +216,89 @@ fn pushargs(state: &mut LuaState) -> Result<i32, LuaError> {
 /// `lua.c`: `collectargs` — scan options, returning `(mask, first)`. `first` is
 /// the index of the script name, `0` for no script, or the index of the bad
 /// option when `mask == HAS_ERROR`.
+/// Sandbox options collected from the command line: `--sandbox`,
+/// `--max-instructions=N`, `--max-memory=N[K|M|G]`.
+#[derive(Default)]
+struct SandboxCliOpts {
+    strict: bool,
+    max_instructions: Option<u64>,
+    max_memory: Option<usize>,
+}
+
+impl SandboxCliOpts {
+    fn active(&self) -> bool {
+        self.strict || self.max_instructions.is_some() || self.max_memory.is_some()
+    }
+
+    /// Resolve the effective instruction limit: an explicit `--max-instructions`
+    /// wins, otherwise the strict preset's 10M when `--sandbox` is set.
+    fn instruction_limit(&self) -> Option<u64> {
+        self.max_instructions.or(if self.strict {
+            Some(10_000_000)
+        } else {
+            None
+        })
+    }
+
+    /// Resolve the effective memory limit: explicit `--max-memory`, otherwise
+    /// the strict preset's 64 MiB when `--sandbox` is set.
+    fn memory_limit(&self) -> Option<usize> {
+        self.max_memory.or(if self.strict {
+            Some(64 * 1024 * 1024)
+        } else {
+            None
+        })
+    }
+}
+
+/// Whether `a` is one of the sandbox long-options (so `collectargs` accepts it
+/// rather than rejecting it as an unknown option).
+fn is_sandbox_opt(a: &[u8]) -> bool {
+    a == b"--sandbox"
+        || a.starts_with(b"--max-instructions=")
+        || a.starts_with(b"--max-memory=")
+}
+
+/// Parse a byte count with an optional `K`/`M`/`G` (1024-based) suffix.
+fn parse_byte_count(v: &[u8]) -> Option<usize> {
+    let (digits, mult) = match v.last() {
+        Some(b'K') | Some(b'k') => (&v[..v.len() - 1], 1024),
+        Some(b'M') | Some(b'm') => (&v[..v.len() - 1], 1024 * 1024),
+        Some(b'G') | Some(b'g') => (&v[..v.len() - 1], 1024 * 1024 * 1024),
+        _ => (v, 1),
+    };
+    let text = std::str::from_utf8(digits).ok()?;
+    let n: usize = text.parse().ok()?;
+    n.checked_mul(mult)
+}
+
+/// Scan the option prefix of `argv` for sandbox flags. Stops at the first
+/// non-option / `--`, matching `collectargs`' option region.
+fn parse_sandbox_opts(argv: &[Vec<u8>]) -> SandboxCliOpts {
+    let mut opts = SandboxCliOpts::default();
+    let mut i = 1usize;
+    while i < argv.len() {
+        let a = &argv[i];
+        if a.is_empty() || a[0] != b'-' {
+            break;
+        }
+        if a.as_slice() == b"--" {
+            break;
+        }
+        if a.as_slice() == b"--sandbox" {
+            opts.strict = true;
+        } else if let Some(v) = a.strip_prefix(b"--max-instructions=") {
+            if let Ok(text) = std::str::from_utf8(v) {
+                opts.max_instructions = text.parse().ok();
+            }
+        } else if let Some(v) = a.strip_prefix(b"--max-memory=") {
+            opts.max_memory = parse_byte_count(v);
+        }
+        i += 1;
+    }
+    opts
+}
+
 fn collectargs(argv: &[Vec<u8>]) -> (i32, i32) {
     let mut args = 0;
     let mut first;
@@ -229,10 +312,12 @@ fn collectargs(argv: &[Vec<u8>]) -> (i32, i32) {
         match a.get(1).copied() {
             None => return (args, first),
             Some(b'-') => {
-                if a.len() > 2 {
+                if a.len() == 2 {
+                    return (args, (i + 1) as i32);
+                }
+                if !is_sandbox_opt(a) {
                     return (HAS_ERROR, first);
                 }
-                return (args, (i + 1) as i32);
             }
             Some(b'E') => {
                 if a.len() > 2 {
@@ -510,7 +595,11 @@ impl Cli {
               \x20 -E        ignore environment variables\n\
               \x20 -W        turn warnings on\n\
               \x20 --        stop handling options\n\
-              \x20 -         stop handling options and execute stdin\n",
+              \x20 -         stop handling options and execute stdin\n\
+              \x20 --sandbox            run untrusted code: strip host-access\n\
+              \x20                      globals and apply default CPU/memory caps\n\
+              \x20 --max-instructions=N abort after N executed VM instructions\n\
+              \x20 --max-memory=N[K|M|G] abort when GC memory exceeds N\n",
         );
         let _ = err.flush();
     }
@@ -568,6 +657,23 @@ pub(crate) fn run(
     if let Err(e) = preload(state) {
         cli.report(Err(e));
         return 1;
+    }
+
+    let sandbox_opts = parse_sandbox_opts(argv);
+    if sandbox_opts.active() {
+        if sandbox_opts.strict {
+            if let Err(e) =
+                lua_stdlib::sandbox::strip_globals(state, lua_stdlib::sandbox::STRICT_REMOVED_GLOBALS)
+            {
+                cli.report(Err(e));
+                return 1;
+            }
+        }
+        let instr = sandbox_opts.instruction_limit();
+        let mem = sandbox_opts.memory_limit();
+        if instr.is_some() || mem.is_some() {
+            state.install_sandbox_limits(1000, instr, mem);
+        }
     }
 
     if let Err(e) = createargtable(state, argv, script) {

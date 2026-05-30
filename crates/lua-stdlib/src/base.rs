@@ -728,6 +728,9 @@ pub(crate) fn pcall_fn(state: &mut LuaState) -> Result<usize, LuaError> {
         // `LuaError::Yield` must bubble up to `lua_resume` so the continuation
         // saved on this frame can be invoked on resume.
         Err(LuaError::Yield) => return Err(LuaError::Yield),
+        // A sandbox budget trip is uncatchable: re-raise instead of catching so
+        // untrusted code cannot defeat the budget with `while true do pcall(..) end`.
+        Err(e) if state.sandbox_aborting() => return Err(e),
         Err(e) if yieldable => return Err(e),
         Err(e) => {
             state.push(e.into_value());
@@ -763,6 +766,9 @@ pub(crate) fn xpcall_fn(state: &mut LuaState) -> Result<usize, LuaError> {
     let ok = match state.protected_call_k(n - 2, LUA_MULTRET, 2, 2, Some(finish_pcall_k)) {
         Ok(()) => true,
         Err(LuaError::Yield) => return Err(LuaError::Yield),
+        // Uncatchable sandbox abort: re-raise without running the message
+        // handler, so an `xpcall` handler can neither swallow nor loop on it.
+        Err(e) if state.sandbox_aborting() => return Err(e),
         Err(e) if yieldable => return Err(e),
         Err(e) => {
             state.push(e.into_value());
