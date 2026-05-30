@@ -1522,6 +1522,42 @@ pub fn run_pending_finalizers(state: &mut LuaState) {
     let _ = did_run;
 }
 
+/// Run every still-pending `__gc` finalizer at state close.
+///
+/// Mirrors C-Lua's `luaC_freeallobjects` (`lgc.c`), which calls
+/// `separatetobefnz(g, 1)` to move *all* remaining finalizable objects
+/// (regardless of reachability) into the to-be-finalized list, then
+/// `callallpendingfinalizers` to invoke each `__gc` before the objects are
+/// freed. At `lua_close`, objects the program kept alive to program end —
+/// e.g. a table held by a global — still have their finalizer run; that is
+/// what emits messages like `>>> closing state <<<` from `gc.lua`.
+///
+/// Phase-B note: the live registry of finalizable objects is
+/// `pending_finalizers`. A single snapshot of that list is promoted into
+/// `to_be_finalized` and drained by [`run_pending_finalizers`]. We snapshot
+/// once (matching C's single `separatetobefnz` call): a finalizer may
+/// resurrect its object or register new finalizables via `setmetatable`, but
+/// C does not re-finalize those at close (`gcstp = GCSTPCLS`), so neither do
+/// we — the freshly-registered entries are left in `pending_finalizers` and
+/// simply dropped with the state.
+pub fn run_close_finalizers(state: &mut LuaState) {
+    let pending: Vec<GcRef<lua_types::value::LuaTable>> =
+        std::mem::take(&mut state.global_mut().pending_finalizers);
+    if pending.is_empty() {
+        return;
+    }
+    let mut seen = std::collections::HashSet::<usize>::new();
+    {
+        let mut g = state.global_mut();
+        for tbl in pending {
+            if seen.insert(tbl.identity()) {
+                g.to_be_finalized.push(tbl);
+            }
+        }
+    }
+    run_pending_finalizers(state);
+}
+
 /// Snapshot the currently-live weak tables from
 /// `GlobalState.weak_tables_registry`, deduplicating by Rc pointer and
 /// dropping any whose backing storage has been freed. Used by both the

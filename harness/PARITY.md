@@ -55,17 +55,20 @@ lua-rs silently prints the wrong numbers. This oracle is the missing
 truth-teller: it diffs observable behavior against the C reference, so a wrong
 answer that still exits 0 is caught.
 
-## Current result: 24 / 33 MATCH
+## Current result: 27 / 33 MATCH
 
 As reproduced on this branch (`test/parity-closeout`):
 
 ```
-MATCH (24):  api attrib big bitwise bwcoercion calls closure code constructs
-             coroutine db errors events gengc goto main nextvar pm strings
-             tpack tracegc utf8 vararg verybig
+MATCH (27):  api attrib big bitwise bwcoercion calls closure code constructs
+             coroutine db errors events files gc gengc goto locals main nextvar
+             pm strings tpack tracegc utf8 vararg verybig
 
-DIVERGE (9): all cstack files gc heavy literals locals math sort
+DIVERGE (6): all cstack heavy literals math sort
 ```
+
+`gc` moved to MATCH after the close-time `__gc` finalizer pass landed (see
+"Resolved gaps" below); `files` matches after the `os.date` localtime fix.
 
 ## The divergences, categorized
 
@@ -77,19 +80,23 @@ DIVERGE (9): all cstack files gc heavy literals locals math sort
 | `math`     | PRNG nondeterminism    | `math.random` seed reporting and the random-range sampling lines differ because the two RNGs are seeded from independent entropy each run. Re-seeded runs never match by design. |
 | `all`      | PRNG + GC dot-counts   | `all.lua` re-runs the suite; it inherits the `math` seed lines and the `gc` step dot-counts below. Same two benign roots, aggregated. |
 | `sort`     | comparison-count       | `sort.lua` prints the number of comparisons its randomized quicksort performed; the count is input-order dependent and differs run-to-run. |
-| `gc`/`all` | GC-step dot-counts     | The incremental-GC progress dots (`....`) are emitted one-per-GC-step; lua-rs and C step the collector at different granularities, so the dot counts differ. (The `gc` file additionally has the real `closing state` gap below.) |
+| `all`      | GC-step dot-counts     | The incremental-GC progress dots (`....`) are emitted one-per-GC-step; lua-rs and C step the collector at different granularities, so the dot counts differ. (`gc.lua` itself now MATCHes; only the aggregated `all.lua` still shows this.) |
 | `literals` | locale-not-installed   | `literals.lua` probes the `pt_BR` locale for decimal-point tests; on this host that locale is not installed, so lua-rs prints `pt_BR locale not available: skipping`. Environmental. |
 | `cstack`   | stack-depth-limit      | Deep-recursion `final count:` values differ because lua-rs and C hit their C-stack overflow guard at slightly different depths; plus a trailing-dot / no-final-newline artifact. Limit-tuning, not a behavioral bug. |
-| `locals`   | trailing-dot           | Differs only by a single trailing progress `.` with no final newline at end of output. Cosmetic. |
 
-### Real, fixable gaps (2) — being addressed on this branch
+### Resolved gaps — closed on this branch
 
-| File    | Gap | Detail |
-|---------|-----|--------|
-| `files` | `os.date` timezone | lua-rs renders `os.date` in **UTC** (gmtime semantics) where C renders **local** time. The C/POSIX contract is: default `os.date`/`os.time` formats use **localtime**; only `"!"`-prefixed formats are UTC. `files.lua` prints `test done on DD/MM/YYYY, at HH:MM:SS` and the hour differs by the local UTC offset. |
-| `gc`    | `>>> closing state <<<` | At state close, C runs a `__gc` finalizer that prints `>>> closing state <<<`. lua-rs does not emit this line, so the `gc` transcript is missing it. Requires finalizers-at-close behavior. |
+| File    | Gap | Resolution |
+|---------|-----|------------|
+| `files` | `os.date` timezone | lua-rs previously rendered `os.date` in UTC (gmtime semantics) where C renders local time. Default `os.date`/`os.time` formats now use localtime; only `"!"`-prefixed formats are UTC. `files.lua` now MATCHes. |
+| `gc`    | `>>> closing state <<<` | At state close, C runs a `__gc` finalizer that prints `>>> closing state <<<` (C's `luaC_freeallobjects` → `separatetobefnz(g, 1)` → `callallpendingfinalizers`). lua-rs now drives the equivalent close-time finalizer pass (`lua_vm::api::run_close_finalizers`, called from the CLI after `interp::run` and before the `LuaState` drops): it promotes every still-pending finalizable from `pending_finalizers` into `to_be_finalized` and drains them through `run_pending_finalizers`. `gc.lua` now MATCHes. |
 
-These two are the only divergences that represent a true behavioral gap. They are
-tracked in this branch; if either cannot be closed cleanly (e.g. without pulling
-in a timezone database, or without deep finalizer rework), the gap is documented
-honestly here rather than force-fixed.
+The `gc` close-time fix is scoped to the CLI's program-exit path (the analogue
+of C's `lua_close` in `lua.c`'s `main`); it is *not* a general
+finalizer-on-collection rework. Objects unreachable mid-program are still
+finalized by the existing GC mark path; this change only adds the final
+"finalize everything that survived to program end" sweep that `lua_close`
+performs. The remaining 6 divergences (`all cstack heavy literals math sort`)
+are all benign per the table above — PRNG nondeterminism, GC-step granularity,
+host locale/stack limits, and the C heavy-workload timeout — and are kept
+visible on purpose rather than masked.
