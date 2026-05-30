@@ -263,6 +263,20 @@ fn unix_now(state: &LuaState) -> Result<i64, LuaError> {
     }
 }
 
+/// Returns the host's local timezone offset (seconds) at instant `t`, such that
+/// the local broken-down time equals `decompose_utc(t + offset)`.
+///
+/// Routes through `GlobalState::local_offset_hook` when the host installs one
+/// (lua-cli does, via `localtime_r`). Absent a hook the offset is 0, so
+/// `os.date`/`os.time` fall back to UTC — matching the prior behaviour and
+/// keeping the round-trip exact under bare WASM.
+fn local_offset(state: &LuaState, t: i64) -> i64 {
+    match state.global().local_offset_hook {
+        Some(off_fn) => off_fn(t),
+        None => 0,
+    }
+}
+
 fn native_temp_name() -> Result<Vec<u8>, LuaError> {
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     {
@@ -745,12 +759,15 @@ pub(crate) fn os_date(state: &mut LuaState) -> Result<usize, LuaError> {
     };
 
     // PORT NOTE: C distinguishes UTC (`gmtime_r`) from local time (`localtime_r`).
-    // The Rust port uses UTC unconditionally because reading the local timezone
-    // database requires `libc` FFI which the workspace forbids (`unsafe_code =
-    // forbid`).  The internal `os.date` / `os.time` round-trip used by the test
-    // suite remains consistent because `compose_utc` is the exact inverse of
-    // `decompose_utc`.  Wall-clock displays will read as UTC rather than local.
-    let stm = decompose_utc(t);
+    // The Rust port reproduces `localtime_r` by decomposing `t + offset`, where
+    // `offset` is the host timezone offset at `t` supplied by the
+    // `local_offset_hook` (lua-cli installs one via `localtime_r`; reading the
+    // timezone database needs `libc` FFI, banned in `lua-stdlib`). Without a hook
+    // the offset is 0 and local time degrades to UTC, keeping the
+    // `os.date`/`os.time` round-trip exact under bare WASM. `'!'`-prefixed formats
+    // request UTC explicitly and skip the offset.
+    let offset = if _use_utc { 0 } else { local_offset(state, t) };
+    let stm = decompose_utc(t + offset);
 
     //      return luaL_error(L, "date result cannot be represented in this installation");
     // (Phase A stub is always valid — no null check needed.)
@@ -826,14 +843,21 @@ pub(crate) fn os_time(state: &mut LuaState) -> Result<usize, LuaError> {
             ..TmFields::default()
         };
 
-        // PORT NOTE: C `mktime` interprets the broken-down time as local; we
-        // interpret it as UTC for the same reason `os_date` decomposes as UTC.
-        // `compose_utc` normalises month-axis overflow itself, then a
-        // round-trip through `decompose_utc` normalises every other axis
-        // (day-of-month, hour, minute, second) so the post-call table holds
-        // canonical field values just like `mktime`.
-        t = compose_utc(&raw);
-        let stm = decompose_utc(t);
+        // PORT NOTE: C `mktime` interprets the broken-down time as LOCAL and
+        // returns the corresponding UTC timestamp. We reproduce it: treat the
+        // fields as UTC to get a provisional `t_utc` (this also normalises the
+        // month axis), then subtract the host timezone offset to recover the true
+        // UTC instant. The offset is sampled at `t_utc` then re-sampled at the
+        // corrected instant — the standard `mktime` fixed-point step — so the
+        // result is correct except across a DST transition inside the offset
+        // window, which `os.time`'s test inputs do not exercise. Without a hook
+        // the offset is 0 and this is the exact inverse of `os.date`'s local
+        // decomposition, so the `os.time(os.date("*t")) == t` round-trip holds.
+        let t_utc = compose_utc(&raw);
+        let off0 = local_offset(state, t_utc);
+        let off = local_offset(state, t_utc - off0);
+        t = t_utc - off;
+        let stm = decompose_utc(t + off);
 
         set_all_fields(state, &stm)?;
     }

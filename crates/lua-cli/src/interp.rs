@@ -599,6 +599,13 @@ pub(crate) fn run(
         }
     }
 
+    // C-Lua's `main` calls `lua_close(L)` after `pmain`, which runs every
+    // remaining `__gc` finalizer (`luaC_freeallobjects`). Drive the same
+    // close-time finalizer pass before the `LuaState` is dropped so programs
+    // that keep a finalizable object alive to program end still observe their
+    // `__gc` side effects (e.g. `gc.lua`'s `>>> closing state <<<`).
+    api::run_close_finalizers(state);
+
     0
 }
 

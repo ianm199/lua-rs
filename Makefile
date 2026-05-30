@@ -3,6 +3,7 @@
 #   make test          build + Rust tests + conformance (what CI runs)
 #   make rust          workspace unit/integration tests + embedding doctests
 #   make conformance   official Lua 5.4 suite against the lua-rs binary
+#   make parity        behavioral diff vs reference C Lua 5.4.7 (the oracle)
 #   make perf          benchmark vs reference C Lua (measurement, not a gate)
 #   make scaling       flag superlinear (O(n^2)) behavior in hot operations
 #   make profile F=... sample a hotpath profile of running script F (needs samply)
@@ -16,7 +17,7 @@ CARGO ?= cargo
 TEST_TIMEOUT_S ?= 90
 export TEST_TIMEOUT_S
 
-.PHONY: help test build setup rust conformance perf scaling profile clean
+.PHONY: help test build setup rust conformance parity perf scaling profile clean
 
 help:
 	@grep -E '^#   make ' Makefile | sed 's/^#   /  /'
@@ -40,6 +41,12 @@ rust:
 
 conformance: build setup
 	./harness/run_official_all.sh
+
+# Behavioral parity oracle: same wrapped test through lua-rs AND reference C
+# 5.4.7, diff normalized stdout+exit. Exits nonzero on any divergence.
+# This is the truth-teller `conformance` (no-crash) cannot be.
+parity: build setup
+	./harness/parity_check.sh
 
 perf:
 	@[ -x reference/lua-5.4.7/src/lua ] || $(MAKE) -C reference/lua-5.4.7 guess

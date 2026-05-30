@@ -702,6 +702,19 @@ pub type UnixTimeHook = fn() -> i64;
 /// `cpu-time` crate) without changing the sandboxed crates.
 pub type CpuClockHook = fn() -> f64;
 
+/// Function-pointer signature for the host's local timezone offset.
+///
+/// Given a Unix timestamp (seconds, UTC), returns the offset in seconds that the
+/// host's local timezone applies at that instant, such that
+/// `local_broken_down = gmtime(timestamp + offset)`. Positive east of UTC (e.g.
+/// `+3600` for CET), negative west (e.g. `-14400` for US EDT). This backs the
+/// local-time semantics of `os.date` (non-`!` formats) and `os.time`, which C
+/// implements with `localtime_r`/`mktime`. Reading the host timezone database
+/// requires `libc` FFI (`unsafe`), banned in `lua-stdlib`, so the host installs
+/// this hook. When unset the stdlib uses UTC (offset 0), keeping the
+/// `os.date`/`os.time` round-trip exact on hosts without a timezone.
+pub type LocalOffsetHook = fn(timestamp: i64) -> i64;
+
 /// Function-pointer signature for host entropy used by default PRNG seeds and
 /// table-sort pivot randomisation. Hosts without entropy may leave it unset; the
 /// stdlib then uses deterministic fallback values instead of touching OS stubs.
@@ -1001,6 +1014,12 @@ pub struct GlobalState {
     /// Hook for host program CPU time. Backs `os.clock`. When unset, native builds
     /// use a monotonic wall-clock baseline and bare WASM reports it unavailable.
     pub cpu_clock_hook: Option<CpuClockHook>,
+
+    /// Hook for the host's local timezone offset at a given instant. Backs the
+    /// local-time semantics of `os.date` (non-`!` formats) and `os.time`. When
+    /// unset, both use UTC, matching the prior behaviour and keeping the
+    /// `os.date`/`os.time` round-trip exact under bare WASM.
+    pub local_offset_hook: Option<LocalOffsetHook>,
 
     /// Hook for host entropy. Used by default `math.randomseed` and table sort
     /// pivot randomisation; absent hooks fall back to deterministic seeds.
@@ -4268,6 +4287,7 @@ pub fn new_state() -> Option<LuaState> {
         env_hook: None,
         unix_time_hook: None,
         cpu_clock_hook: None,
+        local_offset_hook: None,
         entropy_hook: None,
         temp_name_hook: None,
         popen_hook: None,

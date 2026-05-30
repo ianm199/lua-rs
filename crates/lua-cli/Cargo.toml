@@ -33,5 +33,6 @@ lua-parse.workspace = true
 lua-rs-lfs.workspace = true
 libloading = "0.9"
 rustyline = "14"
+libc = "0.2"
 dhat = { version = "0.3", optional = true }
 mimalloc = { version = "0.1", optional = true }

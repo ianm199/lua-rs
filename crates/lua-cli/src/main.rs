@@ -375,6 +375,28 @@ fn cpu_clock_hook() -> f64 {
         .as_secs_f64()
 }
 
+/// Returns the host's local timezone offset (seconds east of UTC) at instant
+/// `t`, matching C `os.date`/`os.time` local-time semantics. Reproduces
+/// `localtime_r` and reads `tm_gmtoff`, the broken-down time's UTC offset
+/// (already accounting for DST). On the rare platforms without `tm_gmtoff`
+/// (none we target) this would need a `timegm` round-trip instead.
+fn local_offset_hook(t: i64) -> i64 {
+    // SAFETY: `localtime_r` writes a fully-initialised `struct tm` into the
+    // stack-allocated `tm` and returns a pointer to it (or null on failure).
+    // We pass valid pointers to `t` and `tm`; nothing escapes the call. On a
+    // null return (overflow / unrepresentable) we leave `tm` zeroed and report
+    // offset 0 (UTC), the safe degenerate matching the no-hook path.
+    unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        let tt = t as libc::time_t;
+        if libc::localtime_r(&tt, &mut tm).is_null() {
+            0
+        } else {
+            tm.tm_gmtoff as i64
+        }
+    }
+}
+
 fn entropy_hook() -> u64 {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -831,6 +853,7 @@ fn main() -> ExitCode {
         state.global_mut().env_hook = Some(env_hook);
         state.global_mut().unix_time_hook = Some(unix_time_hook);
         state.global_mut().cpu_clock_hook = Some(cpu_clock_hook);
+        state.global_mut().local_offset_hook = Some(local_offset_hook);
         state.global_mut().entropy_hook = Some(entropy_hook);
         state.global_mut().temp_name_hook = Some(temp_name_hook);
         state.global_mut().popen_hook = Some(popen_hook);
