@@ -27,6 +27,11 @@ three independent controls, each proven by a passing test
 hanging/OOMing the host; pure libraries (`string`, `math`, `table`, `os.time`)
 remain. A plain `Lua::new()` is completely unaffected (no hook, no stripping).
 
+**⚠️ Not yet a sound security boundary.** The budget does not follow coroutines
+(limitation 0 below) — code inside `coroutine.wrap(...)` is unmetered and can
+hang. Treat this as a working proof-of-concept, not a shippable sandbox, until
+the budget moves into `GlobalState` with per-thread enforcement.
+
 ## How it works
 
 The key discovery: **most of the infrastructure already existed**, it was just
@@ -91,6 +96,25 @@ Every field is tunable; `install_sandbox` lets you grant *some* `HostHooks` and
 still bound execution.
 
 ## Honest limitations (and the path past them)
+
+0. **⚠️ Coroutines escape the CPU/memory budget (verified).** The budget is
+   enforced by a count-hook closure on *one* `LuaState`. Coroutines are separate
+   `LuaState`s created with no hook, so code running inside a coroutine is
+   completely unmetered — `coroutine.wrap(function() while true do end end)()`
+   **hangs forever** under an instruction limit, and `strict()` does *not* strip
+   `coroutine`. Root cause: the hook is a `Box<dyn FnMut>` that cannot be cloned
+   into each new thread, so the closure design fundamentally can't span threads.
+   - **Stopgap (verified to close the hole):** add `b"coroutine"` to
+     `remove_globals`. Then coroutine creation is a plain nil-index error.
+   - **Proper fix:** move the budget into `GlobalState` (already shared across
+     all threads via `Rc<RefCell<…>>`) and check it in the dispatch-loop trap
+     path for *every* thread, instead of using the per-thread user-hook slot.
+     That is the design a production sandbox wants; it also frees the user-hook
+     slot for `debug.sethook`.
+
+   This is the reason the prototype is **not yet a sound security boundary** and
+   should not be merged to `main` as "sandboxing" without the proper fix or, at
+   minimum, the stopgap baked into `strict()` plus clear "best-effort" framing.
 
 1. **Enforcement is granular, not exact.** Limits are checked every
    `check_interval` instructions (default 1000). A budget trips within
