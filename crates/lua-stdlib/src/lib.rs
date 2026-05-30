@@ -13,6 +13,7 @@ pub mod os_lib;
 pub mod utf8_lib;
 pub mod debug_lib;
 pub mod coro_lib;
+pub mod bit32_lib;
 pub mod loadlib;
 pub mod auxlib;
 pub mod init;

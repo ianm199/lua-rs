@@ -796,6 +796,7 @@ impl Lua {
     /// language version.
     pub fn with_hooks_versioned(hooks: HostHooks, version: LuaVersion) -> Result<Self> {
         let mut state = new_state().ok_or(LuaError::Memory)?;
+        state.global_mut().lua_version = version;
         install_parser_hook(&mut state);
         hooks.install(&mut state);
         open_libs(&mut state)?;

@@ -610,9 +610,24 @@ fn close_suspended_or_dead(
 /// all `coroutine.*` functions.
 ///
 pub fn open_coroutine(state: &mut LuaState) -> Result<usize, LuaError> {
-    // TODO(port): state.new_lib(CO_FUNCS) creates a table from the registration
-    // slice and leaves it on the stack; Phase B wire-up needed.
-    state.new_lib(CO_FUNCS)?;
+    // `coroutine.close` is a Lua 5.4 addition tied to to-be-closed variables
+    // (`specs/research/5.3-upstream-delta.md` delta #9). Under 5.3 it is absent
+    // from the roster entirely.
+    use lua_types::LuaVersion;
+    let has_close = !matches!(
+        state.global().lua_version,
+        LuaVersion::V51 | LuaVersion::V52 | LuaVersion::V53
+    );
+    if has_close {
+        state.new_lib(CO_FUNCS)?;
+    } else {
+        let without_close: Vec<(&[u8], lua_CFunction)> = CO_FUNCS
+            .iter()
+            .filter(|(name, _)| *name != b"close".as_slice())
+            .copied()
+            .collect();
+        state.new_lib(&without_close)?;
+    }
     Ok(1)
 }
 

@@ -91,6 +91,14 @@ pub fn open_libs(state: &mut LuaState) -> Result<(), LuaError> {
         state.require_lib(name, func, true)?;
         state.pop_n(1);
     }
+    // Per-version roster delta: the `bit32` library is default-on in Lua 5.3
+    // and was removed in 5.4 (`specs/research/5.3-upstream-delta.md` delta
+    // #11). Register it only under the 5.3 backend so the version seam shows
+    // a real, observable stdlib difference.
+    if matches!(state.global().lua_version, lua_types::LuaVersion::V53) {
+        state.require_lib(b"bit32", crate::bit32_lib::open_bit32, true)?;
+        state.pop_n(1);
+    }
     Ok(())
 }
 

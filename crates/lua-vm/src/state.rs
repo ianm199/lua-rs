@@ -994,6 +994,14 @@ pub struct GlobalState {
     /// so unit tests that never load text still work.
     pub parser_hook: Option<ParserHook>,
 
+    /// The Lua language version this state speaks. The single source of truth
+    /// for version-gated behavior in the layers that read the state (parser,
+    /// stdlib openers). The embedder sets this from the [`Lua`] instance's
+    /// [`lua_types::LuaVersion`] at construction; it defaults to
+    /// [`lua_types::LuaVersion::V54`] so any state built without an explicit
+    /// version keeps the existing 5.4 behavior unchanged.
+    pub lua_version: lua_types::LuaVersion,
+
     /// Phase-B hook for reading a Lua source file from disk. Set by `lua-cli`
     /// (or any embedder that wants `require`/`loadfile` to reach the file
     /// system) since `std::fs` is banned in `lua-stdlib`. `None` makes
@@ -4507,6 +4515,7 @@ pub fn new_state() -> Option<LuaState> {
 
     let global = GlobalState {
         parser_hook: None,
+        lua_version: lua_types::LuaVersion::default(),
         file_loader_hook: None,
         file_open_hook: None,
         stdout_hook: None,

@@ -3896,8 +3896,28 @@ fn localfunc(ls: &mut LexState, state: &mut LuaState) -> Result<(), LuaError> {
     Ok(())
 }
 
+/// Whether the active Lua version supports `<const>`/`<close>` local-variable
+/// attributes. True for 5.4 and 5.5; false for 5.1/5.2/5.3.
+fn version_has_attributes(state: &LuaState) -> bool {
+    use lua_types::LuaVersion;
+    matches!(
+        state.global().lua_version,
+        LuaVersion::V54 | LuaVersion::V55
+    )
+}
+
 /// Parses an optional '<const>' or '<close>' attribute.
+///
+/// The `<const>`/`<close>` attribute syntax is a Lua 5.4 addition (5.4 §8.1,
+/// `specs/research/5.3-upstream-delta.md` delta #7). Under Lua 5.3 the `<`
+/// after a local name is not an attribute opener at all — it is left
+/// unconsumed so the surrounding statement reports it as an unexpected symbol,
+/// exactly as the 5.3 parser does. Versions are gated on
+/// [`lua_types::LuaVersion`], read from the state set at construction.
 fn getlocalattribute(ls: &mut LexState, state: &mut LuaState) -> Result<VarKind, LuaError> {
+    if !version_has_attributes(state) {
+        return Ok(VarKind::Reg);
+    }
     if test_next(ls, state, b'<' as TokenKind)? {
         let attr_name = str_check_name(ls, state)?;
         check_next(ls, state, b'>' as TokenKind)?;
