@@ -15,7 +15,8 @@ initial prototype's coroutine escape is now closed).
 
 A working `Lua::sandboxed(SandboxConfig)` constructor that gives an embedder
 three independent controls, each proven by a passing test
-(`crates/lua-rs-runtime/tests/sandbox.rs`, 9/9 green):
+(`crates/lua-rs-runtime/tests/sandbox.rs`, 14/14 green; full official Lua suite
+44/44):
 
 | Control | Mechanism | Test |
 |---|---|---|
@@ -27,12 +28,18 @@ three independent controls, each proven by a passing test
 hanging/OOMing the host; pure libraries (`string`, `math`, `table`, `os.time`)
 remain. A plain `Lua::new()` is completely unaffected (no hook, no stripping).
 
-The budget spans **every thread** — code inside `coroutine.wrap(...)` is metered
-too (this was the original prototype's one escape; it is now closed by putting
-the budget in `GlobalState` and arming every coroutine). Remaining gaps are
-narrower and documented below: the memory ceiling is sampled rather than
-per-allocation, and a single long-running stdlib C call can't be preempted
-mid-call.
+The budget spans **every thread** and is **uncatchable**. Two escapes that an
+adversary would reach for are both closed:
+- *Coroutines* — code inside `coroutine.wrap(...)` is metered (budget lives in
+  `GlobalState`, every coroutine is armed).
+- *`pcall`/`xpcall`/`coroutine.resume`* — once the budget trips, the abort is
+  sticky and re-raised by every protected-call builtin, so
+  `while true do pcall(function() while true do end end) end` aborts instead of
+  running forever. Ordinary errors are still caught normally.
+
+Remaining gaps are narrower and documented below: the memory ceiling is sampled
+rather than per-allocation, and a single long-running stdlib C call can't be
+preempted mid-call.
 
 ## How it works
 
@@ -66,6 +73,18 @@ coroutines (see history below). Instead it lives in `GlobalState`
   `total_bytes()`, returning a `LuaError` directly (it's already a `Result` fn)
   when a limit is crossed. That `Err` unwinds the dispatch loop.
 
+**Uncatchability.** A budget trip raises an ordinary `LuaError`, which `pcall`
+would normally catch — letting untrusted code loop on it forever. To prevent
+that, the trip sets a sticky `aborting` flag in `SandboxLimits`. While it is
+set, the protected-call builtins re-raise instead of catching:
+`pcall_fn`/`xpcall_fn` (`base.rs`) and `co_resume` (`coro_lib.rs`) check
+`state.sandbox_aborting()` and propagate the error rather than returning
+`false, msg`. `coroutine.wrap` already re-raises, so it inherits this. The flag
+clears only on `Sandbox::reset()`. Ordinary (non-sandbox) errors are unaffected
+— the re-raise is gated on an in-flight abort, so normal `pcall` semantics are
+preserved (proven by `pcall_still_catches_ordinary_errors_under_sandbox` and the
+44/44 official suite).
+
 Because enforcement is native in `trace_exec` (not a user-hook closure), there
 is **no `pending_hook_error` indirection** and the user-hook slot stays free for
 `debug.sethook`. Changes to `lua-vm`:
@@ -76,6 +95,11 @@ is **no `pending_hook_error` indirection** and the user-hook slot stays free for
 - `lua-vm/src/debug.rs` — `trace_exec` charges the budget in the count path;
   `arm_traps` wrapper.
 
+Changes to `lua-stdlib` (uncatchability):
+
+- `base.rs` — `pcall_fn`/`xpcall_fn` re-raise while `sandbox_aborting()`.
+- `coro_lib.rs` — `co_resume` re-raises while `sandbox_aborting()`.
+
 Everything else lives in `lua-rs-runtime/src/lib.rs` (`Sandbox`,
 `SandboxConfig`, `TripReason`, `Lua::sandboxed`, `install_sandbox`).
 
@@ -85,11 +109,14 @@ Everything else lives in `lua-rs-runtime/src/lib.rs` (`Sandbox`,
 runs when the sandbox is active (`interval != 0`), so normal hook usage is
 unaffected, and the dispatch loop itself is untouched. Confirmed:
 
-- `db.lua` (official debug-hook test — count + line hooks) — **PASS**
-- `coroutine.lua`, `errors.lua`, `gc.lua`, `nextvar.lua` — **PASS**
+- **Full official Lua 5.4 suite: 44/44 PASS** (the gate; covers
+  `pcall`/`xpcall`/`coroutine`/`errors` semantics the uncatchability change
+  touches).
 - `lua-vm` lib tests, full `lua-rs-runtime` build — clean.
-- Sandbox tests **9/9** including `coroutine_is_metered` and
-  `yielding_coroutine_within_budget_completes`.
+- Sandbox tests **14/14**, including `coroutine_is_metered`,
+  `pcall_loop_cannot_escape`, `xpcall_cannot_swallow_trip`,
+  `resume_loop_cannot_escape`, and
+  `pcall_still_catches_ordinary_errors_under_sandbox`.
 
 ### Cost (measured, release, worst-case tight integer loop)
 
@@ -137,6 +164,17 @@ still bound execution.
    `coroutine_is_metered` (aborts in <5s) and `yielding_coroutine_within_budget_completes`.
    The closure design couldn't do this because `Box<dyn FnMut>` can't be cloned
    into each thread; native `GlobalState` enforcement has no such constraint.
+
+0b. **✅ `pcall`/`xpcall`/`resume` escape — RESOLVED.** The trip raised an
+   ordinary `LuaError`, so `pcall` caught it and `while true do pcall(runaway)
+   end` ran forever (total instructions unbounded). Fixed by a sticky `aborting`
+   flag: once tripped, the protected-call builtins re-raise instead of catching,
+   so the abort propagates all the way to the embedder and cannot be looped on.
+   Ordinary errors still caught normally. Proven by `pcall_loop_cannot_escape`,
+   `xpcall_cannot_swallow_trip`, `resume_loop_cannot_escape`, and
+   `pcall_still_catches_ordinary_errors_under_sandbox`. A looping `__close`
+   handler during the abort unwind is also bounded (the count hook meters the
+   handler body; verified to abort in ~2ms).
 
 1. **Enforcement is granular, not exact.** Limits are checked every
    `check_interval` instructions (default 1000). A budget trips within

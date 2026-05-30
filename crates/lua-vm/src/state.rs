@@ -1326,6 +1326,11 @@ pub struct SandboxLimits {
     pub mem_limit: std::cell::Cell<Option<usize>>,
     /// One of the `SANDBOX_TRIP_*` codes.
     pub tripped: std::cell::Cell<u8>,
+    /// Sticky once a limit trips: the abort is *uncatchable*. While set,
+    /// `pcall`/`xpcall`/`coroutine.resume` re-raise the trip error instead of
+    /// swallowing it, so untrusted code cannot defeat the budget by catching
+    /// it in a loop. Cleared only by [`LuaState::sandbox_reset`].
+    pub aborting: std::cell::Cell<bool>,
 }
 
 impl GlobalState {
@@ -1706,6 +1711,7 @@ impl LuaState {
             g.sandbox.instr_remaining.set(rem);
             if rem == 0 {
                 g.sandbox.tripped.set(SANDBOX_TRIP_INSTRUCTIONS);
+                g.sandbox.aborting.set(true);
                 return Some(LuaError::runtime(format_args!(
                     "sandbox: instruction budget exhausted"
                 )));
@@ -1714,12 +1720,20 @@ impl LuaState {
         if let Some(limit) = g.sandbox.mem_limit.get() {
             if g.total_bytes() > limit {
                 g.sandbox.tripped.set(SANDBOX_TRIP_MEMORY);
+                g.sandbox.aborting.set(true);
                 return Some(LuaError::runtime(format_args!(
                     "sandbox: memory limit exceeded"
                 )));
             }
         }
         None
+    }
+
+    /// Whether a sandbox abort is in flight. While true, protected-call builtins
+    /// (`pcall`/`xpcall`/`coroutine.resume`) must re-raise rather than catch, so
+    /// the budget trip is uncatchable. Set on trip, cleared by `sandbox_reset`.
+    pub fn sandbox_aborting(&self) -> bool {
+        self.global().sandbox.aborting.get()
     }
 
     /// Whether an instruction budget is active (vs. only a memory limit / none).
@@ -1751,6 +1765,7 @@ impl LuaState {
             g.sandbox.instr_remaining.set(g.sandbox.instr_limit.get());
         }
         g.sandbox.tripped.set(SANDBOX_TRIP_NONE);
+        g.sandbox.aborting.set(false);
     }
 
     /// Returns the current stack capacity (slots between base and stack_last).

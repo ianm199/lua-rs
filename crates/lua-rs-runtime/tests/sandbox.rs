@@ -193,6 +193,128 @@ fn yielding_coroutine_within_budget_completes() {
     assert_eq!(sandbox.tripped(), None);
 }
 
+/// The budget trip is uncatchable: a `pcall` loop cannot keep runaway code
+/// alive. Without re-raising, this runs forever.
+#[test]
+fn pcall_loop_cannot_escape() {
+    use std::time::{Duration, Instant};
+    let config = SandboxConfig {
+        instruction_limit: Some(300_000),
+        memory_limit_bytes: None,
+        check_interval: 256,
+        remove_globals: Vec::new(),
+    };
+    let (lua, sandbox) = Lua::sandboxed(config).unwrap();
+
+    let start = Instant::now();
+    let result = lua
+        .load("while true do pcall(function() while true do end end) end")
+        .exec();
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "pcall loop escaped the budget"
+    );
+    assert!(result.is_err(), "pcall loop should abort, not run forever");
+    assert_eq!(sandbox.tripped(), Some(TripReason::Instructions));
+}
+
+/// A single `pcall` around a runaway cannot swallow the trip: the chunk must
+/// error out, not return normally.
+#[test]
+fn single_pcall_cannot_swallow_trip() {
+    let config = SandboxConfig {
+        instruction_limit: Some(300_000),
+        memory_limit_bytes: None,
+        check_interval: 256,
+        remove_globals: Vec::new(),
+    };
+    let (lua, sandbox) = Lua::sandboxed(config).unwrap();
+
+    let result = lua
+        .load("local ok = pcall(function() while true do end end) return ok")
+        .exec();
+    assert!(result.is_err(), "pcall must not swallow the budget trip");
+    assert_eq!(sandbox.tripped(), Some(TripReason::Instructions));
+}
+
+/// `xpcall`'s message handler cannot run on (and thus cannot loop on or
+/// swallow) a budget trip.
+#[test]
+fn xpcall_cannot_swallow_trip() {
+    let config = SandboxConfig {
+        instruction_limit: Some(300_000),
+        memory_limit_bytes: None,
+        check_interval: 256,
+        remove_globals: Vec::new(),
+    };
+    let (lua, sandbox) = Lua::sandboxed(config).unwrap();
+
+    let result = lua
+        .load(
+            "local ok = xpcall(function() while true do end end, function() return 'handled' end) return ok",
+        )
+        .exec();
+    assert!(result.is_err(), "xpcall must not swallow the budget trip");
+    assert_eq!(sandbox.tripped(), Some(TripReason::Instructions));
+}
+
+/// Resuming a runaway coroutine in a loop cannot keep it alive — `resume`
+/// re-raises the trip rather than returning `false, msg`.
+#[test]
+fn resume_loop_cannot_escape() {
+    use std::time::{Duration, Instant};
+    let config = SandboxConfig {
+        instruction_limit: Some(300_000),
+        memory_limit_bytes: None,
+        check_interval: 256,
+        remove_globals: Vec::new(),
+    };
+    let (lua, sandbox) = Lua::sandboxed(config).unwrap();
+
+    let start = Instant::now();
+    let result = lua
+        .load(
+            r#"
+            while true do
+                local co = coroutine.create(function() while true do end end)
+                coroutine.resume(co)
+            end
+        "#,
+        )
+        .exec();
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "resume loop escaped the budget"
+    );
+    assert!(result.is_err());
+    assert_eq!(sandbox.tripped(), Some(TripReason::Instructions));
+}
+
+/// `pcall` still works normally (catches ordinary errors) when no sandbox is
+/// active — the re-raise is gated on an in-flight abort.
+#[test]
+fn pcall_still_catches_ordinary_errors_under_sandbox() {
+    let config = SandboxConfig {
+        instruction_limit: Some(10_000_000),
+        memory_limit_bytes: None,
+        check_interval: 1000,
+        remove_globals: Vec::new(),
+    };
+    let (lua, sandbox) = Lua::sandboxed(config).unwrap();
+
+    let result = lua
+        .load(
+            r#"
+            local ok, msg = pcall(function() error("boom") end)
+            assert(ok == false, "pcall should catch ordinary errors")
+            assert(tostring(msg):find("boom"), "message should propagate")
+        "#,
+        )
+        .exec();
+    assert!(result.is_ok(), "ordinary pcall must still work: {result:?}");
+    assert_eq!(sandbox.tripped(), None);
+}
+
 /// A plain (non-sandboxed) runtime is unaffected: no hook, no stripping.
 #[test]
 fn plain_runtime_is_unbounded() {
