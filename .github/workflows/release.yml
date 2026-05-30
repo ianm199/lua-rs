@@ -90,3 +90,43 @@ jobs:
               --generate-notes \
               --title "$GITHUB_REF_NAME"
           fi
+
+  dashboard:
+    name: update perf dashboard
+    needs: github-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Check out main (== the tag commit at release time) so the dashboard
+      # commit and the ledger's HEAD-keyed bench rows both land on main.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: benchmark and regenerate dashboard
+        # `make perf` builds reference C (guess) + lua-rs, then runs
+        # compare.sh, which appends ours/reference-C ratio rows (keyed by
+        # HEAD) to harness/evidence/ledger.jsonl. Ratios are measured on the
+        # same runner, so they are hardware-independent and slot into the
+        # existing trajectory regardless of CI runner variance.
+        run: |
+          make perf
+          python3 harness/bench/history.py
+      - name: commit dashboard to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add harness/evidence/ledger.jsonl \
+                  harness/bench/history/index.html \
+                  harness/bench/history/history.json
+          git add harness/bench/results 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no dashboard changes to commit"
+          else
+            git commit -m "perf(dashboard): auto-update for ${GITHUB_REF_NAME} [skip ci]"
+            git push origin HEAD:main \
+              || echo "dashboard push failed (main moved during release); regenerate manually"
+          fi
