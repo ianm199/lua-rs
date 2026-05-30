@@ -119,7 +119,17 @@ lua_rs_wasm_run(ptr, len) -> i32
 lua_rs_wasm_reset() -> i32
 lua_rs_wasm_last_error_len() -> usize
 lua_rs_wasm_last_error_read(out_ptr, out_len) -> i32
+lua_rs_wasm_set_limits(max_instructions, max_memory, strict) -> i32
+lua_rs_wasm_last_trip() -> i32   // 0 none, 1 instructions, 2 memory
+lua_rs_wasm_sandbox_reset() -> i32
 ```
+
+For untrusted scripts, call `lua_rs_wasm_set_limits` (instruction budget, memory
+ceiling in bytes, and `strict != 0` to strip the host-access globals) before
+`lua_rs_wasm_run`; a `0` limit means unlimited. After a run, `lua_rs_wasm_last_trip`
+reports which limit (if any) aborted it, and `lua_rs_wasm_sandbox_reset` refills
+the budget without recreating the runtime. Limits are enforced on every thread
+and cannot be caught by `pcall`.
 
 The pointer/length pairs reference the module's exported linear memory.
 `LuaRsRuntime` copies Lua source into memory, runs it, captures Lua output,

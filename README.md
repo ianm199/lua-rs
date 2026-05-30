@@ -52,12 +52,48 @@ integration:
 [bevy-lua-rs-starter](https://github.com/ianm199/bevy-lua-rs-starter)
 ([live demo](https://ianm199.github.io/bevy-lua-rs-starter/)).
 
+## Running untrusted Lua
+
+Bound CPU and memory and strip host access, so a buggy or hostile script can't
+hang the process, exhaust memory, or reach the filesystem. Limits are enforced
+on every thread (coroutines included) and are **uncatchable** — a script can't
+escape them with `pcall`. A non-sandboxed runtime pays zero overhead.
+
+```rust
+let (lua, sandbox) = Lua::sandboxed(SandboxConfig::strict())?;
+match lua.load(untrusted_source).exec() {
+    Ok(()) => { /* finished within limits */ }
+    Err(_) => match sandbox.tripped() {
+        Some(TripReason::Instructions) => { /* CPU budget hit */ }
+        Some(TripReason::Memory)       => { /* memory ceiling hit */ }
+        None                           => { /* ordinary Lua error */ }
+    },
+}
+sandbox.reset(); // refill the budget before re-running
+```
+
+From the CLI:
+
+```
+lua-rs --sandbox script.lua              # strip host globals + default caps
+lua-rs --max-instructions=5000000 s.lua  # CPU budget
+lua-rs --max-memory=64M s.lua            # memory ceiling (K/M/G suffixes)
+```
+
+Design and threat model:
+[docs/SANDBOXING_EXPLORATION.md](docs/SANDBOXING_EXPLORATION.md).
+
 ## Browser / WebAssembly
 
 Ships as [`lua-rs-wasm`](https://www.npmjs.com/package/lua-rs-wasm) (npm) for
 running Lua in the browser or Node without bundling the C interpreter. Try it in
 the [playground](https://ianm199.github.io/lua-rs/examples/wasm-browser/); see
 [`harness/wasm/README.md`](harness/wasm/README.md) for the host-hook API.
+
+Sandboxing is exposed over the WASM ABI for running untrusted user scripts:
+`lua_rs_wasm_set_limits(max_instructions, max_memory, strict)` before
+`lua_rs_wasm_run`, then `lua_rs_wasm_last_trip()` to learn which limit (if any)
+stopped a run, and `lua_rs_wasm_sandbox_reset()` to refill the budget.
 
 ## LuaRocks
 

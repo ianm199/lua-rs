@@ -104,6 +104,20 @@ print("stateful runtime " .. wasm_state.value)
     throw new Error(`last error missing Lua failure text: ${JSON.stringify(failed.error)}`);
   }
 
+  // Sandbox ABI: an instruction budget aborts a runaway script — uncatchable,
+  // even wrapped in a pcall loop — and the trip reason is reported. setLimits
+  // resets the runtime, so this runs last.
+  host.setLimits({ maxInstructions: 200000 });
+  const runaway = host.tryExec(
+    "while true do pcall(function() while true do end end) end",
+  );
+  if (runaway.ok) {
+    throw new Error("sandboxed runaway script should have aborted");
+  }
+  if (host.lastTrip() !== "instructions") {
+    throw new Error(`expected instruction trip, got ${host.lastTrip()}`);
+  }
+
   return { setBufModes };
 }
 

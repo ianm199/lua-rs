@@ -11,12 +11,15 @@ use std::slice;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use lua_rs_runtime::LuaFileHandle;
-use lua_rs_runtime::{HostHooks, LuaError, LuaRuntime};
+use lua_rs_runtime::{HostHooks, LuaError, LuaRuntime, SandboxConfig, TripReason};
 use lua_types::LuaValue;
 
 thread_local! {
     static LAST_ERROR: RefCell<Vec<u8>> = RefCell::new(Vec::new());
     static RUNTIME: RefCell<Option<LuaRuntime>> = RefCell::new(None);
+    /// Sandbox limits to (re)apply whenever the runtime is created or reset.
+    /// `None` = unsandboxed. Set via `lua_rs_wasm_set_limits`.
+    static SANDBOX_CFG: RefCell<Option<SandboxConfig>> = RefCell::new(None);
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -379,11 +382,25 @@ fn imported_host_hooks() -> HostHooks {
     HostHooks::new().entropy(deterministic_entropy)
 }
 
+/// Create a fresh runtime with the host hooks and the currently-configured
+/// sandbox limits (if any) installed, so a fresh budget is in force after every
+/// create/reset.
+fn new_configured_runtime() -> Result<LuaRuntime, LuaError> {
+    let mut runtime = LuaRuntime::with_hooks(imported_host_hooks())?;
+    SANDBOX_CFG.with(|cfg| -> Result<(), LuaError> {
+        if let Some(config) = cfg.borrow().as_ref() {
+            runtime.install_sandbox(config.clone())?;
+        }
+        Ok(())
+    })?;
+    Ok(runtime)
+}
+
 fn with_runtime<T>(f: impl FnOnce(&mut LuaRuntime) -> Result<T, LuaError>) -> Result<T, LuaError> {
     RUNTIME.with(|cell| {
         let mut runtime = cell.borrow_mut();
         if runtime.is_none() {
-            *runtime = Some(LuaRuntime::with_hooks(imported_host_hooks())?);
+            *runtime = Some(new_configured_runtime()?);
         }
         let Some(runtime) = runtime.as_mut() else {
             return Err(LuaError::Memory);
@@ -394,7 +411,7 @@ fn with_runtime<T>(f: impl FnOnce(&mut LuaRuntime) -> Result<T, LuaError>) -> Re
 
 fn reset_runtime() -> Result<(), LuaError> {
     RUNTIME.with(|cell| {
-        *cell.borrow_mut() = Some(LuaRuntime::with_hooks(imported_host_hooks())?);
+        *cell.borrow_mut() = Some(new_configured_runtime()?);
         Ok(())
     })
 }
@@ -488,4 +505,77 @@ pub extern "C" fn lua_rs_wasm_last_error_read(out_ptr: *mut u8, out_len: usize) 
         }
         error.len() as i32
     })
+}
+
+/// Configure the sandbox for subsequent `lua_rs_wasm_run` calls and reset the
+/// runtime so the limits take effect on a fresh state.
+///
+/// - `max_instructions`: instruction budget; `0` = unlimited.
+/// - `max_memory`: GC-byte ceiling; `0` = unlimited.
+/// - `strict`: non-zero strips the host-access globals (`os.execute`, `io`,
+///   `load`, `require`, `debug`, …) and applies 10M-instruction / 64 MiB
+///   defaults for any limit left at `0`.
+///
+/// Returns 1 on success, 0 on failure (with the error in the last-error buffer).
+#[no_mangle]
+pub extern "C" fn lua_rs_wasm_set_limits(
+    max_instructions: u64,
+    max_memory: u64,
+    strict: i32,
+) -> i32 {
+    let strict = strict != 0;
+    let mut config = if strict {
+        SandboxConfig::strict()
+    } else {
+        SandboxConfig {
+            instruction_limit: None,
+            memory_limit_bytes: None,
+            check_interval: 1000,
+            remove_globals: Vec::new(),
+        }
+    };
+    if max_instructions != 0 {
+        config.instruction_limit = Some(max_instructions);
+    }
+    if max_memory != 0 {
+        config.memory_limit_bytes = Some(max_memory as usize);
+    }
+
+    SANDBOX_CFG.with(|cell| *cell.borrow_mut() = Some(config));
+
+    match reset_runtime() {
+        Ok(()) => {
+            clear_last_error();
+            1
+        }
+        Err(error) => {
+            set_lua_error(error);
+            0
+        }
+    }
+}
+
+/// Which sandbox limit (if any) aborted the most recent `lua_rs_wasm_run`:
+/// 0 = none / ordinary error, 1 = instruction budget, 2 = memory ceiling.
+#[no_mangle]
+pub extern "C" fn lua_rs_wasm_last_trip() -> i32 {
+    RUNTIME.with(|cell| {
+        match cell.borrow().as_ref().and_then(LuaRuntime::sandbox_tripped) {
+            Some(TripReason::Instructions) => 1,
+            Some(TripReason::Memory) => 2,
+            None => 0,
+        }
+    })
+}
+
+/// Refill the instruction budget and clear the trip flag without recreating the
+/// runtime, so the same loaded state can run another chunk. Returns 1.
+#[no_mangle]
+pub extern "C" fn lua_rs_wasm_sandbox_reset() -> i32 {
+    RUNTIME.with(|cell| {
+        if let Some(runtime) = cell.borrow().as_ref() {
+            runtime.sandbox_reset();
+        }
+    });
+    1
 }

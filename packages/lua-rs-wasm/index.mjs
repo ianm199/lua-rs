@@ -238,6 +238,62 @@ export class LuaRsRuntime {
     return this;
   }
 
+  /**
+   * Bound CPU and memory for subsequent `run`/`exec` calls and (optionally)
+   * strip host-access globals, for running untrusted scripts. Resets the
+   * runtime so the limits take effect on a fresh state. A `0` / omitted limit
+   * means unlimited; `strict` defaults the limits to 10M instructions / 64 MiB
+   * and removes `os.execute`, `io`, `load`, `require`, `debug`, …
+   */
+  setLimits({ maxInstructions = 0, maxMemory = 0, strict = false } = {}) {
+    if (!this.instance) {
+      throw new Error("LuaRsRuntime is not attached to a WebAssembly instance");
+    }
+    const setLimits = this.instance.exports.lua_rs_wasm_set_limits;
+    if (!setLimits) {
+      throw new Error("WASM module does not export lua_rs_wasm_set_limits");
+    }
+    const status = setLimits(
+      BigInt(maxInstructions),
+      BigInt(maxMemory),
+      strict ? 1 : 0,
+    );
+    if (status !== 1) {
+      const message = this.lastErrorText();
+      throw new Error(message || `Lua set_limits failed with status ${status}`);
+    }
+    return this;
+  }
+
+  /**
+   * Which sandbox limit, if any, aborted the most recent run:
+   * "instructions", "memory", or null (no trip / ordinary error).
+   */
+  lastTrip() {
+    const lastTrip = this.instance?.exports?.lua_rs_wasm_last_trip;
+    if (!lastTrip) {
+      return null;
+    }
+    switch (lastTrip()) {
+      case 1:
+        return "instructions";
+      case 2:
+        return "memory";
+      default:
+        return null;
+    }
+  }
+
+  /** Refill the instruction budget and clear the trip flag without recreating
+   * the runtime. */
+  sandboxReset() {
+    const sandboxReset = this.instance?.exports?.lua_rs_wasm_sandbox_reset;
+    if (sandboxReset) {
+      sandboxReset();
+    }
+    return this;
+  }
+
   readString(ptr, len) {
     return decoder.decode(this.memoryBytes().subarray(ptr, ptr + len));
   }

@@ -3196,6 +3196,28 @@ impl LuaRuntime {
     pub fn exec(&mut self, source: &[u8], name: &[u8]) -> Result<()> {
         exec_state(&mut self.state, source, name)
     }
+
+    /// Apply sandbox limits to this runtime — the lower-level equivalent of
+    /// [`Lua::install_sandbox`]. Strips the configured globals and installs the
+    /// runtime-wide instruction/memory budget (enforced on every thread,
+    /// uncatchable). Use [`sandbox_tripped`](Self::sandbox_tripped) after a run
+    /// to learn which limit, if any, stopped it, and
+    /// [`sandbox_reset`](Self::sandbox_reset) to refill the budget before the
+    /// next run.
+    pub fn install_sandbox(&mut self, config: SandboxConfig) -> Result<()> {
+        apply_sandbox_config(&mut self.state, &config)
+    }
+
+    /// Which sandbox limit (if any) aborted the most recent run.
+    pub fn sandbox_tripped(&self) -> Option<TripReason> {
+        trip_reason_from_code(self.state.sandbox_tripped_code())
+    }
+
+    /// Refill the instruction budget to its configured limit and clear the trip
+    /// flag, so the same runtime can run another chunk.
+    pub fn sandbox_reset(&self) {
+        self.state.sandbox_reset();
+    }
 }
 
 fn exec_state(state: &mut LuaState, source: &[u8], name: &[u8]) -> Result<()> {
@@ -3313,11 +3335,8 @@ impl Sandbox {
 
     /// Why the last run aborted, if it was the sandbox that stopped it.
     pub fn tripped(&self) -> Option<TripReason> {
-        self.lua.with_state(|state| match state.sandbox_tripped_code() {
-            lua_vm::state::SANDBOX_TRIP_INSTRUCTIONS => Some(TripReason::Instructions),
-            lua_vm::state::SANDBOX_TRIP_MEMORY => Some(TripReason::Memory),
-            _ => None,
-        })
+        self.lua
+            .with_state(|state| trip_reason_from_code(state.sandbox_tripped_code()))
     }
 
     /// Refill the instruction budget to its configured limit and clear the
@@ -3370,6 +3389,27 @@ fn strip_globals(state: &mut LuaState, names: &[Vec<u8>]) -> Result<()> {
     lua_stdlib::sandbox::strip_globals(state, &refs)
 }
 
+/// Apply a [`SandboxConfig`] to a raw state: strip the configured globals and,
+/// if any runtime limit is set, install the runtime-wide budget. Shared by
+/// [`Lua::install_sandbox`] and [`LuaRuntime::install_sandbox`].
+fn apply_sandbox_config(state: &mut LuaState, config: &SandboxConfig) -> Result<()> {
+    strip_globals(state, &config.remove_globals)?;
+    if config.instruction_limit.is_some() || config.memory_limit_bytes.is_some() {
+        let interval = config.check_interval.max(1) as i32;
+        state.install_sandbox_limits(interval, config.instruction_limit, config.memory_limit_bytes);
+    }
+    Ok(())
+}
+
+/// Map the raw sandbox trip code held in `GlobalState` to a [`TripReason`].
+fn trip_reason_from_code(code: u8) -> Option<TripReason> {
+    match code {
+        lua_vm::state::SANDBOX_TRIP_INSTRUCTIONS => Some(TripReason::Instructions),
+        lua_vm::state::SANDBOX_TRIP_MEMORY => Some(TripReason::Memory),
+        _ => None,
+    }
+}
+
 impl Lua {
     /// Create a Lua runtime with no host capabilities (no file, process, or
     /// dynamic-library hooks), the configured globals stripped, and an
@@ -3388,18 +3428,7 @@ impl Lua {
     /// you want to grant *some* host capabilities (build the `Lua` with selected
     /// [`HostHooks`]) but still bound execution.
     pub fn install_sandbox(&self, config: SandboxConfig) -> Result<Sandbox> {
-        let interval = config.check_interval.max(1) as i32;
-        self.with_state(|state| -> Result<()> {
-            strip_globals(state, &config.remove_globals)?;
-            if config.instruction_limit.is_some() || config.memory_limit_bytes.is_some() {
-                state.install_sandbox_limits(
-                    interval,
-                    config.instruction_limit,
-                    config.memory_limit_bytes,
-                );
-            }
-            Ok(())
-        })?;
+        self.with_state(|state| apply_sandbox_config(state, &config))?;
         Ok(Sandbox { lua: self.clone() })
     }
 }
