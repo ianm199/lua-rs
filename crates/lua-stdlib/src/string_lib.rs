@@ -537,6 +537,7 @@ pub fn arith_unm(state: &mut LuaState) -> Result<usize, LuaError> {
 
 /// Return `true` if `c` belongs to the character class `cl` (a `%x` letter).
 ///
+#[inline]
 fn match_class(c: u8, cl: u8) -> bool {
     let res = match cl.to_ascii_lowercase() {
         b'a' => c.is_ascii_alphabetic(),
@@ -558,6 +559,7 @@ fn match_class(c: u8, cl: u8) -> bool {
 /// Match character `c` against a bracket class `[p .. ec-1]`.
 ///
 /// `p` and `ec` are indices into `pat`.
+#[inline]
 fn matchbracketclass(pat: &[u8], c: u8, mut p: usize, ec: usize) -> bool {
     let sig = if p + 1 < pat.len() && pat[p + 1] == b'^' {
         p += 1; // skip '^'
@@ -590,6 +592,7 @@ fn matchbracketclass(pat: &[u8], c: u8, mut p: usize, ec: usize) -> bool {
 /// Return `true` if the single character at `src[s]` matches the pattern
 /// element starting at `pat[p]` with class end at `ep`.
 ///
+#[inline]
 fn singlematch(ms: &MatchState, s: usize, p: usize, ep: usize) -> bool {
     if s >= ms.src.len() {
         return false;
