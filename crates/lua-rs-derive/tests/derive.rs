@@ -7,10 +7,10 @@ use lua_rs_runtime::Lua;
 
 #[derive(LuaUserData)]
 struct Vec2 {
-    x: f64,
-    y: f64,
+    pub x: f64,
+    pub y: f64,
     #[lua(readonly)]
-    label_len: i64,
+    pub label_len: i64,
     #[lua(skip)]
     _internal: u32,
 }

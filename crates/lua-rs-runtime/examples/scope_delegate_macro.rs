@@ -33,7 +33,7 @@ impl Vec2 {
 struct Entity {
     #[lua(skip)]
     pos: Vec2,
-    name: String,
+    pub name: String,
 }
 
 #[lua_methods]

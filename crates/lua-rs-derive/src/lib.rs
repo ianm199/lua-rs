@@ -1,9 +1,14 @@
 //! Derive macros for the lua-rs embedding API.
 //!
-//! - `#[derive(LuaUserData)]` on a struct generates the `UserData` impl that exposes
-//!   the struct's fields to Lua (`obj.field` reads/writes), with field attributes
-//!   `#[lua(skip)]`, `#[lua(readonly)]`, `#[lua(name = "...")]`. `IntoLua` comes for
-//!   free from the runtime's blanket `impl<T: UserData> IntoLua for T`.
+//! - `#[derive(LuaUserData)]` on a struct generates the `UserData` impl. Rust
+//!   visibility is the scriptability boundary: **public** named fields are
+//!   auto-exposed to Lua (`obj.field` reads/writes); private fields stay
+//!   encapsulated unless force-exposed with `#[lua(field)]`. Tuple/newtype and
+//!   unit structs (`struct Handle(App);`) expose no fields and become opaque
+//!   userdata handles — ready for `#[lua(methods)]` and metamethods. Field
+//!   attributes: `#[lua(skip)]`, `#[lua(readonly)]`, `#[lua(name = "...")]`,
+//!   `#[lua(field)]` (force-expose a private field). `IntoLua` comes for free
+//!   from the runtime's blanket `impl<T: UserData> IntoLua for T`.
 //! - Struct attribute `#[lua_impl(Display, PartialEq, PartialOrd)]` wires the matching
 //!   metamethods (`__tostring`, `__eq`, `__lt`/`__le`) from the type's Rust trait impls.
 //! - Struct attribute `#[lua(methods)]` makes the generated `UserData` also register the
@@ -28,6 +33,7 @@ struct FieldCfg {
     lua_name: String,
     skip: bool,
     readonly: bool,
+    force_field: bool,
 }
 
 fn parse_field_cfg(field: &syn::Field) -> syn::Result<FieldCfg> {
@@ -41,6 +47,7 @@ fn parse_field_cfg(field: &syn::Field) -> syn::Result<FieldCfg> {
         ty: field.ty.clone(),
         skip: false,
         readonly: false,
+        force_field: false,
     };
     for attr in &field.attrs {
         if !attr.path().is_ident("lua") {
@@ -53,12 +60,17 @@ fn parse_field_cfg(field: &syn::Field) -> syn::Result<FieldCfg> {
             } else if meta.path.is_ident("readonly") {
                 cfg.readonly = true;
                 Ok(())
+            } else if meta.path.is_ident("field") {
+                cfg.force_field = true;
+                Ok(())
             } else if meta.path.is_ident("name") {
                 let lit: LitStr = meta.value()?.parse()?;
                 cfg.lua_name = lit.value();
                 Ok(())
             } else {
-                Err(meta.error("unknown #[lua(...)] attribute; expected skip, readonly, or name"))
+                Err(meta.error(
+                    "unknown #[lua(...)] attribute; expected skip, readonly, field, or name",
+                ))
             }
         })?;
     }
@@ -131,15 +143,14 @@ fn expand_derive(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let scfg = parse_struct_cfg(&input)?;
 
-    let fields = match &input.data {
+    let fields: Vec<&syn::Field> = match &input.data {
         Data::Struct(s) => match &s.fields {
-            Fields::Named(named) => &named.named,
-            _ => {
-                return Err(syn::Error::new_spanned(
-                    &input.ident,
-                    "LuaUserData currently supports only structs with named fields",
-                ))
-            }
+            Fields::Named(named) => named.named.iter().collect(),
+            // Tuple/newtype and unit structs have no named fields, so there is
+            // nothing to auto-expose. The struct still becomes an opaque
+            // `UserData` handle (type name, methods, metamethods) — the common
+            // `struct Handle(App);` engine/resource-wrapper case. (issue #57)
+            Fields::Unnamed(_) | Fields::Unit => Vec::new(),
         },
         _ => {
             return Err(syn::Error::new_spanned(
@@ -152,7 +163,14 @@ fn expand_derive(input: DeriveInput) -> syn::Result<TokenStream> {
     let mut field_regs = Vec::new();
     for field in fields {
         let cfg = parse_field_cfg(field)?;
-        if cfg.skip {
+        // Rust visibility is the scriptability boundary: public fields are
+        // auto-exposed; private fields stay encapsulated unless the author
+        // force-exposes one with `#[lua(field)]`. This lets a struct hold a
+        // non-`Clone`/non-marshalable private field (e.g. `app: App`) and
+        // still derive cleanly, since unexposed fields get no getter/setter
+        // and so pick up no `Clone`/`IntoLua`/`FromLua` bound. (issue #56)
+        let is_pub = matches!(field.vis, syn::Visibility::Public(_));
+        if cfg.skip || (!is_pub && !cfg.force_field) {
             continue;
         }
         let ident = &cfg.ident;
