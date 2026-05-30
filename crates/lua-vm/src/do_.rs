@@ -27,7 +27,7 @@ impl DynDataStub {
 
 /// Text-source parser entry point.
 ///
-///                            Dyndata *dyd, const char *name, int firstchar)`
+/// Dyndata *dyd, const char *name, int firstchar)`
 ///
 /// PORT NOTE: A direct call into `lua_parse::parse` would create a cyclic
 /// crate dependency (`lua-parse` already depends on `lua-vm`). Instead the

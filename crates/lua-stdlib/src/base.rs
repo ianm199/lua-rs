@@ -20,9 +20,6 @@ const SPACECHARS: &[u8] = b" \x0c\n\r\t\x0b";
 /// string so it is not collected while `lua_load` is running.
 const RESERVED_SLOT: i32 = 5;
 
-/// Lua version string pushed as `_VERSION` in the global table.
-const LUA_VERSION_STR: &[u8] = b"Lua 5.4";
-
 /// Name of the global environment table stored as a global itself.
 const LUA_GNAME: &[u8] = b"_G";
 
@@ -835,8 +832,17 @@ pub fn open(state: &mut LuaState) -> Result<usize, LuaError> {
     state.set_funcs(BASE_FUNCS, 0)?;
     state.push_copy(-1)?;
     state.set_field(-2, LUA_GNAME)?;
-    state.push_string(LUA_VERSION_STR)?;
+    let version_str = state.global().lua_version.version_str();
+    state.push_string(version_str.as_bytes())?;
     state.set_field(-2, b"_VERSION")?;
+    // `warn` was introduced in Lua 5.4; it is absent on 5.1/5.2/5.3.
+    if matches!(
+        state.global().lua_version,
+        lua_types::LuaVersion::V51 | lua_types::LuaVersion::V52 | lua_types::LuaVersion::V53
+    ) {
+        state.push(LuaValue::Nil);
+        state.set_field(-2, b"warn")?;
+    }
     Ok(1)
 }
 

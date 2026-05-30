@@ -844,6 +844,17 @@ fn main() -> ExitCode {
 
     let result = catch_unwind(AssertUnwindSafe(|| -> Result<i32, String> {
         let mut state = new_state().ok_or("new_state returned None")?;
+        if let Ok(v) = std::env::var("LUA_RS_VERSION") {
+            let lv = match v.trim() {
+                "5.1" | "51" => lua_types::LuaVersion::V51,
+                "5.2" | "52" => lua_types::LuaVersion::V52,
+                "5.3" | "53" => lua_types::LuaVersion::V53,
+                "5.4" | "54" => lua_types::LuaVersion::V54,
+                "5.5" | "55" => lua_types::LuaVersion::V55,
+                other => return Err(format!("unknown LUA_RS_VERSION: {other}")),
+            };
+            state.global_mut().lua_version = lv;
+        }
         state.global_mut().parser_hook = Some(parser_hook);
         state.global_mut().file_loader_hook = Some(file_loader_hook);
         state.global_mut().file_open_hook = Some(file_open_hook);

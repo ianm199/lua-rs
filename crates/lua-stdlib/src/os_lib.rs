@@ -180,7 +180,7 @@ fn get_field(
     Ok(res)
 }
 
-///                                     ptrdiff_t convlen, char *buff)`
+/// ptrdiff_t convlen, char *buff)`
 ///
 /// Validates the `strftime` conversion specifier at the start of `conv` against
 /// `STRFTIME_OPTIONS`.

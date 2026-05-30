@@ -262,6 +262,28 @@ pub const TK_NAME: i32 = 292;
 /// `<string>`  (string literal)
 pub const TK_STRING: i32 = 293;
 
+/// `global` — Lua 5.5 reserved word (the `global` declaration statement).
+///
+/// GROUNDWORK / version seam note: in upstream Lua 5.5 `global` is inserted
+/// into the `RESERVED` enum *between* `TK_FUNCTION` and `TK_GOTO`
+/// (`specs/research/5.5-upstream-delta.md` §1a), which renumbers every later
+/// keyword and is part of why the 5.5 bytecode shape diverges broadly. We
+/// deliberately do NOT renumber: the `TK_*` constants above mirror the 5.4 C
+/// ABI ordering that the bytecode-shape and `LUAX_TOKENS` table depend on, and
+/// the IRON RULE is that 5.4 must not regress. Instead `global` is given an
+/// out-of-band token id placed *after* every existing token, and it is only
+/// ever produced on the `LuaVersion::V55` lexer path (see the identifier
+/// classifier in `llex`). Under 5.1/5.2/5.3/5.4 the bytes `global` continue to
+/// lex as [`TK_NAME`], so `global` stays a perfectly valid identifier there.
+///
+/// TODO(5.5 global-decl, full): upstream also honors `LUA_COMPAT_GLOBAL`
+/// (default on) which *un*-reserves the word even under 5.5 so legacy code may
+/// still use `global` as a name, recognizing the `global` statement only
+/// contextually. We do not model that compat axis yet; the V55 path here is
+/// the strict (`LUA_COMPAT_GLOBAL` off) behavior. When the full model lands,
+/// gate this on a per-state compat flag rather than purely on the version.
+pub const TK_GLOBAL: i32 = 294;
+
 // ORDER RESERVED — index 0 = TK_AND - FIRST_RESERVED, etc.
 /// Display strings for tokens, indexed by `token - FIRST_RESERVED`.
 pub static LUAX_TOKENS: &[&[u8]] = &[
@@ -1680,9 +1702,19 @@ fn llex(
 
                     if let Some(tk) = reserved_token {
                         return Ok(tk);
-                    } else {
-                        return Ok(TK_NAME);
                     }
+
+                    // Lua 5.5 groundwork: `global` is a reserved word only on
+                    // the V55 path. On every earlier version it stays a plain
+                    // identifier, so the IRON RULE (5.4 unchanged) holds and
+                    // `global` remains a valid name in 5.1-5.4. See [`TK_GLOBAL`].
+                    if content.as_slice() == b"global"
+                        && state.global().lua_version == lua_types::LuaVersion::V55
+                    {
+                        return Ok(TK_GLOBAL);
+                    }
+
+                    return Ok(TK_NAME);
                 } else {
                     let tok = ls.current;
                     advance(ls);

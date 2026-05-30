@@ -330,7 +330,7 @@ fn noenv(state: &mut LuaState) -> bool {
 /// (`LUA_PATH`) → compiled-in default. When the env var contains `;;`, the
 /// compiled-in default is spliced in place of `;;`.
 ///
-///                          const char *envname, const char *dft)`
+/// const char *envname, const char *dft)`
 ///
 /// PORT NOTE: C pushes the versioned env-var name string onto the Lua stack
 /// (via `lua_pushfstring`) and pops it at the end so that `setfield` uses index
@@ -604,8 +604,8 @@ fn pusherrornotfound(state: &mut LuaState, path: &[u8]) -> Result<(), LuaError> 
 /// string on the Lua stack if found. Returns `None` and pushes an error message
 /// string if not found.
 ///
-///                                    const char *path, const char *sep,
-///                                    const char *dirsep)`
+/// const char *path, const char *sep,
+/// const char *dirsep)`
 fn searchpath(
     state: &mut LuaState,
     name: &[u8],
@@ -661,7 +661,7 @@ pub fn ll_searchpath(state: &mut LuaState) -> Result<usize, LuaError> {
 
 /// Find a module file using the path stored in `package[pname]`.
 ///
-///                                  const char *pname, const char *dirsep)`
+/// const char *pname, const char *dirsep)`
 fn findfile(state: &mut LuaState, name: &[u8], pname: &[u8], dirsep: u8) -> Result<Option<Vec<u8>>, LuaError> {
     // The package table is upvalue #1 for the searcher closures.
     let uv = state.upvalue_index(1);

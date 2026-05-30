@@ -28,10 +28,24 @@ use lua_types::tagmethod::TagMethod;
 use lua_types::opcode::Instruction;
 use crate::state::LuaState;
 
-/// TODO(phase-b): lua-types does not yet expose `OpCode`. Stubbed locally with
-/// all 5.4 opcodes so call sites in vm.rs/debug.rs resolve; the real numeric
-/// values and per-opcode mode flags live in `lua-types/src/opcode.rs` once
-/// translated.
+/// TODO(multiversion, Step 0 deferred): this `OpCode` is a DUPLICATE of the
+/// canonical one in `lua-code/src/opcodes.rs:87`. The Step-0 plan wanted them
+/// consolidated to one owner (`lua-code`) with `lua-vm` depending on it, but
+/// that creates a DEPENDENCY CYCLE: `lua-code/Cargo.toml` already depends on
+/// `lua-vm`, so `lua-vm` cannot depend back on `lua-code`. Consolidating
+/// therefore requires moving the canonical `OpCode`/`OP_MODES`/`Instruction`
+/// definitions DOWN into `lua-types` (which `lua-types/src/opcode.rs` already
+/// reserves) and pointing both `lua-vm` and `lua-code` at it — plus reconciling
+/// variant-name skew between the two copies (`lua-vm` uses `BXOrK`/`BXOr`,
+/// `lua-code` uses `BXorK`/`BXor`; `lua-vm` also has `LoadKx`/`GetUpval`
+/// aliases) and the `InstructionExt` decode trait that lives here. That is a
+/// larger refactor than the Step-0 scaffold; deferred to keep 5.4 green.
+/// Duplicate sites: `lua-vm/src/vm.rs:45` (this enum) vs
+/// `lua-code/src/opcodes.rs:87` (canonical).
+///
+/// Original note: Stubbed locally with all 5.4 opcodes so call sites in
+/// vm.rs/debug.rs resolve; the real numeric values and per-opcode mode flags
+/// live in `lua-types/src/opcode.rs` once translated.
 ///
 /// `#[repr(u8)]` with explicit discriminants matching C-Lua's `lopcodes.h`
 /// numbering (0=OP_MOVE, 1=OP_LOADI, ..., 82=OP_EXTRAARG). The ordered, dense
@@ -39,7 +53,7 @@ use crate::state::LuaState;
 /// low 7 bits of the instruction word and fuse it with the dispatch `match`
 /// downstream. Discriminant order intentionally matches the integer keys in
 /// `InstructionExt::opcode`, not the prior compile-order grouping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[allow(non_camel_case_types)]
 #[repr(u8)]
 pub enum OpCode {
@@ -147,6 +161,98 @@ impl OpCode {
     /// Legacy alias for `GetUpVal` retained for the same reason as `LoadKx`.
     #[allow(non_upper_case_globals)]
     pub const GetUpval: OpCode = OpCode::GetUpVal;
+
+    /// Decode a raw opcode field value to an `OpCode`, or `None` if out of
+    /// range (`v >= 83`). This is the canonical decoder; `lua-code` re-exports
+    /// `OpCode` and uses this rather than carrying its own duplicate enum.
+    pub fn from_u32(v: u32) -> Option<Self> {
+        match v {
+            0 => Some(Self::Move),
+            1 => Some(Self::LoadI),
+            2 => Some(Self::LoadF),
+            3 => Some(Self::LoadK),
+            4 => Some(Self::LoadKX),
+            5 => Some(Self::LoadFalse),
+            6 => Some(Self::LFalseSkip),
+            7 => Some(Self::LoadTrue),
+            8 => Some(Self::LoadNil),
+            9 => Some(Self::GetUpVal),
+            10 => Some(Self::SetUpVal),
+            11 => Some(Self::GetTabUp),
+            12 => Some(Self::GetTable),
+            13 => Some(Self::GetI),
+            14 => Some(Self::GetField),
+            15 => Some(Self::SetTabUp),
+            16 => Some(Self::SetTable),
+            17 => Some(Self::SetI),
+            18 => Some(Self::SetField),
+            19 => Some(Self::NewTable),
+            20 => Some(Self::Self_),
+            21 => Some(Self::AddI),
+            22 => Some(Self::AddK),
+            23 => Some(Self::SubK),
+            24 => Some(Self::MulK),
+            25 => Some(Self::ModK),
+            26 => Some(Self::PowK),
+            27 => Some(Self::DivK),
+            28 => Some(Self::IDivK),
+            29 => Some(Self::BAndK),
+            30 => Some(Self::BOrK),
+            31 => Some(Self::BXOrK),
+            32 => Some(Self::ShrI),
+            33 => Some(Self::ShlI),
+            34 => Some(Self::Add),
+            35 => Some(Self::Sub),
+            36 => Some(Self::Mul),
+            37 => Some(Self::Mod),
+            38 => Some(Self::Pow),
+            39 => Some(Self::Div),
+            40 => Some(Self::IDiv),
+            41 => Some(Self::BAnd),
+            42 => Some(Self::BOr),
+            43 => Some(Self::BXOr),
+            44 => Some(Self::Shl),
+            45 => Some(Self::Shr),
+            46 => Some(Self::MmBin),
+            47 => Some(Self::MmBinI),
+            48 => Some(Self::MmBinK),
+            49 => Some(Self::Unm),
+            50 => Some(Self::BNot),
+            51 => Some(Self::Not),
+            52 => Some(Self::Len),
+            53 => Some(Self::Concat),
+            54 => Some(Self::Close),
+            55 => Some(Self::Tbc),
+            56 => Some(Self::Jmp),
+            57 => Some(Self::Eq),
+            58 => Some(Self::Lt),
+            59 => Some(Self::Le),
+            60 => Some(Self::EqK),
+            61 => Some(Self::EqI),
+            62 => Some(Self::LtI),
+            63 => Some(Self::LeI),
+            64 => Some(Self::GtI),
+            65 => Some(Self::GeI),
+            66 => Some(Self::Test),
+            67 => Some(Self::TestSet),
+            68 => Some(Self::Call),
+            69 => Some(Self::TailCall),
+            70 => Some(Self::Return),
+            71 => Some(Self::Return0),
+            72 => Some(Self::Return1),
+            73 => Some(Self::ForLoop),
+            74 => Some(Self::ForPrep),
+            75 => Some(Self::TForPrep),
+            76 => Some(Self::TForCall),
+            77 => Some(Self::TForLoop),
+            78 => Some(Self::SetList),
+            79 => Some(Self::Closure),
+            80 => Some(Self::VarArg),
+            81 => Some(Self::VarArgPrep),
+            82 => Some(Self::ExtraArg),
+            _ => None,
+        }
+    }
 }
 
 /// TODO(phase-b): Instruction accessor extension trait. The real per-mode
@@ -573,7 +679,7 @@ pub(crate) fn to_integer(obj: &LuaValue, mode: F2Imod) -> Option<i64> {
 
 // ─── for-loop helpers ────────────────────────────────────────────────────────
 
-///                          lua_Integer *p, lua_Integer step)`
+/// lua_Integer *p, lua_Integer step)`
 /// Compute the integer loop limit.  Returns `Ok(true)` to skip the loop,
 /// `Ok(false)` with `*p` set to the limit, or `Err` if the limit is not a
 /// number at all.
@@ -693,7 +799,7 @@ fn float_for_loop(state: &mut LuaState, ra: StackIdx) -> bool {
 
 // ─── Table get/set with metamethod chains ────────────────────────────────────
 
-///                          StkId val, const TValue *slot)`
+/// StkId val, const TValue *slot)`
 /// Finish a table-get with metamethod lookup.  `slot_was_none = true` means
 /// `t` is not a table and we should look for `__index` on `t` itself.
 pub(crate) fn finish_get(
@@ -739,7 +845,7 @@ pub(crate) fn finish_get(
     Err(LuaError::runtime(format_args!("'__index' chain too long; possible loop")))
 }
 
-///                          TValue *val, const TValue *slot)`
+/// TValue *val, const TValue *slot)`
 /// Finish a table-set with `__newindex` metamethod lookup.
 ///
 /// `var_hint` carries a `(kind, name)` pair (e.g. `(b"upvalue", b"a")`) used
@@ -1291,7 +1397,7 @@ pub(crate) fn shiftl(x: i64, y: i64) -> i64 {
 
 // ─── Closure creation ────────────────────────────────────────────────────────
 
-///                              StkId base, StkId ra)`
+/// StkId base, StkId ra)`
 /// Create a new Lua closure from prototype `p`, initialise its upvalues,
 /// and push it onto the stack at `ra`.
 fn push_closure(

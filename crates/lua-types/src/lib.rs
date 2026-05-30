@@ -22,6 +22,7 @@ pub mod trace_impls;
 pub mod upval;
 pub mod userdata;
 pub mod value;
+pub mod version;
 
 // ── Top-level re-exports (most consumers use these flat names) ──────────
 pub use closure::{LuaClosure, LuaLClosure};
@@ -35,6 +36,7 @@ pub use table::LuaTable;
 pub use upval::{UpVal, UpValState};
 pub use userdata::LuaUserData;
 pub use value::{F2Imod, LuaValue};
+pub use version::{LuaVersion, NumberModel};
 
 // ── Top-level newtypes ──────────────────────────────────────────────────
 

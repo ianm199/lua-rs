@@ -378,7 +378,7 @@ pub const FILE_METAMETHODS: &[(&[u8], fn(&mut LuaState) -> Result<usize, LuaErro
 
 /// Validate an `fopen` mode string: must match `[rwa]\+?b*`. C: `l_checkmode`.
 ///
-///           (*mode != '+' || ...) && strspn(mode, "b") == strlen(mode));`
+/// (*mode != '+' || ...) && strspn(mode, "b") == strlen(mode));`
 fn check_mode(mode: &[u8]) -> bool {
     if mode.is_empty() {
         return false;
@@ -401,7 +401,7 @@ fn check_mode_popen(mode: &[u8]) -> bool {
 
 /// Push success (`true`) or failure (`false`, msg, errno) per `luaL_fileresult`.
 ///
-///     else { luaL_pushfail; pushstring(msg); pushinteger(errno); return 3; }`
+/// else { luaL_pushfail; pushstring(msg); pushinteger(errno); return 3; }`
 fn file_result(
     state: &mut LuaState,
     success: bool,
@@ -433,7 +433,7 @@ fn file_result(
 
 /// Push popen/system exit-status results per `luaL_execresult`.
 ///
-///     else { luaL_pushfail; pushlstring("exit"|"signal"); pushinteger(stat); return 3; }`
+/// else { luaL_pushfail; pushlstring("exit"|"signal"); pushinteger(stat); return 3; }`
 ///
 /// TODO(port): POSIX `WIFEXITED`/`WTERMSIG` macros not available on all platforms;
 /// this stub always treats non-zero stat as an exit code.

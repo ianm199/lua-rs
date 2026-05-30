@@ -124,7 +124,7 @@ use lua_vm::state::{
     TempNameHook, UnixTimeHook,
 };
 
-pub use lua_types::{LuaError, LuaFileHandle};
+pub use lua_types::{LuaError, LuaFileHandle, LuaVersion, NumberModel};
 pub use lua_vm::state::{DynLibId, DynamicSymbol, OsExecuteReason, OsExecuteResult};
 
 #[cfg(feature = "derive")]
@@ -279,12 +279,46 @@ impl HostHooks {
 /// borrowed at the embedding boundary only; opcode dispatch still runs with
 /// direct `&mut LuaState` access. Captured Rust callbacks will need a call-path
 /// adapter that releases this boundary borrow before invoking user code.
+/// Internal backend dispatch. The set of Lua versions is closed and known at
+/// compile time, so a `#[cfg]`-gateable enum models it exactly (see
+/// `specs/WEBLUA_MULTIVERSION_API_SPEC.md` §4.1). Today exactly one variant —
+/// `V54` — exists, wrapping the current single-version runtime state. Adding
+/// 5.3/5.5 means adding sibling variants here, each owning that backend's
+/// concrete VM state, without touching the version-invariant embedding API.
+///
+/// `V54` is a unit variant for now: the runtime state still lives in
+/// `LuaInner.state` (the existing 5.4 wiring is untouched). When a second
+/// backend lands, the per-version concrete state moves into these variants.
+enum Engine {
+    V54,
+}
+
+impl Engine {
+    fn for_version(version: LuaVersion) -> Self {
+        match version {
+            LuaVersion::V54 => Engine::V54,
+            // TODO(multiversion): no 5.1/5.2/5.3/5.5 backend exists yet. Until
+            // one is built, every non-5.4 version is served by the 5.4 engine
+            // so the version seam is observable end-to-end without claiming
+            // unimplemented behavior. Replace with the real backend variant
+            // (and a feature gate) as each version lands.
+            _ => Engine::V54,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Lua {
     inner: Rc<LuaInner>,
 }
 
 struct LuaInner {
+    /// The Lua language version this instance speaks. Fixed for the instance's
+    /// life (the monomorphic-instance rule, spec §1.2).
+    version: LuaVersion,
+    /// Backend dispatch for the active version. Currently a single 5.4 variant.
+    #[allow(dead_code)]
+    engine: Engine,
     state: RefCell<LuaState>,
     active_state: Cell<*mut LuaState>,
     pending_external_unroots: RefCell<Vec<ExternalRootKey>>,
@@ -722,8 +756,25 @@ impl fmt::Debug for Lua {
 
 impl Lua {
     /// Create a Lua runtime with parser and standard libraries installed.
+    ///
+    /// Defaults to Lua 5.4 ([`LuaVersion::default`]). For another version use
+    /// [`Lua::new_versioned`].
     pub fn new() -> Self {
         Self::try_new().expect("Lua runtime should initialize")
+    }
+
+    /// Create a Lua runtime for a specific language version.
+    ///
+    /// The version is fixed for the instance's entire life (the
+    /// monomorphic-instance rule). It is reflected by [`Lua::version`] and by
+    /// the `_VERSION` global. No public embedding-API type carries the version;
+    /// it is a backend selector only.
+    ///
+    /// NOTE: only [`LuaVersion::V54`] has a real backend today. Other versions
+    /// currently run on the 5.4 engine (so the seam is end-to-end observable),
+    /// and will gain their own backends as the multi-version port proceeds.
+    pub fn new_versioned(version: LuaVersion) -> Self {
+        Self::try_new_versioned(version).expect("Lua runtime should initialize")
     }
 
     /// Fallible variant of [`Lua::new`].
@@ -731,18 +782,50 @@ impl Lua {
         Self::with_hooks(HostHooks::default())
     }
 
+    /// Fallible variant of [`Lua::new_versioned`].
+    pub fn try_new_versioned(version: LuaVersion) -> Result<Self> {
+        Self::with_hooks_versioned(HostHooks::default(), version)
+    }
+
     /// Create a Lua runtime with the supplied host capabilities.
     pub fn with_hooks(hooks: HostHooks) -> Result<Self> {
+        Self::with_hooks_versioned(hooks, LuaVersion::default())
+    }
+
+    /// Create a Lua runtime with the supplied host capabilities for a specific
+    /// language version.
+    pub fn with_hooks_versioned(hooks: HostHooks, version: LuaVersion) -> Result<Self> {
         let mut state = new_state().ok_or(LuaError::Memory)?;
+        state.global_mut().lua_version = version;
         install_parser_hook(&mut state);
         hooks.install(&mut state);
         open_libs(&mut state)?;
-        Ok(Self::from_initialized_state(state))
+        let lua = Self::from_initialized_state(state, version);
+        lua.sync_version_global()?;
+        Ok(lua)
     }
 
-    fn from_initialized_state(state: LuaState) -> Self {
+    /// The Lua language version this instance speaks. Fixed at construction.
+    pub fn version(&self) -> LuaVersion {
+        self.inner.version
+    }
+
+    /// Make the `_VERSION` global reflect [`Lua::version`].
+    ///
+    /// `open_libs` writes the stdlib's compiled-in default (`"Lua 5.4"`); this
+    /// rewrites it from the instance's [`LuaVersion`] so the version is the
+    /// single source of truth. For a default 5.4 instance this writes the same
+    /// string, leaving behavior unchanged.
+    fn sync_version_global(&self) -> Result<()> {
+        self.globals()
+            .set("_VERSION", self.inner.version.version_str())
+    }
+
+    fn from_initialized_state(state: LuaState, version: LuaVersion) -> Self {
         Lua {
             inner: Rc::new(LuaInner {
+                version,
+                engine: Engine::for_version(version),
                 state: RefCell::new(state),
                 active_state: Cell::new(std::ptr::null_mut()),
                 pending_external_unroots: RefCell::new(Vec::new()),
@@ -3189,7 +3272,7 @@ impl LuaRuntime {
     }
 
     pub fn into_lua(self) -> Lua {
-        Lua::from_initialized_state(self.state)
+        Lua::from_initialized_state(self.state, LuaVersion::default())
     }
 
     /// Load and execute a Lua source chunk.
@@ -3480,6 +3563,24 @@ mod tests {
                 },
             );
         }
+    }
+
+    #[test]
+    fn default_lua_is_v54_and_reports_version() {
+        let lua = Lua::new();
+        assert_eq!(lua.version(), LuaVersion::V54);
+        let v: String = lua.globals().get("_VERSION").unwrap();
+        assert_eq!(v, "Lua 5.4");
+    }
+
+    #[test]
+    fn new_versioned_threads_version_to_version_global() {
+        let lua = Lua::new_versioned(LuaVersion::V53);
+        assert_eq!(lua.version(), LuaVersion::V53);
+        let v: String = lua.globals().get("_VERSION").unwrap();
+        assert_eq!(v, "Lua 5.3");
+        let from_lua: String = lua.load("return _VERSION").eval().unwrap();
+        assert_eq!(from_lua, "Lua 5.3");
     }
 
     #[test]

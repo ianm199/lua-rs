@@ -464,7 +464,25 @@ fn tonum(state: &mut LuaState, arg: i32) -> Result<bool, LuaError> {
             let len = s.len();
             // PORT NOTE: string_to_number pushes the number if successful
             let pushed = state.string_to_number_push(&s)?;
-            Ok(pushed == len + 1)
+            let ok = pushed == len + 1;
+            // Lua 5.1–5.3: a string coerced in an arithmetic operation always
+            // yields a float (`('16') + 0` is a float in 5.3, an integer in
+            // 5.4). This metamethod path is arithmetic-only, so the promotion
+            // never touches bitwise ops. Verified vs the 5.3.6/5.4.7 oracle.
+            if ok
+                && matches!(
+                    state.global().lua_version,
+                    lua_types::LuaVersion::V51
+                        | lua_types::LuaVersion::V52
+                        | lua_types::LuaVersion::V53
+                )
+            {
+                if let Some(f) = lua_vm::api::to_number_x(state, -1) {
+                    state.pop();
+                    state.push(LuaValue::Float(f));
+                }
+            }
+            Ok(ok)
         } else {
             Ok(false)
         }

@@ -817,6 +817,34 @@ pub const TABLE_FUNCS: &[(&[u8], fn(&mut LuaState) -> Result<usize, LuaError>)] 
     (b"sort", sort),
 ];
 
+/// `table.create(nseq [, nrec])` — Lua 5.5 addition
+/// (`specs/research/5.5-upstream-delta.md` §5, `ltablib.c`).
+///
+/// Preallocates a table with `nseq` array (sequence) slots and `nrec` hash
+/// (record) slots, returning the empty table. Preallocation is purely a
+/// capacity hint; the returned table is observably empty (length 0, no keys),
+/// so this implementation is behaviorally faithful even though our
+/// `create_table` may treat the sizes as advisory.
+///
+/// Registered into the `table` roster only under [`lua_types::LuaVersion::V55`]
+/// (see [`open_table`]); absent under 5.1-5.4, matching upstream.
+pub fn create(state: &mut LuaState) -> Result<usize, LuaError> {
+    let nseq = state.check_arg_integer(1)?;
+    let nrec = state.opt_arg_integer(2, 0)?;
+    if nseq < 0 || nseq > i32::MAX as i64 {
+        return Err(LuaError::runtime(format_args!(
+            "bad argument #1 to 'create' (size out of range)"
+        )));
+    }
+    if nrec < 0 || nrec > i32::MAX as i64 {
+        return Err(LuaError::runtime(format_args!(
+            "bad argument #2 to 'create' (size out of range)"
+        )));
+    }
+    state.create_table(nseq as i32, nrec as i32)?;
+    Ok(1)
+}
+
 // ─── Module opener ────────────────────────────────────────────────────────────
 
 ///
@@ -830,6 +858,16 @@ pub fn open_table(state: &mut LuaState) -> Result<usize, LuaError> {
     // TODO(port): state.new_lib → luaL_newlib; creates a new table and registers functions;
     //             verify method name and signature
     state.new_lib(TABLE_FUNCS)?;
+    // Per-version roster delta: `table.create` is a Lua 5.5 addition
+    // (`specs/research/5.5-upstream-delta.md` §5), absent in 5.1-5.4. Register
+    // it only on the V55 backend so the version seam carries a real,
+    // script-observable stdlib difference. `new_lib` leaves the new table on
+    // the stack top, so we register `create` into it directly.
+    if matches!(state.global().lua_version, lua_types::LuaVersion::V55) {
+        const CREATE_FUNCS: &[(&[u8], fn(&mut LuaState) -> Result<usize, LuaError>)] =
+            &[(b"create", create)];
+        state.set_funcs_with_upvalues(CREATE_FUNCS, 0)?;
+    }
     Ok(1)
 }
 
