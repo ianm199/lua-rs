@@ -411,12 +411,6 @@ pub(crate) fn hook(
     state.set_top(saved_top);
     state.get_ci_mut(ci_idx).callstatus &= !mask;
 
-    // A hook closure cannot return a `Result`; if it staged an error (the
-    // sandbox budget mechanism), raise it now so it unwinds the dispatch loop.
-    if let Some(err) = state.pending_hook_error.take() {
-        return Err(err);
-    }
-
     Ok(())
 }
 

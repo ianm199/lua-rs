@@ -137,6 +137,62 @@ fn reset_refills_budget() {
     assert!(result.is_ok(), "post-reset run should succeed: {result:?}");
 }
 
+/// The budget follows code running inside a coroutine — the escape that the
+/// GlobalState-backed design exists to close. Without metering spanning threads
+/// this hangs forever.
+#[test]
+fn coroutine_is_metered() {
+    use std::time::{Duration, Instant};
+    let config = SandboxConfig {
+        instruction_limit: Some(300_000),
+        memory_limit_bytes: None,
+        check_interval: 256,
+        remove_globals: Vec::new(),
+    };
+    let (lua, sandbox) = Lua::sandboxed(config).unwrap();
+
+    let start = Instant::now();
+    let result = lua
+        .load("local co = coroutine.wrap(function() while true do end end) co()")
+        .exec();
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "coroutine ran unmetered -> budget escaped"
+    );
+    assert!(result.is_err(), "coroutine infinite loop should be aborted");
+    assert_eq!(sandbox.tripped(), Some(TripReason::Instructions));
+}
+
+/// A coroutine that yields and resumes normally still runs to completion when
+/// it stays within budget.
+#[test]
+fn yielding_coroutine_within_budget_completes() {
+    let config = SandboxConfig {
+        instruction_limit: Some(10_000_000),
+        memory_limit_bytes: None,
+        check_interval: 1000,
+        remove_globals: Vec::new(),
+    };
+    let (lua, sandbox) = Lua::sandboxed(config).unwrap();
+
+    let result = lua
+        .load(
+            r#"
+            local co = coroutine.wrap(function()
+                local s = 0
+                for i = 1, 1000 do s = s + i coroutine.yield(s) end
+                return s
+            end)
+            local last = 0
+            for _ = 1, 1000 do last = co() end
+            assert(last == 500500)
+        "#,
+        )
+        .exec();
+    assert!(result.is_ok(), "in-budget coroutine should run: {result:?}");
+    assert_eq!(sandbox.tripped(), None);
+}
+
 /// A plain (non-sandboxed) runtime is unaffected: no hook, no stripping.
 #[test]
 fn plain_runtime_is_unbounded() {

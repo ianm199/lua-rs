@@ -1055,6 +1055,10 @@ pub struct GlobalState {
     // types.tsv: global_State.totalbytes → isize
     pub totalbytes: isize,
 
+    /// Per-runtime sandbox budget shared across all threads. Inactive by
+    /// default (`interval == 0`); see [`SandboxLimits`].
+    pub sandbox: SandboxLimits,
+
     // types.tsv: global_State.GCdebt → isize
     pub gc_debt: isize,
 
@@ -1291,7 +1295,45 @@ pub struct GlobalState {
     pub suspended_parent_open_upvals: Vec<Vec<GcRef<UpVal>>>,
 }
 
+/// `LUA_MASKCOUNT` (`1 << LUA_HOOKCOUNT`) — the count-hook event mask the
+/// sandbox arms on every thread to drive per-interval budget enforcement.
+const SANDBOX_COUNT_MASK: u8 = 1 << 3;
+
+/// Sandbox trip code: not tripped.
+pub const SANDBOX_TRIP_NONE: u8 = 0;
+/// Sandbox trip code: the instruction budget reached zero.
+pub const SANDBOX_TRIP_INSTRUCTIONS: u8 = 1;
+/// Sandbox trip code: GC-tracked memory exceeded the configured ceiling.
+pub const SANDBOX_TRIP_MEMORY: u8 = 2;
+
+/// Per-runtime sandbox budget, shared by every thread (main + coroutines) via
+/// the `Rc<RefCell<GlobalState>>` they all hold. Every field is a `Cell` so the
+/// VM can charge the budget through the shared `Ref` it borrows in the
+/// count-hook path — no `&mut` and no write-borrow on the hot path.
+/// `interval == 0` means inactive; in that case the VM never sets the
+/// count-hook mask, so there is zero overhead.
+#[derive(Default)]
+pub struct SandboxLimits {
+    /// Count-hook interval in instructions; `0` = sandbox inactive.
+    pub interval: std::cell::Cell<i32>,
+    /// Whether an instruction budget is enforced.
+    pub instr_limited: std::cell::Cell<bool>,
+    /// Instructions left before the budget trips.
+    pub instr_remaining: std::cell::Cell<u64>,
+    /// Configured instruction limit, retained so `reset` can refill.
+    pub instr_limit: std::cell::Cell<u64>,
+    /// GC-byte ceiling; `None` = no memory limit.
+    pub mem_limit: std::cell::Cell<Option<usize>>,
+    /// One of the `SANDBOX_TRIP_*` codes.
+    pub tripped: std::cell::Cell<u8>,
+}
+
 impl GlobalState {
+    /// True while a sandbox instruction/memory budget is active on this runtime.
+    pub fn sandbox_active(&self) -> bool {
+        self.sandbox.interval.get() != 0
+    }
+
     /// Total live bytes allocated (GCdebt + totalbytes).
     ///
     /// macros.tsv: `gettotalbytes → g.total_bytes()`
@@ -1510,16 +1552,6 @@ pub struct LuaState {
     // types.tsv: lua_State.hookcount → i32
     pub hookcount: i32,
 
-    /// Out-of-band error staged by a debug/count hook closure.
-    ///
-    /// A `lua_Hook` in C aborts execution by calling `luaL_error`, which
-    /// longjmps. Our hook closure has signature `FnMut(.., ..) -> ()` and so
-    /// cannot return a `Result`. To let a hook abort the VM (the mechanism the
-    /// sandbox uses to enforce an instruction/memory budget), the closure
-    /// stores a `LuaError` here; `do_::hook` takes it after the closure runs
-    /// and converts it into the `Err` that unwinds the dispatch loop.
-    pub pending_hook_error: Option<LuaError>,
-
     // ── Error handling ──
 
     // types.tsv: lua_State.errorJmp → (removed; replaced by Result<T, LuaError>)
@@ -1629,14 +1661,96 @@ impl LuaState {
         self.hookcount = self.basehookcount;
     }
 
-    /// Stage an error to be raised when the current hook closure returns.
+    /// Activate the per-runtime sandbox budget and arm the current thread.
     ///
-    /// See [`LuaState::pending_hook_error`]. Intended to be called from inside
-    /// a count/line hook closure to abort execution with a sandbox-budget
-    /// error. The closure cannot itself return a `Result`, so it routes the
-    /// error through this slot, which `do_::hook` drains.
-    pub fn set_pending_hook_error(&mut self, err: LuaError) {
-        self.pending_hook_error = Some(err);
+    /// Stores the budget in `GlobalState` (shared across every thread) and
+    /// sets the count-hook mask on this thread so the dispatch loop traps every
+    /// `interval` instructions. Coroutines created afterwards inherit the mask
+    /// via `preinit_thread`, so metering spans all threads — closing the
+    /// coroutine-escape that a per-thread closure could not. Pass `None` for a
+    /// limit to leave that dimension unbounded.
+    pub fn install_sandbox_limits(
+        &mut self,
+        interval: i32,
+        instr_limit: Option<u64>,
+        mem_limit: Option<usize>,
+    ) {
+        let interval = interval.max(1);
+        {
+            let g = self.global();
+            g.sandbox.interval.set(interval);
+            g.sandbox.instr_limited.set(instr_limit.is_some());
+            g.sandbox.instr_remaining.set(instr_limit.unwrap_or(0));
+            g.sandbox.instr_limit.set(instr_limit.unwrap_or(0));
+            g.sandbox.mem_limit.set(mem_limit);
+            g.sandbox.tripped.set(SANDBOX_TRIP_NONE);
+        }
+        self.hookmask |= SANDBOX_COUNT_MASK;
+        self.basehookcount = interval;
+        self.hookcount = interval;
+        crate::debug::arm_traps(self);
+    }
+
+    /// Charge the shared budget for one count-hook interval. Returns the abort
+    /// error if a limit has been crossed (and records why in `tripped`).
+    /// Called from `trace_exec` on every thread, once per `interval`
+    /// instructions — never on the budget-disabled hot path.
+    pub fn sandbox_charge_interval(&self) -> Option<LuaError> {
+        let g = self.global();
+        let interval = g.sandbox.interval.get();
+        if interval == 0 {
+            return None;
+        }
+        if g.sandbox.instr_limited.get() {
+            let rem = g.sandbox.instr_remaining.get().saturating_sub(interval as u64);
+            g.sandbox.instr_remaining.set(rem);
+            if rem == 0 {
+                g.sandbox.tripped.set(SANDBOX_TRIP_INSTRUCTIONS);
+                return Some(LuaError::runtime(format_args!(
+                    "sandbox: instruction budget exhausted"
+                )));
+            }
+        }
+        if let Some(limit) = g.sandbox.mem_limit.get() {
+            if g.total_bytes() > limit {
+                g.sandbox.tripped.set(SANDBOX_TRIP_MEMORY);
+                return Some(LuaError::runtime(format_args!(
+                    "sandbox: memory limit exceeded"
+                )));
+            }
+        }
+        None
+    }
+
+    /// Whether an instruction budget is active (vs. only a memory limit / none).
+    pub fn sandbox_instr_limited(&self) -> bool {
+        self.global().sandbox.instr_limited.get()
+    }
+
+    /// Instructions left before the budget trips (meaningful only when
+    /// [`sandbox_instr_limited`](Self::sandbox_instr_limited)).
+    pub fn sandbox_instr_remaining(&self) -> u64 {
+        self.global().sandbox.instr_remaining.get()
+    }
+
+    /// The configured instruction limit (for computing "used").
+    pub fn sandbox_instr_limit(&self) -> u64 {
+        self.global().sandbox.instr_limit.get()
+    }
+
+    /// The current trip code (one of the `SANDBOX_TRIP_*` constants).
+    pub fn sandbox_tripped_code(&self) -> u8 {
+        self.global().sandbox.tripped.get()
+    }
+
+    /// Refill the instruction budget to its configured limit and clear the
+    /// trip flag, so the same runtime can run another chunk.
+    pub fn sandbox_reset(&self) {
+        let g = self.global();
+        if g.sandbox.instr_limited.get() {
+            g.sandbox.instr_remaining.set(g.sandbox.instr_limit.get());
+        }
+        g.sandbox.tripped.set(SANDBOX_TRIP_NONE);
     }
 
     /// Returns the current stack capacity (slots between base and stack_last).
@@ -3980,6 +4094,22 @@ fn preinit_thread(thread: &mut LuaState, global: Rc<RefCell<GlobalState>>) {
     thread.allowhook = true;
     // macros.tsv: resethookcount → state.reset_hook_count()
     thread.hookcount = thread.basehookcount;
+
+    // Sandbox inheritance: a coroutine joins the runtime-wide instruction/memory
+    // budget so metering spans every thread, not just the main one. The budget
+    // itself lives in `GlobalState` (shared); the new thread only needs the
+    // count-hook mask armed so the dispatch loop traps and charges it.
+    {
+        let (active, interval) = {
+            let g = thread.global.borrow();
+            (g.sandbox_active(), g.sandbox.interval.get())
+        };
+        if active {
+            thread.hookmask = SANDBOX_COUNT_MASK;
+            thread.basehookcount = interval;
+            thread.hookcount = interval;
+        }
+    }
     thread.openupval = Vec::new();
     thread.status = LuaStatus::Ok as u8;
     thread.errfunc = 0;
@@ -4074,7 +4204,6 @@ pub fn new_thread(state: &mut LuaState, initial_body: Option<LuaValue>) -> Resul
         hookmask: 0,
         basehookcount: 0,
         hookcount: 0,
-        pending_hook_error: None,
         errfunc: 0,
         nCcalls: 0,
         oldpc: 0,
@@ -4324,6 +4453,7 @@ pub fn new_state() -> Option<LuaState> {
         dynlib_symbol_hook: None,
         dynlib_unload_hook: None,
         totalbytes: std::mem::size_of::<GlobalState>() as isize,
+        sandbox: SandboxLimits::default(),
         gc_debt: 0,
         gc_estimate: 0,
         lastatomic: 0,
@@ -4396,7 +4526,6 @@ pub fn new_state() -> Option<LuaState> {
         hookmask: 0,
         basehookcount: 0,
         hookcount: 0,
-        pending_hook_error: None,
         errfunc: 0,
         nCcalls: 0,
         oldpc: 0,

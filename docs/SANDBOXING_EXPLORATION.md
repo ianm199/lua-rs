@@ -1,4 +1,4 @@
-# Sandboxing — exploratory prototype (2026-05-29)
+# Sandboxing (started 2026-05-29)
 
 Branch: `explore/sandboxing` (worktree `lua-rs-sandbox`).
 
@@ -6,8 +6,8 @@ Branch: `explore/sandboxing` (worktree `lua-rs-sandbox`).
 
 Sandboxing — running untrusted Lua with bounded CPU, bounded memory, and no
 ambient host authority — is one of the main capabilities [piccolo] has that we
-did not. This is an exploratory pass to find the seams and prove what's
-achievable on the current architecture.
+did not. This pass found the seams, built the feature, and hardened it (the
+initial prototype's coroutine escape is now closed).
 
 [piccolo]: https://github.com/kyren/piccolo
 
@@ -15,22 +15,24 @@ achievable on the current architecture.
 
 A working `Lua::sandboxed(SandboxConfig)` constructor that gives an embedder
 three independent controls, each proven by a passing test
-(`crates/lua-rs-runtime/tests/sandbox.rs`, 7/7 green):
+(`crates/lua-rs-runtime/tests/sandbox.rs`, 9/9 green):
 
 | Control | Mechanism | Test |
 |---|---|---|
-| **Instruction budget** — abort after N VM instructions | VM count-hook decrements a shared budget; trips → staged `LuaError` unwinds the dispatch loop | `infinite_loop_is_aborted`, `runaway_recursion_is_aborted` |
-| **Memory ceiling** — abort once GC bytes exceed a limit | same hook samples `GlobalState::total_bytes()` every interval | `memory_bomb_is_aborted` |
+| **Instruction budget** — abort after N VM instructions | shared `GlobalState` budget charged in `trace_exec` on every thread; trips → `LuaError` unwinds the dispatch loop | `infinite_loop_is_aborted`, `runaway_recursion_is_aborted`, `coroutine_is_metered` |
+| **Memory ceiling** — abort once GC bytes exceed a limit | same per-interval charge samples `GlobalState::total_bytes()` | `memory_bomb_is_aborted` |
 | **Capability stripping** — remove dangerous globals | nil out `os.execute`, `io`, `load`, `require`, `package`, `debug`, … from `_G` after stdlib init | `strict_preset_strips_capabilities` |
 
 `while true do end` and a 1 GB-table memory bomb both abort cleanly instead of
 hanging/OOMing the host; pure libraries (`string`, `math`, `table`, `os.time`)
 remain. A plain `Lua::new()` is completely unaffected (no hook, no stripping).
 
-**⚠️ Not yet a sound security boundary.** The budget does not follow coroutines
-(limitation 0 below) — code inside `coroutine.wrap(...)` is unmetered and can
-hang. Treat this as a working proof-of-concept, not a shippable sandbox, until
-the budget moves into `GlobalState` with per-thread enforcement.
+The budget spans **every thread** — code inside `coroutine.wrap(...)` is metered
+too (this was the original prototype's one escape; it is now closed by putting
+the budget in `GlobalState` and arming every coroutine). Remaining gaps are
+narrower and documented below: the memory ceiling is sampled rather than
+per-allocation, and a single long-running stdlib C call can't be preempted
+mid-call.
 
 ## How it works
 
@@ -48,31 +50,60 @@ never surfaced as a sandbox API.
 - Host capabilities were *already* gated behind optional `HostHooks`
   (file/process/dynlib); a sandbox simply omits them.
 
-### The one real gap that had to be filled
+### Where the budget lives: shared `GlobalState`, enforced natively
 
-A Lua C hook aborts execution by calling `luaL_error` (a longjmp). Our hook
-closure is `FnMut(&mut LuaState, &LuaDebug) -> ()` and **cannot return an
-error**. So the closure had nowhere to signal "stop."
+The budget is **not** a hook closure on one thread — that design could not span
+coroutines (see history below). Instead it lives in `GlobalState`
+(`SandboxLimits`, a set of `Cell`s shared by every thread through the
+`Rc<RefCell<GlobalState>>` they all hold), and is enforced *inside the VM*:
 
-Fix (minimal, additive): a `pending_hook_error: Option<LuaError>` slot on
-`LuaState`. The closure stages an error there; `do_::hook` drains it after the
-closure returns and converts it into the `Err` that unwinds the dispatch loop.
-This is the only change to `lua-vm`:
+- `LuaState::install_sandbox_limits(interval, instr, mem)` stores the budget in
+  `GlobalState` and arms the `LUA_MASKCOUNT` mask on the current thread.
+- `preinit_thread` arms the same mask on every **new coroutine**, so metering
+  spans all threads — this is what closes the coroutine escape.
+- `trace_exec` calls `LuaState::sandbox_charge_interval()` once per `interval`
+  instructions on each thread: it decrements the shared budget and samples
+  `total_bytes()`, returning a `LuaError` directly (it's already a `Result` fn)
+  when a limit is crossed. That `Err` unwinds the dispatch loop.
 
-- `lua-vm/src/state.rs` — new field + `set_pending_hook_error()`.
-- `lua-vm/src/do_.rs` — `do_::hook` checks the slot and returns `Err` if set.
+Because enforcement is native in `trace_exec` (not a user-hook closure), there
+is **no `pending_hook_error` indirection** and the user-hook slot stays free for
+`debug.sethook`. Changes to `lua-vm`:
 
-Everything else lives in `lua-rs-runtime/src/lib.rs` (the `Sandbox`,
+- `lua-vm/src/state.rs` — `SandboxLimits` + `GlobalState.sandbox` field;
+  `install_sandbox_limits`, `sandbox_charge_interval`, accessors; coroutine
+  arming in `preinit_thread`.
+- `lua-vm/src/debug.rs` — `trace_exec` charges the budget in the count path;
+  `arm_traps` wrapper.
+
+Everything else lives in `lua-rs-runtime/src/lib.rs` (`Sandbox`,
 `SandboxConfig`, `TripReason`, `Lua::sandboxed`, `install_sandbox`).
 
 ### Non-regression
 
-`do_::hook` is shared with Lua's own `debug.sethook`. The slot is `None` in all
-normal hook usage, so the added check is a no-op. Confirmed:
+`trace_exec` is shared with Lua's own `debug.sethook`; the sandbox charge only
+runs when the sandbox is active (`interval != 0`), so normal hook usage is
+unaffected, and the dispatch loop itself is untouched. Confirmed:
 
-- `db.lua` (the official debug-hook test — count + line hooks) — **PASS**
-- `errors.lua`, `coroutine.lua` — **PASS**
+- `db.lua` (official debug-hook test — count + line hooks) — **PASS**
+- `coroutine.lua`, `errors.lua`, `gc.lua`, `nextvar.lua` — **PASS**
 - `lua-vm` lib tests, full `lua-rs-runtime` build — clean.
+- Sandbox tests **9/9** including `coroutine_is_metered` and
+  `yielding_coroutine_within_budget_completes`.
+
+### Cost (measured, release, worst-case tight integer loop)
+
+| Config | Time | vs off |
+|---|---|---|
+| sandbox **off** (`Lua::new`) | 0.150s | 1.00× |
+| sandbox **on** (instr only) | 0.265s | 1.77× |
+| sandbox **on** (instr + memory) | 0.263s | 1.75× |
+
+Off path is byte-for-byte identical to today (the `trap` flag stays false) →
+**zero overhead for non-sandboxed embedders**. Inside a sandbox the cost is the
+standard count-hook per-instruction trap dispatch; the memory check rides the
+same per-interval charge for free. `check_interval` trades enforcement
+precision, not throughput.
 
 ## Usage
 
@@ -97,24 +128,15 @@ still bound execution.
 
 ## Honest limitations (and the path past them)
 
-0. **⚠️ Coroutines escape the CPU/memory budget (verified).** The budget is
-   enforced by a count-hook closure on *one* `LuaState`. Coroutines are separate
-   `LuaState`s created with no hook, so code running inside a coroutine is
-   completely unmetered — `coroutine.wrap(function() while true do end end)()`
-   **hangs forever** under an instruction limit, and `strict()` does *not* strip
-   `coroutine`. Root cause: the hook is a `Box<dyn FnMut>` that cannot be cloned
-   into each new thread, so the closure design fundamentally can't span threads.
-   - **Stopgap (verified to close the hole):** add `b"coroutine"` to
-     `remove_globals`. Then coroutine creation is a plain nil-index error.
-   - **Proper fix:** move the budget into `GlobalState` (already shared across
-     all threads via `Rc<RefCell<…>>`) and check it in the dispatch-loop trap
-     path for *every* thread, instead of using the per-thread user-hook slot.
-     That is the design a production sandbox wants; it also frees the user-hook
-     slot for `debug.sethook`.
-
-   This is the reason the prototype is **not yet a sound security boundary** and
-   should not be merged to `main` as "sandboxing" without the proper fix or, at
-   minimum, the stopgap baked into `strict()` plus clear "best-effort" framing.
+0. **✅ Coroutine escape — RESOLVED.** An earlier prototype enforced the budget
+   with a count-hook *closure* on a single `LuaState`; coroutines are separate
+   `LuaState`s, so code inside `coroutine.wrap(function() while true do end end)()`
+   ran completely unmetered and hung forever. Fixed by moving the budget into
+   `GlobalState` (shared across all threads) and arming the count mask on every
+   coroutine in `preinit_thread`. Now metered on every thread — proven by
+   `coroutine_is_metered` (aborts in <5s) and `yielding_coroutine_within_budget_completes`.
+   The closure design couldn't do this because `Box<dyn FnMut>` can't be cloned
+   into each thread; native `GlobalState` enforcement has no such constraint.
 
 1. **Enforcement is granular, not exact.** Limits are checked every
    `check_interval` instructions (default 1000). A budget trips within
@@ -126,7 +148,14 @@ still bound execution.
    `heap.rs:558`) — but `allocate` is currently infallible and called from
    hundreds of sites, so making it fail-able is a real project, not a patch.
 
-2. **Abort, not pause/resume.** piccolo's fuel is *cooperative*: out-of-fuel
+2. **No preemption inside a single stdlib C call.** The budget is charged per
+   *VM instruction*; one `string`/`table` call runs as a single instruction the
+   hook can't interrupt mid-call. Many stdlib functions self-guard (e.g.
+   `string.rep('x', 5e9)` errors in ~190µs on its own length check), but a
+   pathological pattern match could still spin inside one call. A complete
+   defense would add budget checks to the loop-heavy stdlib functions.
+
+3. **Abort, not pause/resume.** piccolo's fuel is *cooperative*: out-of-fuel
    suspends and resumes later, enabling preemptive scheduling of many scripts on
    one thread. Our interpreter is a recursive Rust function (`vm::execute` calls
    itself for Lua→Lua calls), so we can *abort* at a hook point but not *yield
@@ -134,7 +163,7 @@ still bound execution.
    re-entrant VM redesign that is piccolo's whole architecture — out of scope
    here, worth a separate strategy note.
 
-3. **Capability stripping is a blocklist, not an allowlist.** `strict()` removes
+4. **Capability stripping is a blocklist, not an allowlist.** `strict()` removes
    a known-dangerous set. A higher-assurance design builds the environment from
    an empty table and adds only vetted functions. The host-hook layer is the
    real backstop (omitted hooks make `io`/`os`/dynlib calls error even if a
