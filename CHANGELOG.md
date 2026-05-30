@@ -62,3 +62,22 @@ upgrading, this is the cause: add `pub` or `#[lua(field)]` to that field.
   private field (escape hatch for the visibility change above).
 - `#[derive(LuaUserData)]` support for tuple/newtype and unit structs as opaque
   userdata handles.
+- Behavioral-parity oracle (`make parity` / `harness/parity_check.sh`): a golden
+  diff of normalized stdout + exit code against reference C Lua 5.4.7, distinct
+  from the existing no-crash gate. ([#60](https://github.com/ianm199/lua-rs/pull/60))
+
+### Fixed
+
+- `os.date` / `os.time` local-time handling and close-time (`<close>`
+  to-be-closed variable) finalizers — two behavioral divergences from C Lua 5.4
+  surfaced by the new parity oracle. Official-test conformance 24 → 27/33.
+  ([#60](https://github.com/ianm199/lua-rs/pull/60))
+
+### Performance
+
+- GC pacer now charges table array/hash backing buffers, not just the `GcBox`
+  header, so the collector's byte budget reflects real allocation.
+  ([#58](https://github.com/ianm199/lua-rs/pull/58))
+- Removed a redundant duplicate short-string intern table; short strings were
+  interned twice and one copy was never read (−56% RSS, −54% wall on the
+  `table_hash_pressure` benchmark). ([#62](https://github.com/ianm199/lua-rs/pull/62))
