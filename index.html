@@ -186,6 +186,27 @@ lua.scope(|s| {
     </section>
 
     <section>
+      <h2>Running untrusted Lua</h2>
+      <p class="lead">Bound CPU and memory and strip host access, so a buggy or hostile script can't hang the process, exhaust memory, or reach the filesystem. Limits are enforced on every thread — coroutines included — and are <strong>uncatchable</strong>: a script can't escape them with <code>pcall</code>. A runtime with no sandbox pays zero overhead.</p>
+      <pre class="block"><span class="c">// Rust: bound a runaway, strip host access, see which limit tripped</span>
+let (lua, sandbox) = Lua::sandboxed(SandboxConfig::strict())?;
+lua.load(untrusted).exec()?;
+match sandbox.tripped() {
+    Some(TripReason::Instructions) => { <span class="c">/* CPU budget hit */</span> }
+    Some(TripReason::Memory)       => { <span class="c">/* memory ceiling hit */</span> }
+    None                           => { <span class="c">/* ordinary Lua error */</span> }
+}</pre>
+      <pre class="block"><span class="c"># or from the CLI</span>
+$ lua-rs --sandbox script.lua                 <span class="c"># strip host globals + default caps</span>
+$ lua-rs --max-instructions=5000000 s.lua     <span class="c"># CPU budget</span>
+$ lua-rs --max-memory=64M s.lua               <span class="c"># memory ceiling (K/M/G)</span></pre>
+      <p class="muted" style="margin-top:14px;">Three independent controls: an instruction budget (kills infinite loops and runaway recursion), a memory ceiling (refuses oversize allocations before they happen), and capability stripping (removes <code>os.execute</code>, <code>io</code>, <code>load</code>, <code>require</code>, <code>debug</code>, …). The same limits are exposed over the WASM ABI for running untrusted scripts in the browser.</p>
+      <div class="callout">
+        Design and threat model: <a href="https://github.com/ianm199/lua-rs/blob/main/docs/SANDBOXING_EXPLORATION.md">SANDBOXING_EXPLORATION.md</a>.
+      </div>
+    </section>
+
+    <section>
       <h2>Browser WebAssembly</h2>
       <p class="lead">The same interpreter core is published as <code>lua-rs-wasm</code> for browser and Node embeddings. The package ships a prebuilt <code>wasm32-unknown-unknown</code> artifact plus JS host hooks for stdout, stdin, environment values, time, and controlled file access.</p>
       <pre class="block"><span class="c"># from npm</span>
@@ -248,6 +269,7 @@ $ npm install lua-rs-wasm
       <div class="cards">
         <div class="card"><span class="badge good">shipping</span><h3>Lua 5.4 runtime</h3><p>Runs real Lua programs, passes 44/44 upstream tests, and is published to crates.io as <code>lua-cli</code>.</p></div>
         <div class="card"><span class="badge good">shipping</span><h3>Browser WASM package</h3><p>The <code>lua-rs-wasm</code> npm package runs Lua in the browser through the published WebAssembly build and JS host hooks.</p></div>
+        <div class="card"><span class="badge good">shipping</span><h3>Sandboxing</h3><p>Run untrusted Lua with bounded CPU and memory and stripped host access — enforced on every thread and uncatchable. Exposed in Rust, the CLI (<code>--sandbox</code>), and the WASM ABI.</p></div>
         <div class="card"><span class="badge good">working</span><h3>LuaRocks (pure-Lua rocks)</h3><p>lua-rs runs the real LuaRocks 3.11.1 package manager: <code>search</code>, <code>install</code>, <code>show</code>, and <code>require</code> pure-Lua rocks like <code>inspect</code> all work. Native C rocks are the remaining piece.</p></div>
       </div>
     </section>
