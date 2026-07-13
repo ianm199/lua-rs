@@ -7249,7 +7249,10 @@ mod tests {
                 .raw_set_int(&mut state, i, LuaValue::Int(i))
                 .expect("integer table insert should succeed");
         }
-        let grown_bytes = state.global().heap.bytes_used();
+        let grown_bytes = {
+            let heap = &state.global().heap;
+            heap.bytes_used() - heap.owner_backing_charged_bytes()
+        };
         assert!(
             grown_bytes > header_bytes,
             "table array/hash buffer growth must be charged to the GC heap"
@@ -7257,7 +7260,10 @@ mod tests {
 
         state.gc().full_collect();
         assert_eq!(
-            state.global().heap.bytes_used(),
+            {
+                let heap = &state.global().heap;
+                heap.bytes_used() - heap.owner_backing_charged_bytes()
+            },
             grown_bytes,
             "rooted table buffer bytes should remain charged after collection"
         );
@@ -7282,7 +7288,10 @@ mod tests {
             .expect("userdata allocation should succeed");
         state.pop_n(1);
         let key = state.external_root_value(LuaValue::UserData(userdata));
-        let allocated_bytes = state.global().heap.bytes_used();
+        let allocated_bytes = {
+            let heap = &state.global().heap;
+            heap.bytes_used() - heap.owner_backing_charged_bytes()
+        };
         assert!(
             allocated_bytes > payload_len,
             "userdata payload bytes must be charged to the GC heap"
@@ -7290,7 +7299,10 @@ mod tests {
 
         state.gc().full_collect();
         assert_eq!(
-            state.global().heap.bytes_used(),
+            {
+                let heap = &state.global().heap;
+                heap.bytes_used() - heap.owner_backing_charged_bytes()
+            },
             allocated_bytes,
             "rooted userdata payload bytes should remain charged after collection"
         );
@@ -7321,7 +7333,10 @@ mod tests {
         let expected_payload = ccl.buffer_bytes();
         let key = state.external_root_value(LuaValue::Function(LuaClosure::C(ccl)));
         state.pop_n(1);
-        let allocated_bytes = state.global().heap.bytes_used();
+        let allocated_bytes = {
+            let heap = &state.global().heap;
+            heap.bytes_used() - heap.owner_backing_charged_bytes()
+        };
         assert!(
             allocated_bytes >= expected_payload,
             "C closure upvalue vector bytes must be charged to the GC heap"
@@ -7329,7 +7344,10 @@ mod tests {
 
         state.gc().full_collect();
         assert_eq!(
-            state.global().heap.bytes_used(),
+            {
+                let heap = &state.global().heap;
+                heap.bytes_used() - heap.owner_backing_charged_bytes()
+            },
             allocated_bytes,
             "rooted C closure payload bytes should remain charged after collection"
         );
@@ -7359,7 +7377,10 @@ mod tests {
         let closure = state.new_lclosure(proto, 16);
         let expected_closure_payload = closure.buffer_bytes();
         let key = state.external_root_value(LuaValue::Function(LuaClosure::Lua(closure)));
-        let allocated_bytes = state.global().heap.bytes_used();
+        let allocated_bytes = {
+            let heap = &state.global().heap;
+            heap.bytes_used() - heap.owner_backing_charged_bytes()
+        };
         assert!(
             allocated_bytes >= expected_proto_payload + expected_closure_payload,
             "proto and Lua closure vector bytes must be charged to the GC heap"
@@ -7367,7 +7388,10 @@ mod tests {
 
         state.gc().full_collect();
         assert_eq!(
-            state.global().heap.bytes_used(),
+            {
+                let heap = &state.global().heap;
+                heap.bytes_used() - heap.owner_backing_charged_bytes()
+            },
             allocated_bytes,
             "rooted proto and Lua closure payload bytes should remain charged after collection"
         );
@@ -7391,7 +7415,10 @@ mod tests {
             .intern_str(&payload)
             .expect("long string should allocate");
         let key = state.external_root_value(LuaValue::Str(string));
-        let allocated_bytes = state.global().heap.bytes_used();
+        let allocated_bytes = {
+            let heap = &state.global().heap;
+            heap.bytes_used() - heap.owner_backing_charged_bytes()
+        };
         assert!(
             allocated_bytes > payload.len(),
             "long string backing bytes must be charged to the GC heap"
@@ -7399,7 +7426,10 @@ mod tests {
 
         state.gc().full_collect();
         assert_eq!(
-            state.global().heap.bytes_used(),
+            {
+                let heap = &state.global().heap;
+                heap.bytes_used() - heap.owner_backing_charged_bytes()
+            },
             allocated_bytes,
             "rooted string buffer bytes should remain charged after collection"
         );

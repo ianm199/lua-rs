@@ -1475,6 +1475,16 @@ struct OwnerVec {
     reallyold: usize,
     old1: usize,
     survival: usize,
+    /// Backing bytes last charged to the heap pacer for this vector
+    /// (`capacity × slot size` at the last [`Heap::sync_owner_backing`]).
+    /// The W2 diet moved one fat pointer per object out of the charged box
+    /// size and into these slots; leaving the slots uncharged both dropped
+    /// collection cadence (the byte threshold admits ~17% more live objects
+    /// before collecting) and hid capacity/tombstone slack from the pacer
+    /// entirely — the W2 RSS A/B showed binarytrees +15-30% RSS vs main until
+    /// this charge landed (spec R2 finding 9's slack charge, made
+    /// unconditional).
+    charged_backing: usize,
 }
 
 impl Default for OwnerVec {
@@ -1485,14 +1495,26 @@ impl Default for OwnerVec {
             reallyold: 0,
             old1: 0,
             survival: 0,
+            charged_backing: 0,
         }
     }
 }
+
+/// Size of one owner-vector slot: an `Option<NonNull<GcBox<dyn Trace>>>` fat
+/// pointer — 16 B on 64-bit targets, 8 B on wasm32 (the `Option` is free via
+/// the null niche). Computed with `size_of` so the backing charge is exact on
+/// every width.
+const OWNER_SLOT_BYTES: usize = std::mem::size_of::<Option<NonNull<GcBox<dyn Trace>>>>();
 
 impl OwnerVec {
     /// Physical slot count including tombstones (the sweep watermark domain).
     fn len(&self) -> usize {
         self.slots.len()
+    }
+
+    /// Real memory retained by this vector's backing allocation right now.
+    fn backing_bytes(&self) -> usize {
+        self.slots.capacity() * OWNER_SLOT_BYTES
     }
 
     /// Live (non-tombstone) member count.
@@ -1668,6 +1690,7 @@ impl OwnerVec {
         self.reallyold = 0;
         self.old1 = 0;
         self.survival = 0;
+        self.charged_backing = 0;
         std::mem::take(&mut self.slots)
     }
 }
@@ -1988,7 +2011,11 @@ impl Heap {
         let raw: *mut GcBox<T> = Box::into_raw(boxed);
         let ptr: NonNull<GcBox<T>> = NonNull::new(raw).expect("Box::into_raw is non-null");
         let dyn_ptr: NonNull<GcBox<dyn Trace>> = ptr;
-        self.allgc.borrow_mut().push(dyn_ptr);
+        {
+            let mut allgc = self.allgc.borrow_mut();
+            allgc.push(dyn_ptr);
+            self.sync_owner_backing(&mut allgc);
+        }
         self.bytes.set(self.bytes.get() + size);
         self.objects.set(self.objects.get() + 1);
         Gc {
@@ -2220,7 +2247,16 @@ impl Heap {
         let mut ov = ov.borrow_mut();
         if ov.over_density() {
             ov.compact();
+            self.sync_owner_backing(&mut ov);
         }
+    }
+
+    /// Push a moved object onto a destination owner vector's tail and keep
+    /// the pacer's backing charge in sync with any capacity growth.
+    fn push_move_dest(&self, ov: &RefCell<OwnerVec>, ptr: NonNull<GcBox<dyn Trace>>) {
+        let mut ov = ov.borrow_mut();
+        ov.push(ptr);
+        self.sync_owner_backing(&mut ov);
     }
 
     pub fn move_allgc_to_finobj(&self, ptr: NonNull<GcBox<dyn Trace>>) -> bool {
@@ -2235,7 +2271,7 @@ impl Heap {
         if self.state.get().is_sweep() {
             header.color.set(self.current_white());
         }
-        self.finobj.borrow_mut().push(ptr);
+        self.push_move_dest(&self.finobj, ptr);
         self.maybe_compact_after_move(&self.allgc);
         true
     }
@@ -2245,7 +2281,7 @@ impl Heap {
             return false;
         }
         self.delete_grayagain_entry_if_listed(ptr);
-        self.tobefnz.borrow_mut().push(ptr);
+        self.push_move_dest(&self.tobefnz, ptr);
         self.maybe_compact_after_move(&self.finobj);
         true
     }
@@ -2259,7 +2295,7 @@ impl Heap {
         if self.state.get().is_sweep() {
             header.color.set(self.current_white());
         }
-        self.allgc.borrow_mut().push(ptr);
+        self.push_move_dest(&self.allgc, ptr);
         self.maybe_compact_after_move(&self.tobefnz);
         true
     }
@@ -2911,12 +2947,64 @@ impl Heap {
         self.sweep_watermark.set(0);
     }
 
+    /// Reconcile the pacer's view of one owner vector's backing storage with
+    /// reality: charge or refund the delta between `capacity × slot size` now
+    /// and what was last charged. Called wherever capacity can change — after
+    /// an `allocate`/move push (growth) and after every shrink point. A
+    /// same-capacity call is a compare and an early return, so the hot
+    /// allocate path pays a few instructions only. `Vec::truncate`/`compact`
+    /// never change capacity, so pure compaction syncs are no-ops.
+    fn sync_owner_backing(&self, ov: &mut OwnerVec) {
+        let now = ov.backing_bytes();
+        let prev = ov.charged_backing;
+        if now == prev {
+            return;
+        }
+        ov.charged_backing = now;
+        if now > prev {
+            self.bytes.set(self.bytes.get().saturating_add(now - prev));
+        } else {
+            self.bytes.set(self.bytes.get().saturating_sub(prev - now));
+        }
+    }
+
+    /// Total bytes retained by ownership-metadata storage right now: the
+    /// three sweepable owner vectors plus `quarantined`, `uncollected`, and
+    /// `pending_release` backing (spec measurement-plan item 3; feeds
+    /// heap-diff so total-memory claims include the W2-relocated pointer and
+    /// its slack). Only the three sweepable vectors' share is charged to the
+    /// pacer (`bytes`); `quarantined` is a debug instrument, `uncollected`
+    /// deliberately charges nothing, and `pending_release` is transient.
+    pub fn owner_capacity_bytes(&self) -> usize {
+        let ptr_bytes = std::mem::size_of::<NonNull<GcBox<dyn Trace>>>();
+        self.allgc.borrow().backing_bytes()
+            + self.finobj.borrow().backing_bytes()
+            + self.tobefnz.borrow().backing_bytes()
+            + self.quarantined.borrow().capacity() * ptr_bytes
+            + self.uncollected.borrow().capacity() * ptr_bytes
+            + self.pending_release.borrow().capacity() * ptr_bytes
+    }
+
+    /// The share of [`owner_capacity_bytes`](Self::owner_capacity_bytes)
+    /// currently charged into the pacer's `bytes` counter: the three sweepable
+    /// vectors' backing as of their last sync. `bytes_used() -
+    /// owner_backing_charged_bytes()` is the charged box+buffer portion alone —
+    /// the quantity accounting tests should pin across a collection, since
+    /// backing capacity legitimately shrinks at cycle ends even when no object
+    /// is freed.
+    pub fn owner_backing_charged_bytes(&self) -> usize {
+        self.allgc.borrow().charged_backing
+            + self.finobj.borrow().charged_backing
+            + self.tobefnz.borrow().charged_backing
+    }
+
     /// Threshold-compaction point (no sweep cursor live): compact `ov` if its
     /// tombstone density exceeds 25%.
     fn compact_if_over_density(&self, ov: &RefCell<OwnerVec>) {
         let mut ov = ov.borrow_mut();
         if ov.over_density() {
             ov.compact();
+            self.sync_owner_backing(&mut ov);
         }
     }
 
@@ -2926,6 +3014,7 @@ impl Heap {
         let mut ov = ov.borrow_mut();
         ov.compact();
         ov.shrink_high_water();
+        self.sync_owner_backing(&mut ov);
     }
 
     /// The owner vector the incremental sweep is currently walking, selected by
@@ -3230,17 +3319,20 @@ impl Heap {
             allgc.compact();
             allgc.rotate_after_minor();
             allgc.shrink_high_water();
+            self.sync_owner_backing(&mut allgc);
         }
         {
             let mut finobj = self.finobj.borrow_mut();
             finobj.compact();
             finobj.rotate_after_minor();
             finobj.shrink_high_water();
+            self.sync_owner_backing(&mut finobj);
         }
         {
             let mut tobefnz = self.tobefnz.borrow_mut();
             tobefnz.compact();
             tobefnz.shrink_high_water();
+            self.sync_owner_backing(&mut tobefnz);
         }
 
         self.drain_pending_release();
@@ -3539,6 +3631,11 @@ mod tests {
         fn pending_release_len(&self) -> usize {
             self.pending_release.borrow().len()
         }
+        fn charged_backing_total_for_test(&self) -> usize {
+            self.allgc.borrow().charged_backing
+                + self.finobj.borrow().charged_backing
+                + self.tobefnz.borrow().charged_backing
+        }
     }
 
     /// A tiny GC-tracked type for the smoke test.
@@ -3774,6 +3871,51 @@ mod tests {
         assert_eq!(ov.survival, 0);
         assert_eq!(ov.tombstones, 0);
         assert_eq!(ov.len(), 4);
+    }
+
+    /// Fix 0 of the codex/RSS revision round: the pacer must see owner-vector
+    /// backing storage. Invariant pinned here: `bytes_used() == sum of charged
+    /// box sizes + charged backing` after allocation and after a full cycle's
+    /// compact/shrink, and back to 0 at teardown. Without the charge, the W2
+    /// byte threshold admitted ~17% more live objects before collecting while
+    /// the slot vectors' real memory stayed invisible — binarytrees RSS
+    /// regressed +15-30% vs main (supervisor A/B, 5/5 pairs).
+    #[test]
+    fn owner_vector_backing_is_charged_to_pacer() {
+        let heap = Heap::new();
+        heap.unpause();
+        assert_eq!(heap.bytes_used(), 0);
+        let n = 100usize;
+        let objs: Vec<_> = (0..n).map(|_| fresh_cell(&heap)).collect();
+        let box_bytes = n * std::mem::size_of::<GcBox<Cell0>>();
+        let charged = heap.charged_backing_total_for_test();
+        assert!(
+            charged >= n * OWNER_SLOT_BYTES,
+            "backing charge covers at least one slot per live object \
+             ({charged} vs {})",
+            n * OWNER_SLOT_BYTES
+        );
+        assert_eq!(
+            heap.bytes_used(),
+            box_bytes + charged,
+            "pacer bytes = box bytes + owner-vector backing"
+        );
+        assert!(
+            heap.owner_capacity_bytes() >= charged,
+            "the public diagnostic reports at least the charged share"
+        );
+
+        let roots = ManyRoots(objs.clone());
+        heap.full_collect(&roots);
+        let charged = heap.charged_backing_total_for_test();
+        assert_eq!(
+            heap.bytes_used(),
+            box_bytes + charged,
+            "invariant holds through a cycle's compact/shrink"
+        );
+
+        heap.drop_all();
+        assert_eq!(heap.bytes_used(), 0, "teardown zeroes the charge with the rest");
     }
 
     #[test]
@@ -4085,6 +4227,10 @@ mod tests {
         assert_eq!(heap.collections(), 1);
     }
 
+    /// Pins "a kept object is not refunded". Compares the box portion of
+    /// `bytes` (total minus the owner-vector backing charge) rather than the
+    /// raw total: since the backing charge landed, a cycle's capacity shrink
+    /// can legitimately reduce `bytes` even when no box is freed.
     #[test]
     fn collect_keeps_reachable() {
         let heap = Heap::new();
@@ -4093,9 +4239,10 @@ mod tests {
             next: Cell::new(None),
             marker_calls: Cell::new(0),
         });
-        let bytes_before = heap.bytes_used();
+        let box_bytes_before = heap.bytes_used() - heap.charged_backing_total_for_test();
         heap.full_collect(&OneRoot(Some(root)));
-        assert_eq!(heap.bytes_used(), bytes_before);
+        let box_bytes_after = heap.bytes_used() - heap.charged_backing_total_for_test();
+        assert_eq!(box_bytes_after, box_bytes_before);
         assert_eq!(root.marker_calls.get(), 1);
     }
 
