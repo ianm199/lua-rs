@@ -3510,6 +3510,42 @@ impl Drop for Heap {
 mod tests {
     use super::*;
 
+    /// Test-only observability into the owner-vector spine (#113 Wave 2). Kept
+    /// in the test module so it is `cfg(test)` automatically; inherent impls may
+    /// live in any module of the defining crate.
+    impl Heap {
+        fn sweep_index_for_test(&self) -> usize {
+            self.sweep_index.get()
+        }
+        fn sweep_watermark_for_test(&self) -> usize {
+            self.sweep_watermark.get()
+        }
+        fn allgc_slot_of(&self, ptr: NonNull<GcBox<dyn Trace>>) -> Option<usize> {
+            self.allgc.borrow().find(ptr)
+        }
+        fn allgc_slots_len(&self) -> usize {
+            self.allgc.borrow().len()
+        }
+        fn allgc_live_len(&self) -> usize {
+            self.allgc.borrow().live_len()
+        }
+        fn finobj_contains(&self, ptr: NonNull<GcBox<dyn Trace>>) -> bool {
+            self.finobj.borrow().find(ptr).is_some()
+        }
+        fn tobefnz_contains(&self, ptr: NonNull<GcBox<dyn Trace>>) -> bool {
+            self.tobefnz.borrow().find(ptr).is_some()
+        }
+        fn quarantined_len(&self) -> usize {
+            self.quarantined.borrow().len()
+        }
+        fn releasing_for_test(&self) -> bool {
+            self.releasing.get()
+        }
+        fn pending_release_len(&self) -> usize {
+            self.pending_release.borrow().len()
+        }
+    }
+
     /// A tiny GC-tracked type for the smoke test.
     struct Cell0 {
         next: Cell<Option<Gc<Cell0>>>,
@@ -4183,6 +4219,320 @@ mod tests {
         heap.full_collect(&OneRoot(None));
         assert_eq!(heap.allocation_token(new_id), None);
         assert_eq!(heap.allgc_count(), 0);
+    }
+
+    // ── issue #113 Wave 2: owner-move-vs-sweep-cursor matrix (Phase 6) ────
+
+    struct ManyRoots(Vec<Gc<Cell0>>);
+    impl Trace for ManyRoots {
+        fn trace(&self, m: &mut Marker) {
+            for g in &self.0 {
+                m.mark(*g);
+            }
+        }
+    }
+
+    fn fresh_cell(heap: &std::rc::Rc<Heap>) -> Gc<Cell0> {
+        heap.allocate(Cell0 {
+            next: Cell::new(None),
+            marker_calls: Cell::new(0),
+        })
+    }
+
+    fn drain_to_pause(heap: &Heap, roots: &dyn Trace) {
+        loop {
+            if matches!(
+                heap.incremental_step_with_post_mark(roots, StepBudget::from_work(64), |_| {}),
+                StepOutcome::Paused
+            ) {
+                break;
+            }
+        }
+    }
+
+    /// M1/M2/M3 for `allgc → finobj`: run a `move_allgc_to_finobj` with the
+    /// target slot positioned `advance` past / at / before the SweepAllGc
+    /// cursor, and return whether the (rooted) object survived in finobj after
+    /// the cycle finished. The `current_white()` recolor must carry it through
+    /// both lists' sweeps in every position.
+    fn allgc_to_finobj_move_case(advance: usize, target_slot: usize) -> bool {
+        let heap = Heap::new();
+        heap.unpause();
+        let objs: Vec<_> = (0..5).map(|_| fresh_cell(&heap)).collect();
+        let roots = ManyRoots(objs.clone());
+        let target = objs[target_slot].as_trace_ptr();
+        heap.incremental_run_until_state_with_post_mark(
+            &roots,
+            GcState::SweepAllGc,
+            1024,
+            |_| {},
+        );
+        assert_eq!(heap.gc_state(), GcState::SweepAllGc);
+        assert_eq!(heap.allgc_slot_of(target), Some(target_slot));
+        if advance > 0 {
+            heap.incremental_step_with_post_mark(
+                &roots,
+                StepBudget::from_work(advance as isize),
+                |_| {},
+            );
+            assert_eq!(heap.gc_state(), GcState::SweepAllGc, "still in allgc sweep");
+        }
+        assert!(
+            heap.move_allgc_to_finobj(target),
+            "move must return true (advance={advance}, target_slot={target_slot})"
+        );
+        assert_eq!(heap.allgc_slot_of(target), None, "left allgc");
+        assert!(heap.finobj_contains(target), "entered finobj");
+        drain_to_pause(&heap, &roots);
+        heap.finobj_contains(target)
+    }
+
+    #[test]
+    fn m_allgc_to_finobj_survives_before_at_ahead_cursor() {
+        assert!(
+            allgc_to_finobj_move_case(3, 1),
+            "M1 before-cursor: recolor carries the object through the finobj sweep"
+        );
+        assert!(
+            allgc_to_finobj_move_case(2, 2),
+            "M2 at-cursor: the tombstone is skipped and the recolored object survives"
+        );
+        assert!(
+            allgc_to_finobj_move_case(1, 3),
+            "M3 ahead-of-cursor: recolored current-white, swept-safe in finobj"
+        );
+    }
+
+    /// M (recolor isolation): a **dead** (unmarked, other-white) object moved
+    /// `allgc → finobj` *during* SweepAllGc survives the cycle **only because**
+    /// of the `is_sweep()` `current_white()` recolor — this is the
+    /// finalizer-resurrection path (an object found dead but with `__gc`).
+    /// Without the recolor it stays other-white and SweepFinObj frees it. The
+    /// keeper is rooted so allgc is non-empty and the dead object sits ahead of
+    /// the cursor.
+    #[test]
+    fn m_dead_object_moved_to_finobj_during_sweep_survives_via_recolor() {
+        let heap = Heap::new();
+        heap.unpause();
+        let keeper = fresh_cell(&heap);
+        let dead = fresh_cell(&heap);
+        let d = dead.identity();
+        heap.register_allocation_token(d);
+        let dptr = dead.as_trace_ptr();
+        let roots = ManyRoots(vec![keeper]);
+
+        heap.incremental_run_until_state_with_post_mark(
+            &roots,
+            GcState::SweepAllGc,
+            1024,
+            |_| {},
+        );
+        assert_eq!(heap.gc_state(), GcState::SweepAllGc);
+        assert_eq!(heap.sweep_index_for_test(), 0, "cursor at start");
+        assert_eq!(heap.allgc_slot_of(dptr), Some(1), "dead object is ahead of the cursor");
+
+        assert!(heap.move_allgc_to_finobj(dptr), "move must return true");
+
+        drain_to_pause(&heap, &roots);
+        assert!(
+            heap.finobj_contains(dptr),
+            "the is_sweep recolor kept the dead-but-finalizable object alive in finobj"
+        );
+        assert!(
+            heap.allocation_token(d).is_some(),
+            "the moved object was not freed this cycle"
+        );
+    }
+
+    /// M (tobefnz → allgc) during `SweepToBeFnz`: the `current_white()` recolor
+    /// carries a live object moved back to allgc through the rest of the cycle
+    /// (SweepAllGc already passed, so it is not re-swept).
+    #[test]
+    fn m_tobefnz_to_allgc_during_sweep_recolors_and_survives() {
+        let heap = Heap::new();
+        heap.unpause();
+        let obj = fresh_cell(&heap);
+        let t = obj.as_trace_ptr();
+        assert!(heap.move_allgc_to_finobj(t));
+        assert!(heap.move_finobj_to_tobefnz(t));
+        let roots = ManyRoots(vec![obj]);
+        heap.incremental_run_until_state_with_post_mark(
+            &roots,
+            GcState::SweepToBeFnz,
+            1024,
+            |_| {},
+        );
+        assert_eq!(heap.gc_state(), GcState::SweepToBeFnz);
+        assert!(heap.tobefnz_contains(t));
+        assert_eq!(heap.sweep_index_for_test(), 0, "tobefnz cursor at entry");
+
+        assert!(heap.move_tobefnz_to_allgc(t), "move must return true");
+        assert!(!heap.tobefnz_contains(t), "left tobefnz");
+        assert!(heap.allgc_slot_of(t).is_some(), "entered allgc");
+
+        drain_to_pause(&heap, &roots);
+        assert!(heap.allgc_slot_of(t).is_some(), "survived in allgc");
+        assert_eq!(heap.allgc_count(), 1);
+    }
+
+    /// A1: allocation during `SweepFinObj`, `SweepToBeFnz`, and the
+    /// `EnterAtomic`→`Atomic` gap survives the current cycle (append at/beyond
+    /// the watermark + current-white color both protect it).
+    #[test]
+    fn allocation_during_each_sweep_phase_survives() {
+        for target in [
+            GcState::Atomic,
+            GcState::SweepFinObj,
+            GcState::SweepToBeFnz,
+        ] {
+            let heap = Heap::new();
+            heap.unpause();
+            let keep = fresh_cell(&heap);
+            let roots = ManyRoots(vec![keep]);
+            heap.incremental_run_until_state_with_post_mark(&roots, target, 1024, |_| {});
+            assert_eq!(heap.gc_state(), target, "reached {target:?}");
+            let fresh = fresh_cell(&heap);
+            let id = fresh.identity();
+            heap.register_allocation_token(id);
+            drain_to_pause(&heap, &roots);
+            assert!(
+                heap.allocation_token(id).is_some(),
+                "an allocation made during {target:?} survives the current cycle"
+            );
+        }
+    }
+
+    /// B1: `StepBudget::from_work(1)` drives a cycle to completion even while a
+    /// move and an allocation are interleaved at every in-progress step —
+    /// proving tombstone-skip termination and that churn cannot wedge the
+    /// budget-1 loop. Rooted survivors must all live.
+    #[test]
+    fn budget_one_resumption_with_interleaved_move_and_alloc() {
+        let heap = Heap::new();
+        heap.unpause();
+        let survivors: Vec<_> = (0..6).map(|_| fresh_cell(&heap)).collect();
+        let roots = ManyRoots(survivors.clone());
+        let mover = survivors[0].as_trace_ptr();
+        let mut moved_once = false;
+        let mut steps = 0usize;
+        loop {
+            let outcome =
+                heap.incremental_step_with_post_mark(&roots, StepBudget::from_work(1), |_| {});
+            steps += 1;
+            assert!(steps < 100_000, "budget-1 loop must terminate");
+            if matches!(outcome, StepOutcome::Paused) {
+                break;
+            }
+            if heap.gc_state().is_sweep() {
+                let _fresh = fresh_cell(&heap);
+                if !moved_once && heap.allgc_slot_of(mover).is_some() {
+                    assert!(heap.move_allgc_to_finobj(mover));
+                    moved_once = true;
+                }
+            }
+        }
+        assert!(moved_once, "the interleaved move happened during a sweep phase");
+        for g in &survivors {
+            let p = g.as_trace_ptr();
+            assert!(
+                heap.allgc_slot_of(p).is_some() || heap.finobj_contains(p),
+                "every rooted survivor is still live after the churned cycle"
+            );
+        }
+    }
+
+    /// B2 (heap level): cycle one live object `allgc → finobj → tobefnz →
+    /// allgc` for far more rounds than the tombstone threshold, at `Pause`.
+    /// The move-time compaction trigger keeps every vector's slot count near
+    /// its single live member — R2's unbounded-growth counterexample is
+    /// bounded. Every move returns true throughout.
+    #[test]
+    fn heap_level_move_churn_stays_bounded() {
+        let heap = Heap::new();
+        heap.unpause();
+        let obj = fresh_cell(&heap);
+        let t = obj.as_trace_ptr();
+        for round in 0..5000usize {
+            assert!(heap.move_allgc_to_finobj(t), "allgc->finobj round {round}");
+            assert!(heap.move_finobj_to_tobefnz(t), "finobj->tobefnz round {round}");
+            assert!(heap.move_tobefnz_to_allgc(t), "tobefnz->allgc round {round}");
+        }
+        assert_eq!(heap.allgc_count(), 1, "still exactly one live object");
+        assert!(heap.allgc_slot_of(t).is_some(), "back in allgc");
+        assert!(
+            heap.allgc_slots_len() <= 8,
+            "allgc slot count stays bounded near live (=1); got {}",
+            heap.allgc_slots_len()
+        );
+        assert_eq!(heap.allgc_live_len(), 1);
+    }
+
+    /// F1 (heap-side membership sync): drive several objects through
+    /// `allgc → finobj → tobefnz` and back, asserting each move returns true
+    /// and the tobefnz membership set stays exactly the registered set — the
+    /// invariant the typed `FinalizerRegistry` FIFO authority leans on.
+    #[test]
+    fn tobefnz_membership_stays_synced_through_moves() {
+        let heap = Heap::new();
+        heap.unpause();
+        let objs: Vec<_> = (0..5).map(|_| fresh_cell(&heap)).collect();
+        let ptrs: Vec<_> = objs.iter().map(|g| g.as_trace_ptr()).collect();
+        for p in &ptrs {
+            assert!(heap.move_allgc_to_finobj(*p));
+            assert!(heap.move_finobj_to_tobefnz(*p));
+        }
+        for p in &ptrs {
+            assert!(heap.tobefnz_contains(*p), "each finalizable object is in tobefnz");
+        }
+        for p in &ptrs {
+            assert!(heap.move_tobefnz_to_allgc(*p), "pop back to allgc succeeds");
+            assert!(!heap.tobefnz_contains(*p), "left tobefnz on pop");
+        }
+        assert_eq!(heap.allgc_count(), 5);
+    }
+
+    /// A `Trace` payload whose `Drop` panics — for the panic-safety row.
+    struct PanicOnDrop;
+    impl Trace for PanicOnDrop {
+        fn trace(&self, _m: &mut Marker) {}
+    }
+    impl Drop for PanicOnDrop {
+        fn drop(&mut self) {
+            panic!("boom in Drop during the release drain");
+        }
+    }
+
+    /// Teardown/panic row: a payload `Drop` that panics mid-release-drain must
+    /// leave the collector sound — `releasing` restored by its RAII guard (not
+    /// wedged shut), the box in flight freed (not double-freed), and a
+    /// subsequent collection working normally.
+    #[test]
+    fn panicking_drop_during_release_leaves_collector_sound() {
+        let heap = Heap::new();
+        heap.unpause();
+        heap.allocate(PanicOnDrop);
+
+        let prev_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            heap.full_collect(&OneRoot(None));
+        }));
+        std::panic::set_hook(prev_hook);
+
+        assert!(result.is_err(), "the panicking Drop propagated out of the drain");
+        assert!(
+            !heap.releasing_for_test(),
+            "releasing must be restored after a panicking drop (RAII guard), not wedged"
+        );
+        assert_eq!(heap.pending_release_len(), 0, "no stranded pending pointers");
+
+        let live = fresh_cell(&heap);
+        let roots = ManyRoots(vec![live]);
+        heap.full_collect(&roots);
+        assert!(
+            heap.allgc_slot_of(live.as_trace_ptr()).is_some(),
+            "the collector is not wedged: a later collection keeps a rooted object"
+        );
     }
 
     #[test]
