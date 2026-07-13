@@ -1438,6 +1438,229 @@ impl StepBudget {
 /// over-collection guard while letting honest pressure drive the threshold.
 const GC_MIN_THRESHOLD: usize = 1024 * 1024;
 
+/// Tombstone-density trigger denominator: compact when `tombstones * 4 >
+/// slots.len()` — i.e. once tombstones exceed 25% of physical slots (#113
+/// Wave 2, spec "The one mutation rule"). A named constant so measurement can
+/// retune it without hunting a literal.
+const OWNERVEC_TOMBSTONE_DENOM: usize = 4;
+
+/// Owner-class vector: the #113 Wave 2 replacement for one intrusive heap
+/// owner list (`head`/`finobj`/`tobefnz`). Each live heap-owned box is
+/// referenced by exactly one `Some` slot; removal writes a `None` tombstone
+/// rather than shifting, so a slot index stays valid for the entire lifetime
+/// of a sweep cursor over this vector. Compaction — the only operation that
+/// relocates slots — runs only at points with no live cursor for this vector.
+///
+/// `reallyold`/`old1`/`survival` are **physical slot-index cohort boundaries**
+/// (they count slots, tombstoned or not): `[0, reallyold)` is the old/reallyold
+/// cohort, `[reallyold, reallyold+old1)` old1, `[reallyold+old1, +survival)`
+/// survival, and the remainder `[reallyold+old1+survival, len)` is the nursery.
+/// A tombstone below a boundary does not move it; only [`compact`](OwnerVec::compact)
+/// recounts boundaries to dense indices. `tobefnz` keeps all three at zero
+/// (its whole extent is scanned every minor), so it uses only the tombstone
+/// half of the machinery.
+struct OwnerVec {
+    slots: Vec<Option<NonNull<GcBox<dyn Trace>>>>,
+    tombstones: usize,
+    reallyold: usize,
+    old1: usize,
+    survival: usize,
+}
+
+impl Default for OwnerVec {
+    fn default() -> Self {
+        Self {
+            slots: Vec::new(),
+            tombstones: 0,
+            reallyold: 0,
+            old1: 0,
+            survival: 0,
+        }
+    }
+}
+
+impl OwnerVec {
+    /// Physical slot count including tombstones (the sweep watermark domain).
+    fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Live (non-tombstone) member count.
+    fn live_len(&self) -> usize {
+        self.slots.len() - self.tombstones
+    }
+
+    /// Physical index where the survival cohort begins — the first slot a
+    /// minor sweep scans (survival cohort + nursery = `slots[young_start()..]`).
+    fn young_start(&self) -> usize {
+        self.reallyold + self.old1
+    }
+
+    /// Append a newest object at the tail (nursery). Cohort boundaries are
+    /// unchanged — the tail is always beyond the survival cohort. One amortized
+    /// push replacing the intrusive list's two `Cell` writes.
+    fn push(&mut self, ptr: NonNull<GcBox<dyn Trace>>) {
+        self.slots.push(Some(ptr));
+    }
+
+    /// Linear membership scan for the slot holding `ptr`. Cold path (moves and
+    /// nothing else); the density policy bounds `slots.len()` near
+    /// `4/3 * live_len` at no-cursor times.
+    fn find(&self, ptr: NonNull<GcBox<dyn Trace>>) -> Option<usize> {
+        self.slots.iter().position(|slot| match slot {
+            Some(p) => std::ptr::addr_eq(p.as_ptr(), ptr.as_ptr()),
+            None => false,
+        })
+    }
+
+    /// Tombstone the slot at `index`: write `None`, bump the counter. Boundaries
+    /// do not move — they are physical indices until the next compaction.
+    fn tombstone_at(&mut self, index: usize) {
+        debug_assert!(
+            self.slots[index].is_some(),
+            "OwnerVec::tombstone_at on an already-empty slot {index}"
+        );
+        self.slots[index] = None;
+        self.tombstones += 1;
+    }
+
+    /// Find `ptr` and tombstone its slot, returning the index; `None` if `ptr`
+    /// is not a member.
+    fn tombstone(&mut self, ptr: NonNull<GcBox<dyn Trace>>) -> Option<usize> {
+        let index = self.find(ptr)?;
+        self.tombstone_at(index);
+        Some(index)
+    }
+
+    /// True when tombstone density exceeds 25% — the threshold-compaction
+    /// trigger checked at `start_cycle` and after a tombstoning move outside a
+    /// sweep phase.
+    fn over_density(&self) -> bool {
+        self.tombstones * OWNERVEC_TOMBSTONE_DENOM > self.slots.len()
+    }
+
+    /// Whole-vector, order-preserving compaction (the single compaction
+    /// algorithm — the slice-only variant was withdrawn, R2 finding 2): drop
+    /// every `None` slot, zero the tombstone counter, and recount each cohort
+    /// boundary as the number of surviving slots below its old physical index.
+    /// Dense afterwards, cohort membership preserved. Idempotent on an already
+    /// dense vector (no tombstones → early return).
+    fn compact(&mut self) {
+        if self.tombstones == 0 {
+            return;
+        }
+        let b1 = self.reallyold;
+        let b2 = self.reallyold + self.old1;
+        let b3 = self.reallyold + self.old1 + self.survival;
+        let mut new_reallyold = 0;
+        let mut new_old1 = 0;
+        let mut new_survival = 0;
+        let mut write = 0;
+        for read in 0..self.slots.len() {
+            if let Some(ptr) = self.slots[read] {
+                if read < b1 {
+                    new_reallyold += 1;
+                } else if read < b2 {
+                    new_old1 += 1;
+                } else if read < b3 {
+                    new_survival += 1;
+                }
+                self.slots[write] = Some(ptr);
+                write += 1;
+            }
+        }
+        self.slots.truncate(write);
+        self.tombstones = 0;
+        self.reallyold = new_reallyold;
+        self.old1 = new_old1;
+        self.survival = new_survival;
+    }
+
+    /// Cap retained capacity near `2 * live` at mandatory compaction points —
+    /// `Vec::truncate` never shrinks capacity, so a spike would pin memory
+    /// forever otherwise. Leaves 1.5x headroom against shrink-grow thrash.
+    fn shrink_high_water(&mut self) {
+        let len = self.slots.len();
+        if self.slots.capacity() > 2 * len {
+            self.slots.shrink_to(len + len / 2);
+        }
+    }
+
+    /// Rotate cohort counts after a minor sweep's scan + compaction: the old1
+    /// cohort merges into reallyold, the survival cohort becomes old1, and the
+    /// nursery survivors become survival — mirroring `finish_minor_collection`'s
+    /// `reallyold += old1; old1 = survival; survival = new`. Requires a
+    /// compacted (tombstone-free) vector so `len` is a dense count.
+    fn rotate_after_minor(&mut self) {
+        debug_assert_eq!(
+            self.tombstones, 0,
+            "OwnerVec::rotate_after_minor requires a compacted vector"
+        );
+        let nursery = self
+            .slots
+            .len()
+            .saturating_sub(self.reallyold + self.old1 + self.survival);
+        self.reallyold += self.old1;
+        self.old1 = self.survival;
+        self.survival = nursery;
+    }
+
+    /// Promote every live object into the old/reallyold cohort (generational
+    /// mode entry). Compacts first so `len` is dense, then sets the whole
+    /// vector as the old prefix.
+    fn promote_all_old(&mut self) {
+        self.compact();
+        self.reallyold = self.slots.len();
+        self.old1 = 0;
+        self.survival = 0;
+    }
+
+    /// Reset cohort boundaries to zero (all objects become nursery again).
+    /// Does not touch slots or tombstones.
+    fn clear_cohorts(&mut self) {
+        self.reallyold = 0;
+        self.old1 = 0;
+        self.survival = 0;
+    }
+
+    /// Count live (non-tombstone) slots per cohort as `(nursery, survival, old1,
+    /// reallyold)`. Diagnostic (lua-cli telemetry) only.
+    fn cohort_live_counts(&self) -> (usize, usize, usize, usize) {
+        let b1 = self.reallyold;
+        let b2 = self.reallyold + self.old1;
+        let b3 = self.reallyold + self.old1 + self.survival;
+        let mut nursery = 0;
+        let mut survival = 0;
+        let mut old1 = 0;
+        let mut reallyold = 0;
+        for (i, slot) in self.slots.iter().enumerate() {
+            if slot.is_some() {
+                if i < b1 {
+                    reallyold += 1;
+                } else if i < b2 {
+                    old1 += 1;
+                } else if i < b3 {
+                    survival += 1;
+                } else {
+                    nursery += 1;
+                }
+            }
+        }
+        (nursery, survival, old1, reallyold)
+    }
+
+    /// Take the slots out for teardown, resetting all bookkeeping so the
+    /// vector is empty-and-consistent afterwards (a re-entrant allocation
+    /// during the drain lands in a fresh vector).
+    fn take_slots(&mut self) -> Vec<Option<NonNull<GcBox<dyn Trace>>>> {
+        self.tombstones = 0;
+        self.reallyold = 0;
+        self.old1 = 0;
+        self.survival = 0;
+        std::mem::take(&mut self.slots)
+    }
+}
+
 pub struct Heap {
     /// Head of the singly-linked allgc list (heap-owned objects not currently
     /// registered for finalization).
@@ -3346,6 +3569,167 @@ mod tests {
 
         fn upgrade(&self) -> Option<Self::Strong> {
             self.live.then_some(self.id)
+        }
+    }
+
+    // ── issue #113 Wave 2: OwnerVec standalone kit (Phase 1) ──────────────
+    //
+    // OwnerVec never dereferences the pointers it stores — it is pure slot
+    // bookkeeping — so these tests mint distinct, non-dangling
+    // `NonNull<GcBox<dyn Trace>>` via a throwaway heap (the boxes stay live on
+    // the heap's own list and are freed when the heap drops).
+
+    fn owner_ptr(heap: &std::rc::Rc<Heap>) -> NonNull<GcBox<dyn Trace>> {
+        heap.allocate(Cell0 {
+            next: Cell::new(None),
+            marker_calls: Cell::new(0),
+        })
+        .as_trace_ptr()
+    }
+
+    #[test]
+    fn ownervec_push_appends_at_tail() {
+        let heap = Heap::new();
+        let ptrs: Vec<_> = (0..4).map(|_| owner_ptr(&heap)).collect();
+        let mut ov = OwnerVec::default();
+        for p in &ptrs {
+            ov.push(*p);
+        }
+        assert_eq!(ov.len(), 4);
+        assert_eq!(ov.live_len(), 4);
+        for (i, p) in ptrs.iter().enumerate() {
+            assert_eq!(ov.find(*p), Some(i));
+        }
+    }
+
+    #[test]
+    fn ownervec_tombstone_keeps_boundaries_physical() {
+        let heap = Heap::new();
+        let ptrs: Vec<_> = (0..6).map(|_| owner_ptr(&heap)).collect();
+        let mut ov = OwnerVec::default();
+        for p in &ptrs {
+            ov.push(*p);
+        }
+        ov.reallyold = 2;
+        ov.old1 = 2;
+        ov.survival = 1;
+        assert_eq!(ov.young_start(), 4);
+
+        assert_eq!(ov.tombstone(ptrs[1]), Some(1));
+        assert_eq!(ov.tombstones, 1);
+        assert_eq!(ov.live_len(), 5);
+        assert_eq!(ov.len(), 6);
+        assert_eq!(ov.reallyold, 2);
+        assert_eq!(ov.old1, 2);
+        assert_eq!(ov.survival, 1);
+        assert_eq!(ov.find(ptrs[1]), None);
+    }
+
+    #[test]
+    fn ownervec_compact_preserves_order_and_recounts_cohorts() {
+        let heap = Heap::new();
+        let ptrs: Vec<_> = (0..10).map(|_| owner_ptr(&heap)).collect();
+        let mut ov = OwnerVec::default();
+        for p in &ptrs {
+            ov.push(*p);
+        }
+        ov.reallyold = 3;
+        ov.old1 = 3;
+        ov.survival = 2;
+
+        ov.tombstone_at(1);
+        ov.tombstone_at(4);
+        ov.tombstone_at(8);
+        ov.compact();
+
+        assert_eq!(ov.tombstones, 0);
+        assert_eq!(ov.len(), 7);
+        let expected = [0usize, 2, 3, 5, 6, 7, 9];
+        for (dense_i, orig_i) in expected.iter().enumerate() {
+            assert_eq!(ov.find(ptrs[*orig_i]), Some(dense_i));
+        }
+        assert_eq!(ov.reallyold, 2, "survivors below old index 3");
+        assert_eq!(ov.old1, 2, "survivors in [3,6)");
+        assert_eq!(ov.survival, 2, "survivors in [6,8)");
+        let (nursery, survival, old1, reallyold) = ov.cohort_live_counts();
+        assert_eq!((nursery, survival, old1, reallyold), (1, 2, 2, 2));
+    }
+
+    #[test]
+    fn ownervec_density_threshold_fires_over_25_percent() {
+        let heap = Heap::new();
+        let ptrs: Vec<_> = (0..4).map(|_| owner_ptr(&heap)).collect();
+        let mut ov = OwnerVec::default();
+        for p in &ptrs {
+            ov.push(*p);
+        }
+        assert!(!ov.over_density());
+        ov.tombstone_at(0);
+        assert!(!ov.over_density(), "1/4 tombstones is exactly 25%, not over");
+        ov.tombstone_at(1);
+        assert!(ov.over_density(), "2/4 tombstones is over 25%");
+    }
+
+    #[test]
+    fn ownervec_rotate_after_minor_matches_registry_arithmetic() {
+        let heap = Heap::new();
+        let ptrs: Vec<_> = (0..10).map(|_| owner_ptr(&heap)).collect();
+        let mut ov = OwnerVec::default();
+        for p in &ptrs {
+            ov.push(*p);
+        }
+        ov.reallyold = 2;
+        ov.old1 = 3;
+        ov.survival = 4;
+        ov.rotate_after_minor();
+        assert_eq!(ov.reallyold, 5, "reallyold += old1");
+        assert_eq!(ov.old1, 4, "old1 = survival");
+        assert_eq!(ov.survival, 1, "survival = nursery survivors (10-2-3-4)");
+    }
+
+    #[test]
+    fn ownervec_promote_all_old_after_compaction() {
+        let heap = Heap::new();
+        let ptrs: Vec<_> = (0..5).map(|_| owner_ptr(&heap)).collect();
+        let mut ov = OwnerVec::default();
+        for p in &ptrs {
+            ov.push(*p);
+        }
+        ov.tombstone_at(2);
+        ov.promote_all_old();
+        assert_eq!(ov.reallyold, 4);
+        assert_eq!(ov.old1, 0);
+        assert_eq!(ov.survival, 0);
+        assert_eq!(ov.tombstones, 0);
+        assert_eq!(ov.len(), 4);
+    }
+
+    #[test]
+    fn ownervec_b2_adversarial_churn_stays_bounded() {
+        let heap = Heap::new();
+        const LIVE: usize = 64;
+        let mut pool: Vec<_> = (0..LIVE).map(|_| owner_ptr(&heap)).collect();
+        let mut ov = OwnerVec::default();
+        for p in &pool {
+            ov.push(*p);
+        }
+        for round in 0..20_000usize {
+            let victim = pool[round % LIVE];
+            let idx = ov.find(victim).expect("victim is a live member");
+            ov.tombstone_at(idx);
+            let replacement = owner_ptr(&heap);
+            pool[round % LIVE] = replacement;
+            ov.push(replacement);
+            if ov.over_density() {
+                ov.compact();
+            }
+            assert_eq!(ov.live_len(), LIVE, "exactly LIVE live members always");
+            assert!(
+                ov.len() <= 2 * LIVE,
+                "slot count {} must stay within 2x live ({}) — density bound",
+                ov.len(),
+                2 * LIVE
+            );
         }
     }
 
