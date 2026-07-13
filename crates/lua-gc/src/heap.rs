@@ -3518,9 +3518,6 @@ mod tests {
         fn sweep_index_for_test(&self) -> usize {
             self.sweep_index.get()
         }
-        fn sweep_watermark_for_test(&self) -> usize {
-            self.sweep_watermark.get()
-        }
         fn allgc_slot_of(&self, ptr: NonNull<GcBox<dyn Trace>>) -> Option<usize> {
             self.allgc.borrow().find(ptr)
         }
@@ -3535,9 +3532,6 @@ mod tests {
         }
         fn tobefnz_contains(&self, ptr: NonNull<GcBox<dyn Trace>>) -> bool {
             self.tobefnz.borrow().find(ptr).is_some()
-        }
-        fn quarantined_len(&self) -> usize {
-            self.quarantined.borrow().len()
         }
         fn releasing_for_test(&self) -> bool {
             self.releasing.get()
