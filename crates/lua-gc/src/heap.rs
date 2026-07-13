@@ -1496,6 +1496,7 @@ impl OwnerVec {
     }
 
     /// Live (non-tombstone) member count.
+    #[cfg(test)]
     fn live_len(&self) -> usize {
         self.slots.len() - self.tombstones
     }
@@ -5603,8 +5604,17 @@ mod tests {
     /// state at `Pause`; inert, it returns immediately with the outer sweep phase
     /// still current. This is the R2-finding-1 nested-collection hazard: a
     /// destructor must not trace-then-free a still-pending peer.
+    /// Skipped under `LUA_RS_GC_QUARANTINE=1`: quarantine parks swept boxes
+    /// instead of freeing them, so payload `Drop` — this test's only way to
+    /// observe collection state from inside the release drain — is deferred
+    /// to heap teardown and the drain-time inertness cannot be sampled. The
+    /// releasing-window mechanism itself is mode-independent and covered in
+    /// normal runs.
     #[test]
     fn nested_collection_during_release_drain_is_inert() {
+        if std::env::var_os("LUA_RS_GC_QUARANTINE").is_some_and(|v| v == "1") {
+            return;
+        }
         let heap = Heap::new();
         heap.unpause();
         let _guard = HeapGuard::push(&heap);
