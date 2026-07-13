@@ -2620,7 +2620,20 @@ impl Heap {
 
     /// Metadata transition used when entering generational mode after a full
     /// mark: all currently live objects become old.
+    ///
+    /// Valid only at `Pause` with no release drain active and the heap open
+    /// (codex W2 round-1 finding 2): `promote_all_old` compacts, and
+    /// compaction relocates slots, which would invalidate a live
+    /// `sweep_index`/`sweep_watermark` — `sweep_budgeted` could then report
+    /// zero work without the phase being done and wedge `run_budgeted` in an
+    /// infinite loop. Both VM call sites (`enter_generational_mode`, the
+    /// `lastatomic` bad-collection path) run directly after a full collect,
+    /// which always ends at `Pause`, so a mid-cycle call is a caller bug and
+    /// is ignored rather than deferred.
     pub fn promote_all_to_old(&self) {
+        if !self.state.get().is_pause() || self.releasing.get() || self.closed.get() {
+            return;
+        }
         self.for_each_header(|header| {
             header.age.set(GcAge::Old);
             header.color.set(Color::Black);
@@ -3253,6 +3266,18 @@ impl Heap {
         }
     }
 
+    /// Stop-the-world young-generation sweep. Ordering contract at the tail
+    /// (codex W2 round-1 finding, critical): the next-cycle grayagain set is
+    /// installed (`replace_grayagain`) and the drained buffer recycled BEFORE
+    /// `drain_pending_release` runs, because a payload `Drop` inside the drain
+    /// may call public `drop_all` — teardown frees every box, and a
+    /// `replace_grayagain` performed *after* it would write flags into freed
+    /// headers and leave a closed heap with a non-empty grayagain (a second
+    /// teardown then dereferences freed memory). Installing first means
+    /// teardown's `clear_generation_cursors` empties the set safely, a
+    /// release-time generational barrier appends to the installed set instead
+    /// of being clobbered, and a panicking destructor leaves grayagain
+    /// consistent.
     fn sweep_young(&self) {
         let mut next_revisit = std::mem::take(&mut *self.grayagain_scratch.borrow_mut());
         debug_assert!(next_revisit.is_empty(), "grayagain scratch must be parked empty");
@@ -3335,12 +3360,12 @@ impl Heap {
             self.sync_owner_backing(&mut tobefnz);
         }
 
-        self.drain_pending_release();
-
         let mut recycled = old_revisit;
         recycled.clear();
         *self.grayagain_scratch.borrow_mut() = recycled;
         self.replace_grayagain(next_revisit);
+
+        self.drain_pending_release();
         self.last_sweep_stats.set(stats);
     }
 
@@ -4583,6 +4608,63 @@ mod tests {
         }
     }
 
+    /// Codex round-1 revision fix 2: `promote_all_to_old` called mid-sweep
+    /// (with a tombstone already in the swept vector) must be a no-op — its
+    /// compaction would relocate slots under the live cursor and wedge
+    /// `sweep_budgeted` into a zero-work-not-done infinite loop. The guarded
+    /// call is ignored; budget-1 stepping still drives the cycle to `Pause`,
+    /// the survivors live, and a later at-`Pause` promotion works. Negative
+    /// verification is manual (removing the guard makes this test HANG, not
+    /// fail): verified with a timeout run during the revision round.
+    #[test]
+    fn promotion_mid_sweep_is_rejected_and_budget_one_completes() {
+        let heap = Heap::new();
+        heap.unpause();
+        let survivors: Vec<_> = (0..5).map(|_| fresh_cell(&heap)).collect();
+        let roots = ManyRoots(survivors.clone());
+        let mover = survivors[0].as_trace_ptr();
+
+        heap.incremental_run_until_state_with_post_mark(
+            &roots,
+            GcState::SweepAllGc,
+            1024,
+            |_| {},
+        );
+        assert_eq!(heap.gc_state(), GcState::SweepAllGc);
+        assert!(heap.move_allgc_to_finobj(mover), "tombstone in the swept vector");
+
+        heap.promote_all_to_old();
+        assert_eq!(
+            heap.gc_state(),
+            GcState::SweepAllGc,
+            "mid-sweep promotion is ignored, cycle state untouched"
+        );
+        assert_eq!(
+            survivors[1].age(),
+            GcAge::New,
+            "no object was promoted by the rejected call"
+        );
+
+        let mut steps = 0usize;
+        loop {
+            let outcome =
+                heap.incremental_step_with_post_mark(&roots, StepBudget::from_work(1), |_| {});
+            steps += 1;
+            assert!(steps < 100_000, "budget-1 stepping must reach Pause, not wedge");
+            if matches!(outcome, StepOutcome::Paused) {
+                break;
+            }
+        }
+        assert_eq!(heap.allgc_count(), 5);
+
+        heap.promote_all_to_old();
+        assert_eq!(
+            survivors[1].age(),
+            GcAge::Old,
+            "at-Pause promotion still works after the rejected mid-sweep call"
+        );
+    }
+
     /// B2 (heap level): cycle one live object `allgc → finobj → tobefnz →
     /// allgc` for far more rounds than the tombstone threshold, at `Pause`.
     /// The move-time compaction trigger keeps every vector's slot count near
@@ -4648,8 +4730,17 @@ mod tests {
     /// leave the collector sound — `releasing` restored by its RAII guard (not
     /// wedged shut), the box in flight freed (not double-freed), and a
     /// subsequent collection working normally.
+    /// Skipped under `LUA_RS_GC_QUARANTINE=1` (the established pattern):
+    /// quarantine parks swept boxes instead of dropping them, so the panic
+    /// never fires inside the drain — and the parked `PanicOnDrop` would
+    /// instead panic during heap teardown, aborting the whole test process
+    /// (panic-in-destructor-during-cleanup). The RAII-guard mechanism under
+    /// test is mode-independent and covered in normal runs.
     #[test]
     fn panicking_drop_during_release_leaves_collector_sound() {
+        if std::env::var_os("LUA_RS_GC_QUARANTINE").is_some_and(|v| v == "1") {
+            return;
+        }
         let heap = Heap::new();
         heap.unpause();
         heap.allocate(PanicOnDrop);
@@ -5718,6 +5809,66 @@ mod tests {
     }
 
     // ── issue #113 Wave 2: destruction ownership (Phase 4) ────────────────
+
+    /// A dead `Trace` payload whose `Drop` calls public `drop_all` — the
+    /// codex round-1 critical teardown-during-minor-release case.
+    struct DropAllOnDrop;
+    impl Trace for DropAllOnDrop {
+        fn trace(&self, _m: &mut Marker) {}
+    }
+    impl Drop for DropAllOnDrop {
+        fn drop(&mut self) {
+            with_current_heap(|heap| {
+                if let Some(heap) = heap {
+                    heap.drop_all();
+                }
+            });
+        }
+    }
+
+    /// Codex round-1 revision fix 1: a destructor that calls public
+    /// `drop_all` from inside the minor release drain must not leave a closed
+    /// heap with a non-empty grayagain. The minor path installs the
+    /// next-cycle grayagain set BEFORE draining `pending_release`, so
+    /// teardown's `clear_generation_cursors` empties it; under the old order
+    /// (`replace_grayagain` after the drain) the install wrote flags into
+    /// freed headers and left `grayagain_count() == 1` on the closed heap —
+    /// a use-after-free factory for the next teardown.
+    /// Skipped under `LUA_RS_GC_QUARANTINE=1`: quarantine defers payload
+    /// `Drop` to teardown, so the destructor never runs inside the drain and
+    /// the installed set legitimately survives the minor.
+    #[test]
+    fn teardown_from_destructor_during_minor_release_is_sound() {
+        if std::env::var_os("LUA_RS_GC_QUARANTINE").is_some_and(|v| v == "1") {
+            return;
+        }
+        let heap = Heap::new();
+        heap.unpause();
+        let _guard = HeapGuard::push(&heap);
+
+        let parent = heap.allocate(Cell0 {
+            next: Cell::new(None),
+            marker_calls: Cell::new(0),
+        });
+        parent.set_age(GcAge::Old);
+        parent.set_color(Color::Black);
+        heap.generational_backward_barrier(parent);
+        assert_eq!(heap.grayagain_count(), 1, "revisit obligation installed");
+
+        heap.allocate(DropAllOnDrop);
+
+        heap.minor_collect_with_post_mark(&OneRoot(Some(parent)), |_| {});
+
+        assert!(heap.is_closed(), "the destructor's drop_all closed the heap");
+        assert_eq!(
+            heap.grayagain_count(),
+            0,
+            "a closed heap must not hold grayagain entries — the next-cycle \
+             set must be installed before the release drain so teardown \
+             clears it"
+        );
+        assert_eq!(heap.allgc_count(), 0);
+    }
 
     /// A dead `Trace` payload whose `Drop` re-enters the collector via
     /// `full_collect` and records the collector state it observed. Used to prove
