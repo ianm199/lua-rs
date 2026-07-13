@@ -20,6 +20,23 @@ is retired; `harness/strict_guard_check.sh` remains the convenience runner
 for the workspace GC gate. Detached (`Gc::new_uncollected`, process-lifetime)
 boxes keep their legacy behavior.
 
+### Changed — GcHeader diet: 24 B → 8 B, owner-class vectors (#113 Wave 2)
+
+The collector spine no longer uses intrusive linked lists. The three heap
+owner lists (`allgc`/`finobj`/`tobefnz`) and their seven generational cursor
+cells are replaced by owner-class vectors (`OwnerVec`: `Option<NonNull>`
+slots with tombstone removal, a 25 %-density compaction bound, and cohort
+counts that carry the generational boundaries). Removing the last intrusive
+`GcHeader::next` link shrinks the per-object header from **24 B to 8 B** on
+64-bit (and to 8 B on wasm32, where it was 16 B) — the header now holds no
+pointer. Object ownership is an external vector slot instead. Sweep frees
+route through a two-phase scan/release (`pending_release`) with a `releasing`
+window that keeps a payload `Drop` from re-entering the collector. Behavior is
+unchanged (full official suite + GC canaries green); this is a memory/locality
+representation change. The `firstold1` cursor is deleted outright — it was
+written and cursor-corrected for upstream parity but read by no collector
+decision, so removing it is behavior-neutral.
+
 ## [0.5.0] - 2026-07-12
 
 ### Breaking — `LuaError` representation (#253)
