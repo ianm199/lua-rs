@@ -9,13 +9,17 @@
 //!
 //! - **Gc<T>**: a pointer-sized handle. `Copy + Clone`. Replaces `GcRef<T>`.
 //! - **GcBox<T>**: the heap allocation; contains a header and the value.
-//! - **GcHeader**: per-object metadata (color, age, finalized flag, and an
-//!   intrusive `next` pointer for exactly one heap owner list). The grayagain
-//!   revisit set is heap-owned (`Heap::grayagain`), not an intrusive link.
+//! - **GcHeader**: per-object metadata (color, age, flags, pacer size) — 8 B,
+//!   no pointer. Heap ownership is an external [`OwnerVec`] slot, not an
+//!   intrusive header link (#113 Wave 2); the grayagain revisit set is
+//!   likewise heap-owned (`Heap::grayagain`).
 //! - **Trace**: trait every GC-rooted type implements. The `trace` method
 //!   walks all `Gc<_>` fields and calls `Marker::mark` on each.
 //! - **Marker**: passed to `trace`; carries the gray queue.
-//! - **Heap**: owns the allgc/finobj/tobefnz list heads, byte counters, and
+//! - **OwnerVec**: the collector-spine owner-class vector — `Option<NonNull>`
+//!   slots with tombstone removal and generational cohort counts; three of
+//!   them (allgc/finobj/tobefnz) replace the old intrusive lists + cursors.
+//! - **Heap**: owns the allgc/finobj/tobefnz owner vectors, byte counters, and
 //!   GC state machine.
 //!
 //! # Safety model
@@ -24,9 +28,10 @@
 //! The invariants are:
 //!
 //! 1. Every `Gc<T>` points to a valid, allocated, not-yet-swept `GcBox<T>`.
-//! 2. The intrusive heap lists are consistent: traversing `header.next` from
-//!    `Heap.head`, `Heap.finobj`, and `Heap.tobefnz` reaches every live
-//!    heap-owned `GcBox` exactly once.
+//! 2. The owner vectors are consistent: every live heap-owned `GcBox` is held
+//!    by exactly one `Some` slot across `Heap.allgc`, `Heap.finobj`, and
+//!    `Heap.tobefnz` (plus the transitional `pending_release` during a sweep
+//!    drain), and is reached exactly once by a slot walk.
 //! 3. After `Heap::full_collect(roots)`, every `Gc<T>` reachable from `roots`
 //!    is still valid; unreachable boxes are dropped and deallocated.
 //!
@@ -219,6 +224,7 @@ impl HeapRef {
 
 /// A traced color in the tri-color invariant.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[repr(u8)]
 pub enum Color {
     /// Not yet visited in the current cycle. The collector alternates between
     /// two white bits so allocations made during sweep are not collected by
@@ -250,6 +256,7 @@ impl Color {
 ///
 /// Mirrors `G_NEW` through `G_TOUCHED2` in `lgc.h`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[repr(u8)]
 pub enum GcAge {
     New,
     Survival,
@@ -729,10 +736,11 @@ pub struct GcHeader {
     /// came from the COLD side instead: the diagnostics-only `type_name`
     /// fat pointer became a `Trace` method, the three cold bool flags share
     /// one byte, and the pacer size is u32. The 40 -> 24 byte diet (#113
-    /// Wave 1) removed the `gray_next` grayagain link entirely — the revisit
-    /// set now lives heap-side as `Heap::grayagain` (a `Vec`), leaving the
-    /// header `color + age + flags + pad + size + next` (24 B on 64-bit,
-    /// 16 B on wasm32).
+    /// Wave 1) removed the `gray_next` grayagain link. The 24 -> 8 byte diet
+    /// (#113 Wave 2) removed the last one, `next`: heap ownership is now an
+    /// external [`OwnerVec`] slot, not an intrusive header link, so the header
+    /// is `color + age + flags + pad + size(u32)` = **8 B on both 64-bit and
+    /// wasm32** (it contains no pointers; the `const _` assert below pins it).
     color: Cell<Color>,
     age: Cell<GcAge>,
     /// Cold flags, one bit each: finalized (FINALIZEDBIT — set while the
@@ -750,9 +758,12 @@ pub struct GcHeader {
     /// refund to the heap's byte counter when this object is freed. `u32`:
     /// a single object cannot meaningfully exceed 4 GiB; setters saturate.
     size: Cell<u32>,
-    /// Intrusive link into exactly one heap owner list.
-    next: Cell<Option<NonNull<GcBox<dyn Trace>>>>,
 }
+
+/// Post-#113 the header carries no pointer, so the 8-byte size is valid on
+/// every target width, not just 64-bit (R1 finding 11 / spec ex-W3). Alignment
+/// is 4, from the `u32`.
+const _: () = assert!(std::mem::size_of::<GcHeader>() == 8);
 
 const HDR_FINALIZED: u8 = 1;
 const HDR_COLLECTED: u8 = 2;
@@ -777,7 +788,6 @@ impl GcHeader {
             age: Cell::new(GcAge::New),
             flags: Cell::new(flags),
             size: Cell::new(size.min(u32::MAX as usize) as u32),
-            next: Cell::new(None),
         }
     }
 
@@ -4608,17 +4618,15 @@ mod tests {
         assert_eq!(heap.allgc_count(), 0);
     }
 
-    /// Header-size regression for #113 Wave 1. Removing the `gray_next`
-    /// grayagain fat pointer shrinks `GcHeader` from **40 B to 24 B on
-    /// 64-bit** (`color + age + flags + pad + size(u32) + next(16)`), align 8.
-    /// The wasm32 figure is 24 -> 16 B (an 8-B fat pointer), but that is NOT
-    /// asserted here — a native test cannot observe the wasm32 layout, so the
-    /// assertion is gated to 64-bit targets; the wasm32 size is pinned by the
-    /// W2 `const` assert per the spec.
+    /// Header-size regression for #113 Wave 2. Removing the last intrusive
+    /// link (`next`) shrinks `GcHeader` from 24 B to **8 B** — `color + age +
+    /// flags + pad + size(u32)`, align 4. The header now contains no pointer,
+    /// so the size is width-independent (8 B on wasm32 too); this runtime test
+    /// backs the `const _` compile-time assert next to the struct, which pins
+    /// it ungated on both widths.
     #[test]
-    #[cfg(target_pointer_width = "64")]
-    fn gcheader_is_24_bytes_after_grayagain_diet() {
-        assert_eq!(std::mem::size_of::<GcHeader>(), 24);
+    fn gcheader_is_8_bytes_after_owner_vector_diet() {
+        assert_eq!(std::mem::size_of::<GcHeader>(), 8);
     }
 
     #[test]
