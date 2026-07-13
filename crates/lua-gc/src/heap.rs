@@ -1743,6 +1743,15 @@ pub struct Heap {
     /// allocation panic is suppressed while this is set. It re-arms the instant
     /// the final (empty) pass completes and this clears.
     tearing_down: Cell<bool>,
+    /// True for the duration of a sweep/minor `pending_release` drain (#113
+    /// Wave 2 destruction ownership, R2 finding 1). While set, every collection
+    /// entry point is inert (folded into [`collection_inert`](Self::collection_inert)),
+    /// so a payload `Drop` running inside the drain cannot start a nested
+    /// collection that traces a still-`pending_release` box as a root and then
+    /// has the outer drain free it. A distinct, transient window from `closed`
+    /// (permanent teardown) and `tearing_down` (the teardown drain); restored by
+    /// an RAII guard so a caught panic cannot wedge the collector shut.
+    releasing: Cell<bool>,
     /// While non-zero, [`allocate`](Self::allocate) routes through
     /// [`allocate_uncollected`](Self::allocate_uncollected) instead of the
     /// normal collectable `head` list. Raised around VM construction
@@ -1853,6 +1862,7 @@ impl Heap {
             uncollected: RefCell::new(Vec::new()),
             closed: Cell::new(false),
             tearing_down: Cell::new(false),
+            releasing: Cell::new(false),
             bootstrap_depth: std::rc::Rc::new(Cell::new(0)),
             pause_multiplier: Cell::new(200), // 200% = collect when bytes 2x threshold
             state: Cell::new(GcState::Pause),
@@ -2062,8 +2072,15 @@ impl Heap {
     /// recreating the second-`drop_all` use-after-free that gating only the
     /// barrier path was meant to prevent. No collection may ever run on a
     /// closed heap; every public collect/step/mark entry checks this.
+    ///
+    /// The `releasing` arm (#113 Wave 2, R2 finding 1) is the transient twin:
+    /// while a sweep/minor `pending_release` drain runs, a payload `Drop` must
+    /// not start a nested collection that traces a still-pending (owner-vec
+    /// absent, tombstoned) box as a root and then has the outer drain free it.
+    /// Folding it here makes all eight entry points inert during the drain with
+    /// no per-site edits.
     fn collection_inert(&self) -> bool {
-        self.paused.get() || self.closed.get()
+        self.paused.get() || self.closed.get() || self.releasing.get()
     }
 
     pub fn collections(&self) -> usize {
@@ -2928,12 +2945,32 @@ impl Heap {
     /// Release phase (all owner-vector borrows released): drain `pending_release`
     /// one box at a time, settling *that object's* accounting (byte refund,
     /// token removal, object-count decrement) before calling `release_box`.
+    ///
     /// Per-object-in-pop-order is load-bearing for pacer correctness under
     /// payload-`Drop` reentrancy (R2 finding 1): a peer still pending has not
     /// been refunded, so a reentrant `account_buffer` lands in its header and
     /// heap `bytes` together and is refunded in full when it is popped. The
     /// borrow is dropped between the pop and `release_box`.
+    ///
+    /// `releasing` is held for the whole drain so a payload `Drop` cannot start
+    /// a nested collection that traces a pending box; an RAII guard restores the
+    /// previous value even on panic, so a panicking destructor leaves the
+    /// remaining pending pointers owned by `pending_release` (freed by the next
+    /// drain or `drop_all`) and never wedges the collector shut.
     fn drain_pending_release(&self) {
+        struct ReleasingReset<'a> {
+            flag: &'a Cell<bool>,
+            prev: bool,
+        }
+        impl Drop for ReleasingReset<'_> {
+            fn drop(&mut self) {
+                self.flag.set(self.prev);
+            }
+        }
+        let _reset = ReleasingReset {
+            prev: self.releasing.replace(true),
+            flag: &self.releasing,
+        };
         loop {
             let ptr = match self.pending_release.borrow_mut().pop() {
                 Some(p) => p,
@@ -5178,6 +5215,110 @@ mod tests {
              later drain pass, not leaked"
         );
         assert_eq!(heap.bytes_used(), 0);
+    }
+
+    // ── issue #113 Wave 2: destruction ownership (Phase 4) ────────────────
+
+    /// A dead `Trace` payload whose `Drop` re-enters the collector via
+    /// `full_collect` and records the collector state it observed. Used to prove
+    /// the `releasing` window makes a nested collection inert.
+    struct NestedCollectOnDrop {
+        observed: std::rc::Rc<Cell<Option<GcState>>>,
+    }
+    impl Trace for NestedCollectOnDrop {
+        fn trace(&self, _m: &mut Marker) {}
+    }
+    impl Drop for NestedCollectOnDrop {
+        fn drop(&mut self) {
+            with_current_heap(|heap| {
+                if let Some(heap) = heap {
+                    heap.full_collect(&OneRoot(None));
+                    self.observed.set(Some(heap.gc_state()));
+                }
+            });
+        }
+    }
+
+    /// P4: a collection entered from inside the `pending_release` drain is inert
+    /// (`releasing` folded into `collection_inert`). If it were not, the nested
+    /// `full_collect` would `abort_cycle` and complete a fresh cycle, leaving the
+    /// state at `Pause`; inert, it returns immediately with the outer sweep phase
+    /// still current. This is the R2-finding-1 nested-collection hazard: a
+    /// destructor must not trace-then-free a still-pending peer.
+    #[test]
+    fn nested_collection_during_release_drain_is_inert() {
+        let heap = Heap::new();
+        heap.unpause();
+        let _guard = HeapGuard::push(&heap);
+        let observed = std::rc::Rc::new(Cell::new(None));
+        heap.allocate(NestedCollectOnDrop {
+            observed: observed.clone(),
+        });
+
+        heap.full_collect(&OneRoot(None));
+
+        let state = observed
+            .get()
+            .expect("the dead probe's Drop ran during the release drain");
+        assert!(
+            state.is_sweep(),
+            "a collection entered from inside the release drain must be inert \
+             (releasing set); saw {state:?}"
+        );
+        assert_eq!(heap.allgc_count(), 0);
+    }
+
+    /// A dead `Trace` payload whose `Drop` charges a *peer* box's buffer bytes
+    /// while that peer is still owned by `pending_release`. The peer keeps
+    /// `HDR_COLLECTED`, so `account_buffer` succeeds — the R2 reentrancy
+    /// counterexample.
+    struct ChargePeerOnDrop {
+        peer: Gc<Cell0>,
+        charge: isize,
+    }
+    impl Trace for ChargePeerOnDrop {
+        fn trace(&self, _m: &mut Marker) {}
+    }
+    impl Drop for ChargePeerOnDrop {
+        fn drop(&mut self) {
+            with_current_heap(|heap| {
+                if let Some(heap) = heap {
+                    self.peer.account_buffer(heap, self.charge);
+                }
+            });
+        }
+    }
+
+    /// P4: per-object-in-pop-order release accounting defeats the R2 pacer-drift
+    /// counterexample. Dead peers `b` (slot 0) and the charger (slot 1) land in
+    /// one `pending_release` batch; the charger pops first (LIFO) and charges
+    /// `b` +4096 while `b` is still pending and unrefunded, so `b`'s later
+    /// refund cancels the charge exactly. Under the withdrawn batch-accounting
+    /// design (refund both up front) the +4096 would drift `bytes` permanently.
+    #[test]
+    fn per_object_release_accounting_survives_reentrant_account_buffer() {
+        let heap = Heap::new();
+        heap.unpause();
+        let _guard = HeapGuard::push(&heap);
+        let baseline = heap.bytes_used();
+        let b = heap.allocate(Cell0 {
+            next: Cell::new(None),
+            marker_calls: Cell::new(0),
+        });
+        heap.allocate(ChargePeerOnDrop {
+            peer: b,
+            charge: 4096,
+        });
+
+        heap.full_collect(&OneRoot(None));
+
+        assert_eq!(heap.allgc_count(), 0);
+        assert_eq!(
+            heap.bytes_used(),
+            baseline,
+            "a reentrant account_buffer on a still-pending dead peer must be \
+             refunded when that peer is drained — no pacer drift"
+        );
     }
 
     #[test]
