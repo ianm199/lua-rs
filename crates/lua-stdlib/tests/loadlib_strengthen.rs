@@ -30,7 +30,7 @@
 //! `omnilua` is a dev-dependency (it depends on `lua-stdlib`, so it can only be
 //! a dev-dep — see `Cargo.toml`).
 
-use omnilua::{Lua, LuaVersion, Value};
+use omnilua::{HostHooks, Lua, LuaVersion, Value};
 
 const ALL: [LuaVersion; 5] = [
     LuaVersion::V51,
@@ -416,4 +416,148 @@ fn module_seeall_creates_and_registers_module() {
         return _NAME .. ',' .. tostring(_M == foo) .. ',' \
             .. tostring(package.loaded.foo == foo) .. ',' .. tostring(print ~= nil)";
     assert_eq!(eval_str(LuaVersion::V51, probe), b"foo,true,true,true");
+}
+
+// ── package.path/cpath — version-derived defaults + env precedence (#273) ────
+//
+// Before the #273 fix, `LUA_VERSUFFIX` and the default path/cpath were
+// hardcoded to 5.4's values for EVERY version, so a 5.1 instance reported
+// 5.4's `/usr/local/.../5.4/` directories and consulted `LUA_PATH_5_4`
+// instead of its own versioned name (or, on 5.1, a versioned name real 5.1
+// never consults at all). These tests pin the fix at the public `Lua` API
+// boundary; the pure per-version derivation functions (`lua_vdir`,
+// `lua_path_default`, the `;;`-splice algorithms, ...) have their own
+// exhaustive unit tests in `src/loadlib.rs`.
+//
+// Every hook below installs a deterministic FAKE environment via
+// `HostHooks::env` — `bootstrap_state` installs host hooks before opening
+// the standard libraries, so `luaopen_package`'s one-time `setpath` calls see
+// only what the hook returns, never the test process's real environment.
+// This keeps the tests hermetic and safely parallel (no `std::env::set_var`
+// anywhere).
+
+/// Force the compiled-in default: no env var is ever visible.
+fn no_env_hook(_name: &[u8]) -> Option<Vec<u8>> {
+    None
+}
+
+fn env_versioned_wins_hook(name: &[u8]) -> Option<Vec<u8>> {
+    match name {
+        b"LUA_PATH_5_2" | b"LUA_PATH_5_3" | b"LUA_PATH_5_4" | b"LUA_PATH_5_5" => {
+            Some(b"/versioned/?.lua".to_vec())
+        }
+        b"LUA_PATH" => Some(b"/unversioned/?.lua".to_vec()),
+        _ => None,
+    }
+}
+
+fn env_5_1_hook(name: &[u8]) -> Option<Vec<u8>> {
+    match name {
+        b"LUA_PATH_5_1" => Some(b"/should-be-ignored/?.lua".to_vec()),
+        b"LUA_PATH" => Some(b"/unversioned/?.lua".to_vec()),
+        _ => None,
+    }
+}
+
+/// Evaluate `code` under `version` with `hooks` installed, returning a string
+/// return value as bytes.
+fn eval_str_with_hooks(version: LuaVersion, hooks: HostHooks, code: &str) -> Vec<u8> {
+    let lua = Lua::with_hooks_versioned(hooks, version).expect("Lua runtime should initialize");
+    match lua.load(code).eval::<Value>() {
+        Ok(Value::String(s)) => s
+            .as_bytes()
+            .unwrap_or_else(|e| panic!("string bytes under {version:?} for `{code}`: {e:?}"))
+            .to_vec(),
+        Ok(other) => panic!("`{code}` under {version:?} returned {other:?}, expected a string"),
+        Err(e) => panic!("eval of `{code}` failed under {version:?}: {e:?}"),
+    }
+}
+
+/// With no env var visible, `package.path` is the compiled-in default — a
+/// DIFFERENT `/usr/local/.../<vdir>/` directory per version, not 5.4's for
+/// everyone. Captured from `/tmp/lua-refs/bin/lua5.x` (unmodified upstream
+/// `make macosx` builds — `specs/oracle/CONTRACT.md`). The entry SHAPE
+/// (not just the version segment) differs by era: 5.1 puts `./?.lua` first
+/// with no trailing `./?/init.lua`; 5.2 puts `./?.lua` last with no
+/// `./?/init.lua` at all; 5.3+ put both `./?.lua` and `./?/init.lua` last.
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn default_package_path_is_version_exact() {
+    assert_eq!(
+        eval_str_with_hooks(LuaVersion::V51, HostHooks::new().env(no_env_hook), "return package.path"),
+        b"./?.lua;/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua;\
+          /usr/local/lib/lua/5.1/?.lua;/usr/local/lib/lua/5.1/?/init.lua"
+            .to_vec()
+    );
+    assert_eq!(
+        eval_str_with_hooks(LuaVersion::V52, HostHooks::new().env(no_env_hook), "return package.path"),
+        b"/usr/local/share/lua/5.2/?.lua;/usr/local/share/lua/5.2/?/init.lua;\
+          /usr/local/lib/lua/5.2/?.lua;/usr/local/lib/lua/5.2/?/init.lua;./?.lua"
+            .to_vec()
+    );
+    for (v, vdir) in [(LuaVersion::V53, "5.3"), (LuaVersion::V54, "5.4"), (LuaVersion::V55, "5.5")] {
+        let expected = format!(
+            "/usr/local/share/lua/{vdir}/?.lua;/usr/local/share/lua/{vdir}/?/init.lua;\
+             /usr/local/lib/lua/{vdir}/?.lua;/usr/local/lib/lua/{vdir}/?/init.lua;\
+             ./?.lua;./?/init.lua"
+        );
+        assert_eq!(
+            eval_str_with_hooks(v, HostHooks::new().env(no_env_hook), "return package.path"),
+            expected.into_bytes(),
+            "{v:?}"
+        );
+    }
+}
+
+/// Same as `default_package_path_is_version_exact` for `package.cpath`: 5.1
+/// puts `./?.so` first (no trailing `./` alternative); 5.2+ share one shape.
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn default_package_cpath_is_version_exact() {
+    assert_eq!(
+        eval_str_with_hooks(LuaVersion::V51, HostHooks::new().env(no_env_hook), "return package.cpath"),
+        b"./?.so;/usr/local/lib/lua/5.1/?.so;/usr/local/lib/lua/5.1/loadall.so".to_vec()
+    );
+    for (v, vdir) in [
+        (LuaVersion::V52, "5.2"),
+        (LuaVersion::V53, "5.3"),
+        (LuaVersion::V54, "5.4"),
+        (LuaVersion::V55, "5.5"),
+    ] {
+        let expected =
+            format!("/usr/local/lib/lua/{vdir}/?.so;/usr/local/lib/lua/{vdir}/loadall.so;./?.so");
+        assert_eq!(
+            eval_str_with_hooks(v, HostHooks::new().env(no_env_hook), "return package.cpath"),
+            expected.into_bytes(),
+            "{v:?}"
+        );
+    }
+}
+
+/// From **5.2** onward, a versioned `LUA_PATH_5_x` wins over the unversioned
+/// `LUA_PATH` when both are set — verified against `lua5.2.4`..`lua5.5.0`.
+#[test]
+fn versioned_env_var_wins_over_unversioned_from_5_2() {
+    for v in [LuaVersion::V52, LuaVersion::V53, LuaVersion::V54, LuaVersion::V55] {
+        assert_eq!(
+            eval_str_with_hooks(
+                v,
+                HostHooks::new().env(env_versioned_wins_hook),
+                "return package.path"
+            ),
+            b"/versioned/?.lua".to_vec(),
+            "{v:?}"
+        );
+    }
+}
+
+/// **5.1** has no versioned environment variables at all: setting
+/// `LUA_PATH_5_1` has zero effect on `package.path`, and the unversioned
+/// `LUA_PATH` applies directly — verified against `lua5.1.5`.
+#[test]
+fn v5_1_has_no_versioned_env_vars() {
+    assert_eq!(
+        eval_str_with_hooks(LuaVersion::V51, HostHooks::new().env(env_5_1_hook), "return package.path"),
+        b"/unversioned/?.lua".to_vec()
+    );
 }

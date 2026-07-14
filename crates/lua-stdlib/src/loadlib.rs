@@ -79,21 +79,6 @@ const C_ABI_UNSUPPORTED_MSG: &[u8] =
 const LUA_PATH_VAR: &[u8] = b"LUA_PATH";
 const LUA_CPATH_VAR: &[u8] = b"LUA_CPATH";
 
-// Matches C-Lua's luaconf.h defaults exactly: LUA_LDIR entries first, then
-// LUA_CDIR entries, then the local ./? fallback last.
-#[cfg(not(target_os = "windows"))]
-const LUA_PATH_DEFAULT: &[u8] = b"/usr/local/share/lua/5.4/?.lua;/usr/local/share/lua/5.4/?/init.lua;/usr/local/lib/lua/5.4/?.lua;/usr/local/lib/lua/5.4/?/init.lua;./?.lua;./?/init.lua";
-#[cfg(target_os = "windows")]
-const LUA_PATH_DEFAULT: &[u8] = b"./?.lua;./?/init.lua";
-
-#[cfg(not(target_os = "windows"))]
-const LUA_CPATH_DEFAULT: &[u8] =
-    b"/usr/local/lib/lua/5.4/?.so;/usr/local/lib/lua/5.4/loadall.so;./?.so";
-#[cfg(target_os = "windows")]
-const LUA_CPATH_DEFAULT: &[u8] = b"./?.dll";
-
-const LUA_VERSUFFIX: &[u8] = b"_5_4";
-
 /// Build the `package.config` string for `version`.
 ///
 /// Five lines encoding the platform separators: directory separator, path
@@ -117,6 +102,171 @@ fn package_config(version: lua_types::LuaVersion) -> Vec<u8> {
         config.push(b'\n');
     }
     config
+}
+
+// ── Version-derived package-path defaults (issue #273) ───────────────────────
+//
+// `GlobalState::lua_version` is the single source of truth for every byte
+// below; nothing here is a per-lookup computation — `luaopen_package` (the
+// library-init cold path, run once per `Lua` instance) is the only caller.
+//
+// Every default was captured directly from the unmodified upstream `make
+// macosx` build of each version (`specs/oracle/CONTRACT.md`,
+// `/tmp/lua-refs/bin/lua5.x`), not read off of `luaconf.h` — see
+// `tests/loadlib_strengthen.rs` for the pinned assertions and this crate's
+// PR for the per-version diff transcript.
+
+/// The version-directory segment baked into default package paths and into
+/// versioned environment-variable names (e.g. `5.4` in
+/// `/usr/local/share/lua/5.4/?.lua` and in `LUA_PATH_5_4`). Mirrors upstream's
+/// `LUA_VDIR` (`luaconf.h`).
+///
+/// The trailing wildcard arm is unreachable in practice: every public
+/// constructor (`Lua::with_hooks_versioned` and friends) refuses to build a
+/// `LuaVersion` for which [`lua_types::LuaVersion::is_supported`] is false,
+/// and today's five supported variants are all matched above it. It exists
+/// only because `LuaVersion` is `#[non_exhaustive]` from this crate's point
+/// of view.
+fn lua_vdir(version: lua_types::LuaVersion) -> &'static [u8] {
+    match version {
+        lua_types::LuaVersion::V51 => b"5.1",
+        lua_types::LuaVersion::V52 => b"5.2",
+        lua_types::LuaVersion::V53 => b"5.3",
+        lua_types::LuaVersion::V54 => b"5.4",
+        lua_types::LuaVersion::V55 => b"5.5",
+        _ => b"5.4",
+    }
+}
+
+/// The `LUA_VERSUFFIX` value for `version` (e.g. `_5_4`), appended to
+/// `LUA_PATH`/`LUA_CPATH` to build the versioned environment-variable name an
+/// instance consults first (`LUA_PATH_5_4`, `LUA_CPATH_5_3`, ...). See
+/// [`lua_vdir`] for the wildcard-arm note.
+fn lua_versuffix(version: lua_types::LuaVersion) -> &'static [u8] {
+    match version {
+        lua_types::LuaVersion::V51 => b"_5_1",
+        lua_types::LuaVersion::V52 => b"_5_2",
+        lua_types::LuaVersion::V53 => b"_5_3",
+        lua_types::LuaVersion::V54 => b"_5_4",
+        lua_types::LuaVersion::V55 => b"_5_5",
+        _ => b"_5_4",
+    }
+}
+
+/// Whether `version` consults a versioned environment variable
+/// (`LUA_PATH_5_x`/`LUA_CPATH_5_x`) at all before falling back to the
+/// unversioned `LUA_PATH`/`LUA_CPATH`. Versioned env vars are a **5.2+**
+/// addition; 5.1 only ever reads the unversioned name — verified against
+/// `lua5.1.5`, where setting `LUA_PATH_5_1` has no effect on `package.path`.
+fn has_versioned_env_vars(version: lua_types::LuaVersion) -> bool {
+    !matches!(version, lua_types::LuaVersion::V51)
+}
+
+/// `LUA_LDIR` for `version`: where installed pure-Lua modules live
+/// (`/usr/local/share/lua/<vdir>/`).
+fn lua_ldir(version: lua_types::LuaVersion) -> Vec<u8> {
+    let mut dir = b"/usr/local/share/lua/".to_vec();
+    dir.extend_from_slice(lua_vdir(version));
+    dir.push(b'/');
+    dir
+}
+
+/// `LUA_CDIR` for `version`: where installed C modules live
+/// (`/usr/local/lib/lua/<vdir>/`).
+fn lua_cdir(version: lua_types::LuaVersion) -> Vec<u8> {
+    let mut dir = b"/usr/local/lib/lua/".to_vec();
+    dir.extend_from_slice(lua_vdir(version));
+    dir.push(b'/');
+    dir
+}
+
+/// The compiled-in `package.path` default for `version`. The entry SHAPE, not
+/// just the version segment, differs by era:
+/// - **5.1**: `./?.lua` FIRST, then `LDIR`/`CDIR`, no trailing `./?/init.lua`.
+/// - **5.2**: `LDIR`/`CDIR` first, `./?.lua` LAST, no `./?/init.lua` at all.
+/// - **5.3/5.4/5.5**: `LDIR`/`CDIR` first, then BOTH `./?.lua` and
+///   `./?/init.lua` last (the `LUA_SHRDIR`-derived shape 5.3 introduced).
+#[cfg(not(target_os = "windows"))]
+fn lua_path_default(version: lua_types::LuaVersion) -> Vec<u8> {
+    let ldir = lua_ldir(version);
+    let cdir = lua_cdir(version);
+    let mut path = Vec::new();
+    match version {
+        lua_types::LuaVersion::V51 => {
+            path.extend_from_slice(b"./?.lua;");
+            path.extend_from_slice(&ldir);
+            path.extend_from_slice(b"?.lua;");
+            path.extend_from_slice(&ldir);
+            path.extend_from_slice(b"?/init.lua;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?.lua;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?/init.lua");
+        }
+        lua_types::LuaVersion::V52 => {
+            path.extend_from_slice(&ldir);
+            path.extend_from_slice(b"?.lua;");
+            path.extend_from_slice(&ldir);
+            path.extend_from_slice(b"?/init.lua;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?.lua;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?/init.lua;./?.lua");
+        }
+        _ => {
+            path.extend_from_slice(&ldir);
+            path.extend_from_slice(b"?.lua;");
+            path.extend_from_slice(&ldir);
+            path.extend_from_slice(b"?/init.lua;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?.lua;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?/init.lua;./?.lua;./?/init.lua");
+        }
+    }
+    path
+}
+
+/// The Windows fallback default is version-flat, unchanged by this fix: the
+/// `!`-relative (`LUA_EXEC_DIR`) substitution real Windows builds perform via
+/// `setprogdir` is not implemented on this platform (see `setpath`'s doc
+/// comment on the same gap), so there is no faithful versioned
+/// installed-module directory to build here either.
+#[cfg(target_os = "windows")]
+fn lua_path_default(_version: lua_types::LuaVersion) -> Vec<u8> {
+    b"./?.lua;./?/init.lua".to_vec()
+}
+
+/// The compiled-in `package.cpath` default for `version` — same era split as
+/// [`lua_path_default`]: 5.1 puts `./?.so` FIRST with no `./` alternative
+/// after `CDIR`'s entries; 5.2+ share one shape (`CDIR` entries, then
+/// `./?.so` last).
+#[cfg(not(target_os = "windows"))]
+fn lua_cpath_default(version: lua_types::LuaVersion) -> Vec<u8> {
+    let cdir = lua_cdir(version);
+    let mut path = Vec::new();
+    match version {
+        lua_types::LuaVersion::V51 => {
+            path.extend_from_slice(b"./?.so;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?.so;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"loadall.so");
+        }
+        _ => {
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"?.so;");
+            path.extend_from_slice(&cdir);
+            path.extend_from_slice(b"loadall.so;./?.so");
+        }
+    }
+    path
+}
+
+/// See [`lua_path_default`]'s Windows note — unchanged, version-flat.
+#[cfg(target_os = "windows")]
+fn lua_cpath_default(_version: lua_types::LuaVersion) -> Vec<u8> {
+    b"./?.dll".to_vec()
 }
 
 fn getenv_bytes(state: &LuaState, name: &[u8]) -> Option<Vec<u8>> {
@@ -356,10 +506,12 @@ fn noenv(state: &mut LuaState) -> bool {
 
 /// Set `package[fieldname]` to the appropriate path value.
 ///
-/// Priority: versioned env var (e.g. `LUA_PATH_5_4`) → unversioned env var
-/// (`LUA_PATH`) → compiled-in default. When the env var contains `;;`, the
-/// compiled-in default is spliced in place of `;;`. The caller must leave the
-/// `package` table at the stack top; the path value is set on it directly (the
+/// Priority: versioned env var (e.g. `LUA_PATH_5_4`, only consulted when
+/// [`has_versioned_env_vars`] is true for this instance's version — 5.1 has
+/// no versioned env vars at all) → unversioned env var (`LUA_PATH`) →
+/// compiled-in default. When the env var contains `;;`, the compiled-in
+/// default is spliced in place of `;;`. The caller must leave the `package`
+/// table at the stack top; the path value is set on it directly (the
 /// versioned env-var name is computed off-stack, so no index bookkeeping is
 /// needed).
 fn setpath(
@@ -368,37 +520,24 @@ fn setpath(
     envname: &[u8],
     dft: &[u8],
 ) -> Result<(), LuaError> {
-    let mut nver = envname.to_vec();
-    nver.extend_from_slice(LUA_VERSUFFIX);
+    let version = state.global().lua_version;
 
     let path_opt = if noenv(state) {
         None
-    } else {
+    } else if has_versioned_env_vars(version) {
+        let mut nver = envname.to_vec();
+        nver.extend_from_slice(lua_versuffix(version));
         getenv_bytes(state, &nver).or_else(|| getenv_bytes(state, envname))
+    } else {
+        getenv_bytes(state, envname)
     };
 
-    let final_path: Vec<u8> = if path_opt.is_none() {
-        dft.to_vec()
-    } else {
-        let path = path_opt.unwrap();
-        let double_sep = [LUA_PATH_SEP, LUA_PATH_SEP];
-        if let Some(dftmark_pos) = find_subslice(&path, &double_sep) {
-            // Path contains ";;": replace with default.
-            let mut buf = Vec::new();
-            if dftmark_pos > 0 {
-                buf.extend_from_slice(&path[..dftmark_pos]);
-                buf.push(LUA_PATH_SEP);
-            }
-            buf.extend_from_slice(dft);
-            let after = dftmark_pos + 2;
-            if after < path.len() {
-                buf.push(LUA_PATH_SEP);
-                buf.extend_from_slice(&path[after..]);
-            }
-            buf
-        } else {
-            path
+    let final_path: Vec<u8> = match path_opt {
+        None => dft.to_vec(),
+        Some(path) if double_semicolon_splice_is_legacy(version) => {
+            legacy_double_semicolon_splice(&path, dft)
         }
+        Some(path) => modern_double_semicolon_splice(&path, dft),
     };
 
     // The Windows `setprogdir` step (replace `LUA_EXEC_DIR` with the running
@@ -410,6 +549,64 @@ fn setpath(
     state.set_field(-2, fieldname)?;
 
     Ok(())
+}
+
+/// Whether `version`'s `;;`-in-env-var default splice is the LEGACY,
+/// position-independent `gsub` (5.1/5.2/5.3's `luaL_gsub(path, ";;",
+/// ";AUXMARK;")` then `luaL_gsub(_, AUXMARK, dft)`: EVERY non-overlapping
+/// `;;` occurrence gets the default spliced in, wrapped in separators on
+/// both sides regardless of position) rather than the single-shot,
+/// position-aware splice **5.4** introduced (only the FIRST `;;` is
+/// replaced, and a boundary separator is omitted when `;;` sits at the very
+/// start or end of the string). Verified against `lua5.1.5`/`lua5.4.7`:
+/// `LUA_PATH="/a?;;;;/b"` splices the default TWICE on 5.1 (once per `;;`
+/// pair) but only once on 5.4, leaving the remaining `;;` literal.
+fn double_semicolon_splice_is_legacy(version: lua_types::LuaVersion) -> bool {
+    matches!(
+        version,
+        lua_types::LuaVersion::V51 | lua_types::LuaVersion::V52 | lua_types::LuaVersion::V53
+    )
+}
+
+/// The 5.1/5.2/5.3 `;;` default splice: every non-overlapping occurrence of
+/// `;;` in `path` becomes `;` + `dft` + `;`, unconditionally. Collapses
+/// upstream's two-step `gsub(path, ";;", ";AUXMARK;")` then
+/// `gsub(_, AUXMARK, dft)` into one pass — the `AUXMARK` indirection exists
+/// upstream only to avoid re-scanning `dft` for the first gsub's pattern, and
+/// a single combined replacement already has that property (`dft` is
+/// inserted verbatim into the output, never re-scanned for `;;`).
+fn legacy_double_semicolon_splice(path: &[u8], dft: &[u8]) -> Vec<u8> {
+    let double_sep = [LUA_PATH_SEP, LUA_PATH_SEP];
+    if find_subslice(path, &double_sep).is_none() {
+        return path.to_vec();
+    }
+    let mut replacement = vec![LUA_PATH_SEP];
+    replacement.extend_from_slice(dft);
+    replacement.push(LUA_PATH_SEP);
+    gsub_bytes(path, &double_sep, &replacement)
+}
+
+/// The 5.4/5.5 `;;` default splice: only the FIRST occurrence of `;;` is
+/// replaced; the leading separator is omitted when `;;` starts the string
+/// (no prefix) and the trailing separator is omitted when `;;` ends it (no
+/// suffix).
+fn modern_double_semicolon_splice(path: &[u8], dft: &[u8]) -> Vec<u8> {
+    let double_sep = [LUA_PATH_SEP, LUA_PATH_SEP];
+    let Some(dftmark_pos) = find_subslice(path, &double_sep) else {
+        return path.to_vec();
+    };
+    let mut buf = Vec::new();
+    if dftmark_pos > 0 {
+        buf.extend_from_slice(&path[..dftmark_pos]);
+        buf.push(LUA_PATH_SEP);
+    }
+    buf.extend_from_slice(dft);
+    let after = dftmark_pos + 2;
+    if after < path.len() {
+        buf.push(LUA_PATH_SEP);
+        buf.extend_from_slice(&path[after..]);
+    }
+    buf
 }
 
 // ── CLIBS registry table ──────────────────────────────────────────────────────
@@ -1281,9 +1478,11 @@ pub fn luaopen_package(state: &mut LuaState) -> Result<usize, LuaError> {
 
     createsearcherstable(state)?;
 
-    setpath(state, b"path", LUA_PATH_VAR, LUA_PATH_DEFAULT)?;
+    let path_default = lua_path_default(state.global().lua_version);
+    setpath(state, b"path", LUA_PATH_VAR, &path_default)?;
 
-    setpath(state, b"cpath", LUA_CPATH_VAR, LUA_CPATH_DEFAULT)?;
+    let cpath_default = lua_cpath_default(state.global().lua_version);
+    setpath(state, b"cpath", LUA_CPATH_VAR, &cpath_default)?;
 
     let config = package_config(state.global().lua_version);
     let config_s = state.intern_str(&config)?;
@@ -1325,4 +1524,172 @@ pub fn luaopen_package(state: &mut LuaState) -> Result<usize, LuaError> {
     }
 
     Ok(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lua_types::LuaVersion;
+
+    const ALL: [LuaVersion; 5] =
+        [LuaVersion::V51, LuaVersion::V52, LuaVersion::V53, LuaVersion::V54, LuaVersion::V55];
+
+    /// `lua_vdir` is the literal version-directory segment used both in
+    /// default package paths and to build the versioned env-var name — one
+    /// value per version, never `5.4` for anything else.
+    #[test]
+    fn vdir_is_version_exact() {
+        assert_eq!(lua_vdir(LuaVersion::V51), b"5.1");
+        assert_eq!(lua_vdir(LuaVersion::V52), b"5.2");
+        assert_eq!(lua_vdir(LuaVersion::V53), b"5.3");
+        assert_eq!(lua_vdir(LuaVersion::V54), b"5.4");
+        assert_eq!(lua_vdir(LuaVersion::V55), b"5.5");
+    }
+
+    #[test]
+    fn versuffix_is_version_exact() {
+        assert_eq!(lua_versuffix(LuaVersion::V51), b"_5_1");
+        assert_eq!(lua_versuffix(LuaVersion::V52), b"_5_2");
+        assert_eq!(lua_versuffix(LuaVersion::V53), b"_5_3");
+        assert_eq!(lua_versuffix(LuaVersion::V54), b"_5_4");
+        assert_eq!(lua_versuffix(LuaVersion::V55), b"_5_5");
+    }
+
+    /// 5.1 is the one version with NO versioned environment variables at
+    /// all — confirmed against `lua5.1.5`, where `LUA_PATH_5_1` has no
+    /// effect on `package.path`. 5.2 onward all have them.
+    #[test]
+    fn only_5_1_lacks_versioned_env_vars() {
+        assert!(!has_versioned_env_vars(LuaVersion::V51));
+        for v in [LuaVersion::V52, LuaVersion::V53, LuaVersion::V54, LuaVersion::V55] {
+            assert!(has_versioned_env_vars(v), "{v:?}");
+        }
+    }
+
+    /// Byte-for-byte against the unmodified upstream `make macosx` build of
+    /// each version (`specs/oracle/CONTRACT.md`), captured from
+    /// `/tmp/lua-refs/bin/lua5.x -e 'print(package.path)'`. The entry SHAPE
+    /// (not just the `5.x` segment) differs by era — see `lua_path_default`'s
+    /// doc comment.
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn path_default_is_version_exact() {
+        assert_eq!(
+            lua_path_default(LuaVersion::V51),
+            b"./?.lua;/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua;\
+              /usr/local/lib/lua/5.1/?.lua;/usr/local/lib/lua/5.1/?/init.lua"
+                .to_vec()
+        );
+        assert_eq!(
+            lua_path_default(LuaVersion::V52),
+            b"/usr/local/share/lua/5.2/?.lua;/usr/local/share/lua/5.2/?/init.lua;\
+              /usr/local/lib/lua/5.2/?.lua;/usr/local/lib/lua/5.2/?/init.lua;./?.lua"
+                .to_vec()
+        );
+        for v in [LuaVersion::V53, LuaVersion::V54, LuaVersion::V55] {
+            let vdir = lua_vdir(v);
+            let mut expected = Vec::new();
+            expected.extend_from_slice(b"/usr/local/share/lua/");
+            expected.extend_from_slice(vdir);
+            expected.extend_from_slice(b"/?.lua;/usr/local/share/lua/");
+            expected.extend_from_slice(vdir);
+            expected.extend_from_slice(b"/?/init.lua;/usr/local/lib/lua/");
+            expected.extend_from_slice(vdir);
+            expected.extend_from_slice(b"/?.lua;/usr/local/lib/lua/");
+            expected.extend_from_slice(vdir);
+            expected.extend_from_slice(b"/?/init.lua;./?.lua;./?/init.lua");
+            assert_eq!(lua_path_default(v), expected, "{v:?}");
+        }
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn cpath_default_is_version_exact() {
+        assert_eq!(
+            lua_cpath_default(LuaVersion::V51),
+            b"./?.so;/usr/local/lib/lua/5.1/?.so;/usr/local/lib/lua/5.1/loadall.so".to_vec()
+        );
+        for v in [LuaVersion::V52, LuaVersion::V53, LuaVersion::V54, LuaVersion::V55] {
+            let vdir = lua_vdir(v);
+            let mut expected = Vec::new();
+            expected.extend_from_slice(b"/usr/local/lib/lua/");
+            expected.extend_from_slice(vdir);
+            expected.extend_from_slice(b"/?.so;/usr/local/lib/lua/");
+            expected.extend_from_slice(vdir);
+            expected.extend_from_slice(b"/loadall.so;./?.so");
+            assert_eq!(lua_cpath_default(v), expected, "{v:?}");
+        }
+    }
+
+    /// No two versions may collide on their directory segment or defaults —
+    /// a regression here would silently point every version at the same
+    /// installed-module directory again (the shape of issue #273).
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn every_version_has_a_distinct_path_default() {
+        for (i, a) in ALL.iter().enumerate() {
+            for b in &ALL[i + 1..] {
+                assert_ne!(lua_path_default(*a), lua_path_default(*b), "{a:?} vs {b:?}");
+                assert_ne!(lua_cpath_default(*a), lua_cpath_default(*b), "{a:?} vs {b:?}");
+            }
+        }
+    }
+
+    /// Only 5.1/5.2/5.3 use the legacy gsub-based `;;` splice; 5.4/5.5 use
+    /// the position-aware one.
+    #[test]
+    fn double_semicolon_splice_is_legacy_matrix() {
+        for v in [LuaVersion::V51, LuaVersion::V52, LuaVersion::V53] {
+            assert!(double_semicolon_splice_is_legacy(v), "{v:?}");
+        }
+        for v in [LuaVersion::V54, LuaVersion::V55] {
+            assert!(!double_semicolon_splice_is_legacy(v), "{v:?}");
+        }
+    }
+
+    /// The legacy splice replaces EVERY non-overlapping `;;` pair,
+    /// unconditionally wrapping the default in separators regardless of
+    /// where the pair sits — verified against `lua5.1.5`.
+    #[test]
+    fn legacy_splice_replaces_every_occurrence_both_sides() {
+        assert_eq!(
+            legacy_double_semicolon_splice(b"/a/?.lua;;;;/b/?.lua", b"DEFAULT"),
+            b"/a/?.lua;DEFAULT;;DEFAULT;/b/?.lua".to_vec()
+        );
+        assert_eq!(
+            legacy_double_semicolon_splice(b";;/b/?.lua", b"DEFAULT"),
+            b";DEFAULT;/b/?.lua".to_vec()
+        );
+        assert_eq!(
+            legacy_double_semicolon_splice(b"/a/?.lua;;", b"DEFAULT"),
+            b"/a/?.lua;DEFAULT;".to_vec()
+        );
+        assert_eq!(
+            legacy_double_semicolon_splice(b"/a/?.lua", b"DEFAULT"),
+            b"/a/?.lua".to_vec()
+        );
+    }
+
+    /// The modern splice replaces only the FIRST `;;` pair and omits a
+    /// boundary separator when the pair sits at the very start or end —
+    /// verified against `lua5.4.7`.
+    #[test]
+    fn modern_splice_replaces_first_occurrence_and_omits_boundary_separators() {
+        assert_eq!(
+            modern_double_semicolon_splice(b"/a/?.lua;;;;/b/?.lua", b"DEFAULT"),
+            b"/a/?.lua;DEFAULT;;;/b/?.lua".to_vec()
+        );
+        assert_eq!(
+            modern_double_semicolon_splice(b";;/b/?.lua", b"DEFAULT"),
+            b"DEFAULT;/b/?.lua".to_vec()
+        );
+        assert_eq!(
+            modern_double_semicolon_splice(b"/a/?.lua;;", b"DEFAULT"),
+            b"/a/?.lua;DEFAULT".to_vec()
+        );
+        assert_eq!(
+            modern_double_semicolon_splice(b"/a/?.lua", b"DEFAULT"),
+            b"/a/?.lua".to_vec()
+        );
+    }
 }
