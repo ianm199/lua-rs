@@ -143,6 +143,10 @@ Multiple git worktrees of this repo exist (`git worktree list`). **One branch pe
 worktree; never run two agents in the same worktree** — branch pointers collide
 and commits land on the wrong branch (this has happened). For parallel work, give
 each agent its own worktree: `git worktree add ../lua-rs-port-<name> <branch>`.
+**Never `git stash` in a worktree** — `refs/stash` is shared across ALL
+worktrees of this repo, so concurrent agents' stash/pop interleave and grab
+each other's entries (bit two agents on 2026-07-14; both recovered via
+`git fsck --unreachable`). Use a backup file or a scratch commit instead.
 Within a single session, do not parallelize file-editing subagents in a shared
 tree (`specs/MULTIVERSION_PLAYBOOK.md §7`). Coordinate cross-repo work on
 `../AGENT_COORDINATION_BOARD.md`.
