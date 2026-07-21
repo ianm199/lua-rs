@@ -61,16 +61,38 @@ enum FsFile {
 }
 
 /// Deterministic `/dev/full` stand-in with C stdio buffering fidelity (#305):
-/// the ENOSPC surfaces where `fwrite` would surface it. Fully buffered (the
-/// stdio default) accepts writes and fails at `flush`/close; unbuffered fails
-/// immediately with 0 bytes written; line-buffered accepts bytes up to the
-/// first newline and fails when the newline forces the flush — so `f:write`
-/// reports the bytes before the newline as written (5.5's counter), exactly
-/// like the reference (`lua5.5 /dev/full` line-buffered `f:write("abc\n")` →
-/// `nil, "No space left on device", 28, 3`).
+/// the ENOSPC surfaces where `fwrite` would surface it, pinned against the
+/// reference binaries on a real `/dev/full`. Fully buffered (the stdio
+/// default) accepts writes and fails at `flush`/close; unbuffered fails
+/// immediately with 0 bytes written. Line-buffered mirrors glibc's stateful
+/// `fwrite` byte accounting:
+///
+/// * The FIRST write on a fresh stream goes byte-at-a-time (glibc's
+///   `_IO_default_xsputn` path before `_IO_CURRENTLY_PUTTING` is set), so it
+///   counts the bytes before the FIRST newline and fails there —
+///   `f:write("abc\n")` → `nil, "No space left on device", 28, 3` and
+///   `f:write("ab\ncd\nef")` → counter 2.
+/// * SUBSEQUENT writes take the bulk-scan path: bytes through the LAST
+///   newline are consumed before the flush fails — `f:write("abc", "de\nf")`
+///   → counter 6 (3 + `"de\n"`). When the data ENDS at that newline glibc's
+///   `fwrite` reports 0 for the call — `f:write("abc", "de\n")` → counter 3.
+/// * A flush attempt (newline-triggered or explicit) DISCARDS the buffer
+///   whether or not it succeeds (`new_do_write` resets the write pointers
+///   unconditionally), so `flush`/close only fail while undischarged bytes
+///   are buffered: `f:write("abc\n"); f:close()` → `true`, but
+///   `f:write("abc"); f:flush()` → the ENOSPC triple.
+///
+/// `pending_fail` bridges the seam between C's one-`fwrite`-per-argument and
+/// [`g_write`]'s continuation loop: a newline-triggered flush failure returns
+/// the glibc partial count and arms one `Err(ENOSPC)` for the retry that
+/// `g_write` is guaranteed to issue for the unwritten remainder, so the loop
+/// stops with exactly the reference totalbytes.
 struct DevFullFile {
     errored: bool,
     buf_mode: FsBufMode,
+    putting: bool,
+    pending_fail: bool,
+    dirty: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -307,21 +329,56 @@ impl LuaFileHandle for DevFullFile {
                 self.errored = true;
                 Err(io::Error::from_raw_os_error(28))
             }
-            FsBufMode::Line => match data.iter().position(|&b| b == b'\n') {
-                Some(0) => {
+            FsBufMode::Line => {
+                if self.pending_fail {
+                    self.pending_fail = false;
                     self.errored = true;
-                    Err(io::Error::from_raw_os_error(28))
+                    return Err(io::Error::from_raw_os_error(28));
                 }
-                Some(n) => Ok(n),
-                None => Ok(data.len()),
-            },
-            FsBufMode::Full => Ok(data.len()),
+                let first_write = !self.putting;
+                self.putting = true;
+                let newline = if first_write {
+                    data.iter().position(|&b| b == b'\n')
+                } else {
+                    data.iter().rposition(|&b| b == b'\n')
+                };
+                match newline {
+                    None => {
+                        self.dirty = true;
+                        Ok(data.len())
+                    }
+                    Some(p) if first_write && p == 0 => {
+                        self.errored = true;
+                        self.dirty = false;
+                        Err(io::Error::from_raw_os_error(28))
+                    }
+                    Some(p) if !first_write && p + 1 == data.len() => {
+                        self.errored = true;
+                        self.dirty = false;
+                        Err(io::Error::from_raw_os_error(28))
+                    }
+                    Some(p) => {
+                        self.pending_fail = true;
+                        self.dirty = false;
+                        Ok(if first_write { p } else { p + 1 })
+                    }
+                }
+            }
+            FsBufMode::Full => {
+                self.dirty = true;
+                Ok(data.len())
+            }
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.errored = true;
-        Err(io::Error::from_raw_os_error(28))
+        if self.dirty {
+            self.dirty = false;
+            self.errored = true;
+            Err(io::Error::from_raw_os_error(28))
+        } else {
+            Ok(())
+        }
     }
 
     fn seek(&mut self, _pos: SeekFrom) -> io::Result<u64> {
@@ -422,6 +479,9 @@ fn file_open_hook(filename: &[u8], mode: &[u8]) -> io::Result<Box<dyn LuaFileHan
         return Ok(Box::new(DevFullFile {
             errored: false,
             buf_mode: FsBufMode::Full,
+            putting: false,
+            pending_fail: false,
+            dirty: false,
         }));
     }
     FsFile::open(filename, mode).map(|f| Box::new(f) as Box<dyn LuaFileHandle>)

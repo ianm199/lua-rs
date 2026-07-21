@@ -344,16 +344,30 @@ const WRITE_PROBE: &str = "local f = assert(io.open('x', 'w')); \
      return tostring(t[1]) .. '|' .. tostring(t[2]) .. '|' .. tostring(t[3]) \
      .. '|' .. tostring(t[4]) .. '|' .. n";
 
-fn eval_write_probe(version: LuaVersion, script: WriteScript) -> (String, Vec<u8>) {
+/// `f:write('ab', 'cde')` — multi-argument variant of [`WRITE_PROBE`], so the
+/// 5.5 counter has to accumulate ACROSS chunks and WITHIN the failing chunk
+/// (5.5 `liolib.c` `totalbytes += numbytes` runs before the `numbytes < len`
+/// check).
+const MULTI_WRITE_PROBE: &str = "local f = assert(io.open('x', 'w')); \
+     local function pack(...) return select('#', ...), {...} end; \
+     local n, t = pack(f:write('ab', 'cde')); \
+     return tostring(t[1]) .. '|' .. tostring(t[2]) .. '|' .. tostring(t[3]) \
+     .. '|' .. tostring(t[4]) .. '|' .. n";
+
+fn eval_probe_with(version: LuaVersion, script: WriteScript, probe: &str) -> (String, Vec<u8>) {
     WRITE_SCRIPT.with(|c| c.set(script));
     WRITE_SINK.with(|s| s.borrow_mut().clear());
     let lua = lua_with_scripted_write(version);
     let got = lua
-        .load(WRITE_PROBE)
+        .load(probe)
         .set_name(b"=errno_kit")
         .eval()
         .unwrap_or_else(|e| panic!("write probe failed under {version:?}: {e:?}"));
     (got, WRITE_SINK.with(|s| s.borrow().clone()))
+}
+
+fn eval_write_probe(version: LuaVersion, script: WriteScript) -> (String, Vec<u8>) {
+    eval_probe_with(version, script, WRITE_PROBE)
 }
 
 /// A write that makes partial progress (2 bytes per call) and then fails with
@@ -410,6 +424,11 @@ fn partial_progress_write_continues_to_completion() {
             arity, "1",
             "{v:?}: a completed write must return exactly one success value, got `{got}`"
         );
+        assert!(
+            got.starts_with("file ("),
+            "{v:?}: the success value must be the file handle itself (C's g_write \
+             returns with the handle on the stack top), got `{got}`"
+        );
         assert_eq!(
             sink, b"abcdefgh",
             "{v:?}: every byte must reach the handle across the continuation loop"
@@ -443,6 +462,68 @@ fn zero_progress_write_fails_without_fabricated_errno() {
         assert!(
             sink.is_empty(),
             "{v:?}: a zero-progress handle accepted no bytes"
+        );
+    }
+}
+
+/// Failure on the SECOND argument: `f:write('ab', 'cde')` with a 3-byte budget
+/// completes `'ab'`, writes 1 byte of `'cde'`, then fails. The 5.5 counter
+/// must be 3 (completed chunk + partial progress in the failing chunk), and
+/// 5.1-5.4 must report the plain errno triple.
+#[cfg(unix)]
+#[test]
+fn multi_argument_failure_counts_across_chunks() {
+    for v in ALL {
+        let (got, sink) = eval_probe_with(
+            v,
+            WriteScript {
+                budget: 3,
+                per_call_cap: usize::MAX,
+                errno: 28,
+            },
+            MULTI_WRITE_PROBE,
+        );
+        let expected = match v {
+            LuaVersion::V55 => "nil|No space left on device|28|3|4",
+            _ => "nil|No space left on device|28|nil|3",
+        };
+        assert_eq!(
+            got, expected,
+            "{v:?}: multi-argument short write must count across chunks, got `{got}`"
+        );
+        assert_eq!(
+            sink, b"abc",
+            "{v:?}: the handle must have accepted the budgeted 3 bytes across chunks"
+        );
+    }
+}
+
+/// `EINTR` (errno 4) is a terminal failure, not a retry: glibc's `fwrite` does
+/// not restart on `EINTR` — it returns a short count with `errno` set — so the
+/// tuple must carry errno 4, and the 5.5 counter only the pre-interrupt bytes.
+#[cfg(unix)]
+#[test]
+fn eintr_is_reported_not_retried() {
+    for v in ALL {
+        let (got, sink) = eval_write_probe(
+            v,
+            WriteScript {
+                budget: 4,
+                per_call_cap: 2,
+                errno: 4,
+            },
+        );
+        let expected = match v {
+            LuaVersion::V55 => "nil|Interrupted system call|4|4|4",
+            _ => "nil|Interrupted system call|4|nil|3",
+        };
+        assert_eq!(
+            got, expected,
+            "{v:?}: EINTR must surface as the tuple's errno, got `{got}`"
+        );
+        assert_eq!(
+            sink, b"abcd",
+            "{v:?}: only the pre-EINTR bytes reach the handle"
         );
     }
 }

@@ -285,3 +285,60 @@ fn os_remove_symlink_in_readonly_dir_matches_reference() {
         );
     }
 }
+
+// ── /dev/full: short-write tuples through stdio buffering modes (#305) ───────
+
+/// The `/dev/full` scenarios only exist where the device does (Linux); the
+/// stand-in in `file_open_hook` must then byte-match the reference through
+/// every `setvbuf` mode. Handles are never printed (their `tostring` address
+/// rendering differs); scenarios print only failure tuples and booleans.
+#[cfg(unix)]
+fn dev_full_available() -> bool {
+    std::path::Path::new("/dev/full").exists()
+}
+
+/// glibc's line-buffered `fwrite` byte accounting is stateful, and 5.5's
+/// `g_write` exposes it through the 4th totalbytes value: the FIRST write on a
+/// fresh stream fails at the first newline having counted the bytes before it;
+/// SUBSEQUENT writes consume through the LAST newline (`"abc","de\nf"` → 6)
+/// unless the data ends at that newline, where `fwrite` reports 0
+/// (`"abc","de\n"` → 3). A failed newline-flush discards the buffer, so a
+/// later `close` succeeds. 5.1-5.4 print the same 3-value tuple without the
+/// counter. Every snippet is diffed verbatim against the reference binary.
+#[cfg(unix)]
+#[test]
+fn dev_full_write_tuples_match_reference_all_versions() {
+    if !dev_full_available() {
+        return;
+    }
+    const SNIPPETS: &[&str] = &[
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); print(f:write('abc\\n'))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); print(f:write('abc','de\\nf'))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); print(f:write('abc','de\\n'))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); print(f:write('\\n'))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); print(f:write('ab\\ncd\\nef'))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); assert(f:write('abc')); print(f:write('de\\nf'))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); f:write('abc\\n'); print((f:write('x')) ~= nil)",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); f:write('abc\\n'); print(f:close())",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('line'); assert(f:write('abc')); print(f:flush())",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('no'); print(f:write('abc'))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('no'); print(f:write(12345))",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('no'); print(f:flush())",
+        "local f=assert(io.open('/dev/full','w')); f:setvbuf('no'); print(f:close())",
+        "local f=assert(io.open('/dev/full','w')); print(f:flush())",
+        "local f=assert(io.open('/dev/full','w')); assert(f:write('abc')); print(f:flush())",
+    ];
+    for v in VERSIONS {
+        let Some(refbin) = reference_binary(v) else {
+            continue;
+        };
+        for code in SNIPPETS {
+            let omni = run_omni(v, code);
+            let reference = run_ref(&refbin, code);
+            assert_eq!(
+                omni, reference,
+                "[{v}] /dev/full tuple diverged from reference for `{code}`"
+            );
+        }
+    }
+}
