@@ -17,6 +17,7 @@ return {
       ["./hosted-54/data.txt", "alpha\nbeta\n"],
     ]),
     dirs: ["./hosted-54/dir"],
+    denied: ["./hosted-54/secret.txt"],
     stdin: "alpha\nbeta\n",
   };
 }
@@ -59,6 +60,16 @@ assert(merrno == 2, "expected ENOENT (2), got " .. tostring(merrno))
 assert(
   mmsg == "./hosted-54/missing-301: No such file or directory",
   "expected clean strerror message, got " .. tostring(mmsg)
+)
+-- #305: EPERM (errno 1) must survive the open_file ABI. The old errno=-id
+-- encoding collided EPERM with the -1 no-errno sentinel; the -(errno+1)
+-- shift keeps both representable.
+local popen, pmsg, perrno = io.open("./hosted-54/secret.txt")
+assert(popen == nil)
+assert(perrno == 1, "expected EPERM (1), got " .. tostring(perrno))
+assert(
+  pmsg == "./hosted-54/secret.txt: Operation not permitted",
+  "expected EPERM strerror message, got " .. tostring(pmsg)
 )
 local out = assert(io.open("./hosted-54/runtime.txt", "w"))
 assert(out:setvbuf("no"))
@@ -176,6 +187,9 @@ export function runSmokeAssertions(exports, host) {
 
   const dynamic = host.run(`
 local greeter = require("greeter")
+local popen, pmsg, perrno = io.open("./hosted-54/secret.txt")
+assert(popen == nil)
+assert(perrno == 1, "expected EPERM (1), got " .. tostring(perrno))
 local out = assert(io.open("./hosted-54/dynamic.txt", "w"))
 assert(out:write("dynamic ", greeter.answer()))
 assert(out:flush())

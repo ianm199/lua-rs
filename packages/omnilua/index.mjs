@@ -76,6 +76,7 @@ export class LuaRsRuntime {
     env,
     files,
     dirs,
+    denied,
     stdin = "",
     unixTime = 1700000000n,
     onStdout,
@@ -84,6 +85,7 @@ export class LuaRsRuntime {
     this.env = asMap(env);
     this.files = asMap(files);
     this.dirs = asSet(dirs);
+    this.denied = asSet(denied);
     this.stdin = Array.from(asBytes(stdin));
     this.stdinOffset = 0;
     this.unixTime = unixTime;
@@ -445,13 +447,20 @@ export class LuaRsRuntime {
    * return signals failure and carries an errno so the Lua `io.open` failure
    * triple reports the real `(nil, msg, errno)` instead of errno 0 (#301):
    * `-1` means "failed, no errno available"; any value `<= -2` encodes
-   * `errno = -id` (e.g. `-2` == ENOENT). The wasm module decodes this and
-   * constructs a matching `std::io::Error`.
+   * `errno = -(id + 1)`: `-2` → EPERM (1), `-3` → ENOENT (2), `-23` → EINVAL
+   * (22). The one-unit shift keeps `-1` as the exclusive no-errno sentinel so
+   * EPERM is representable (#305). To encode: `id = -(errno + 1)`. The wasm
+   * module decodes with `io::Error::from_raw_os_error(-(id + 1))`. Paths in
+   * the `denied` option are refused with EPERM regardless of mode.
    */
   openFile(pathPtr, pathLen, modePtr, modeLen) {
     const path = this.readString(pathPtr, pathLen);
     const mode = this.readString(modePtr, modeLen);
     const id = this.nextFileId++;
+
+    if (this.denied.has(path)) {
+      return -2;
+    }
 
     if (mode.startsWith("r")) {
       if (this.dirs.has(path)) {
@@ -467,7 +476,7 @@ export class LuaRsRuntime {
 
       const source = this.files.get(path);
       if (source === undefined) {
-        return -2;
+        return -3;
       }
       this.openFiles.set(id, {
         mode,
@@ -500,7 +509,7 @@ export class LuaRsRuntime {
       return id;
     }
 
-    return -22;
+    return -23;
   }
 
   fileReadByte(id) {

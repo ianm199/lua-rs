@@ -297,7 +297,10 @@ impl LuaFileHandle for ImportedFileHandle {
 /// Opens a host file, preserving the host's errno across the wasm boundary
 /// (#301). Same return convention as `lua-wasm`'s `imported_file_open`:
 /// `id >= 0` is a live handle, `id == -1` is a failure with no errno, and
-/// `id <= -2` carries `errno = -id`.
+/// `id <= -2` carries `errno = -(id + 1)` (e.g. `-2` → EPERM (errno 1),
+/// `-3` → ENOENT (errno 2), `-23` → EINVAL (errno 22)); the one-unit shift
+/// keeps `-1` as the exclusive no-errno sentinel so EPERM stays
+/// representable (#305).
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn imported_file_open(path: &[u8], mode: &[u8]) -> std::io::Result<Box<dyn LuaFileHandle>> {
     let id = unsafe { imported_open_file(path.as_ptr(), path.len(), mode.as_ptr(), mode.len()) };
@@ -309,7 +312,7 @@ fn imported_file_open(path: &[u8], mode: &[u8]) -> std::io::Result<Box<dyn LuaFi
             "host file open failed",
         ))
     } else {
-        Err(std::io::Error::from_raw_os_error(-id))
+        Err(std::io::Error::from_raw_os_error(-(id + 1)))
     }
 }
 

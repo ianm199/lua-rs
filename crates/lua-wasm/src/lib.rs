@@ -372,8 +372,11 @@ impl LuaFileHandle for ImportedFileHandle {
 ///     error to report). Mapped to a `raw_os_error`-less `io::Error`, which
 ///     `file_result` renders as the honest 2-value `(nil, msg)`. This is the
 ///     original `-1 == fail` sentinel, kept for host backward-compatibility.
-///   * `id <= -2` — failure carrying `errno = -id` (e.g. `-2` → `ENOENT`).
-///     Mapped to `io::Error::from_raw_os_error(-id)`.
+///   * `id <= -2` — failure carrying `errno = -(id + 1)` (e.g. `-2` → EPERM
+///     (errno 1), `-3` → ENOENT (errno 2), `-23` → EINVAL (errno 22)). The
+///     one-unit shift reserves `-1` as the exclusive no-errno sentinel so that
+///     EPERM (errno 1) is representable without displacing it (#305).
+///     Mapped to `io::Error::from_raw_os_error(-(id + 1))`.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn imported_file_open(path: &[u8], mode: &[u8]) -> io::Result<Box<dyn LuaFileHandle>> {
     // SAFETY: `path` and `mode` are live Rust slices for this synchronous import.
@@ -387,7 +390,7 @@ fn imported_file_open(path: &[u8], mode: &[u8]) -> io::Result<Box<dyn LuaFileHan
             "host file open failed",
         ))
     } else {
-        Err(io::Error::from_raw_os_error(-id))
+        Err(io::Error::from_raw_os_error(-(id + 1)))
     }
 }
 

@@ -15,7 +15,9 @@
 //! by value, so the `open_file` host import encodes the outcome in its `i32`
 //! return: `>= 0` is a live handle id, `-1` is failure with no errno available
 //! (mapped to a `raw_os_error`-less error → a 2-value `(nil, msg)` result), and
-//! `<= -2` encodes `errno = -id` (mapped via `io::Error::from_raw_os_error`).
+//! `<= -2` encodes `errno = -(id + 1)` (mapped via
+//! `io::Error::from_raw_os_error`); the one-unit shift keeps `-1` as the
+//! exclusive no-errno sentinel so EPERM (errno 1) stays representable (#305).
 //! See `lua-wasm`'s `imported_file_open` and the JS host's `openFile`.
 //!
 //! ## Trait design
