@@ -1441,12 +1441,26 @@ fn collect_write_chunks(state: &mut LuaState, first_arg: i32) -> Result<Vec<Vec<
 /// shape the result exactly like C's `g_write` (shared by `io.write` and
 /// `file:write`).
 ///
+/// A chunk is written the way C's `fwrite` writes it (#305): loop over the
+/// unwritten remainder, so a short `Ok(n)` from a single `write_bytes` call —
+/// partial progress, not an error — continues until the chunk completes or the
+/// handle returns a real `Err`. That first `Err` is passed to [`file_result`]
+/// **unmodified** so its `raw_os_error()` becomes the faithful third value of
+/// the `luaL_fileresult` tuple `(nil, strerror(errno), errno)`; fabricating a
+/// `raw_os_error`-less "short write" error here collapsed the tuple to 2
+/// values and lost the errno. `fwrite` does not retry `EINTR` (glibc surfaces
+/// it as a short count with `errno` set), so `ErrorKind::Interrupted` is a
+/// failure like any other. A zero-progress `Ok(0)` cannot make progress and
+/// would loop forever; it carries no OS errno, so it is reported as the honest
+/// errno-less 2-value result (the #301 rule: never fabricate an errno).
+///
 /// On full success returns `Ok(None)`; the caller pushes its own success value
 /// (the output file for `io.write`, the handle for `file:write`). On the first
-/// short/failed write returns `Ok(Some(nres))` with the failure result already
-/// on the stack: the `luaL_fileresult` tuple `(nil, msg[, errno])` and, **on
-/// Lua 5.5 only**, an appended total-bytes-written counter (5.5's `g_write`
-/// pushes `cast_st2S(totalbytes)` and returns `n + 1`; 5.1-5.4's `g_write` does
+/// failed chunk returns `Ok(Some(nres))` with the failure result already on
+/// the stack and, **on Lua 5.5 only**, an appended total-bytes-written counter
+/// covering every completed chunk plus the failing chunk's partial progress
+/// (5.5's `g_write` accumulates `totalbytes += numbytes` per `fwrite` and
+/// pushes `cast_st2S(totalbytes)`, returning `n + 1`; 5.1-5.4's `g_write` does
 /// not).
 fn g_write(
     state: &mut LuaState,
@@ -1458,18 +1472,22 @@ fn g_write(
         let mut p = p_rc.borrow_mut();
         let fh = p.file.as_mut().expect("open stream has no file handle");
         let mut err = None;
-        for chunk in chunks {
-            match fh.write_bytes(chunk) {
-                Ok(written) => {
-                    total += written;
-                    if written < chunk.len() {
-                        err = Some(io::Error::new(io::ErrorKind::Other, "short write"));
-                        break;
+        'chunks: for chunk in chunks {
+            let mut done: usize = 0;
+            while done < chunk.len() {
+                match fh.write_bytes(&chunk[done..]) {
+                    Ok(0) => {
+                        err = Some(io::Error::new(io::ErrorKind::WriteZero, "write error"));
+                        break 'chunks;
                     }
-                }
-                Err(e) => {
-                    err = Some(e);
-                    break;
+                    Ok(n) => {
+                        done += n;
+                        total += n;
+                    }
+                    Err(e) => {
+                        err = Some(e);
+                        break 'chunks;
+                    }
                 }
             }
         }

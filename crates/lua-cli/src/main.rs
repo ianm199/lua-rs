@@ -60,8 +60,17 @@ enum FsFile {
     ReadWrite(std::fs::File, Option<u8>, Option<(i32, String)>),
 }
 
+/// Deterministic `/dev/full` stand-in with C stdio buffering fidelity (#305):
+/// the ENOSPC surfaces where `fwrite` would surface it. Fully buffered (the
+/// stdio default) accepts writes and fails at `flush`/close; unbuffered fails
+/// immediately with 0 bytes written; line-buffered accepts bytes up to the
+/// first newline and fails when the newline forces the flush — so `f:write`
+/// reports the bytes before the newline as written (5.5's counter), exactly
+/// like the reference (`lua5.5 /dev/full` line-buffered `f:write("abc\n")` →
+/// `nil, "No space left on device", 28, 3`).
 struct DevFullFile {
     errored: bool,
+    buf_mode: FsBufMode,
 }
 
 #[derive(Clone, Copy)]
@@ -293,7 +302,21 @@ impl LuaFileHandle for DevFullFile {
     fn unread_byte(&mut self, _byte: i32) {}
 
     fn write_bytes(&mut self, data: &[u8]) -> io::Result<usize> {
-        Ok(data.len())
+        match self.buf_mode {
+            FsBufMode::No => {
+                self.errored = true;
+                Err(io::Error::from_raw_os_error(28))
+            }
+            FsBufMode::Line => match data.iter().position(|&b| b == b'\n') {
+                Some(0) => {
+                    self.errored = true;
+                    Err(io::Error::from_raw_os_error(28))
+                }
+                Some(n) => Ok(n),
+                None => Ok(data.len()),
+            },
+            FsBufMode::Full => Ok(data.len()),
+        }
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -315,6 +338,15 @@ impl LuaFileHandle for DevFullFile {
 
     fn has_error(&self) -> bool {
         self.errored
+    }
+
+    fn set_buf_mode(&mut self, mode: i32, _size: usize) -> io::Result<()> {
+        self.buf_mode = match mode {
+            0 => FsBufMode::No,
+            2 => FsBufMode::Line,
+            _ => FsBufMode::Full,
+        };
+        Ok(())
     }
 }
 
@@ -387,7 +419,10 @@ fn file_rename_hook(from: &[u8], to: &[u8]) -> io::Result<()> {
 /// [`file_remove_hook`] for why no message is pre-formatted here.
 fn file_open_hook(filename: &[u8], mode: &[u8]) -> io::Result<Box<dyn LuaFileHandle>> {
     if filename == b"/dev/full" {
-        return Ok(Box::new(DevFullFile { errored: false }));
+        return Ok(Box::new(DevFullFile {
+            errored: false,
+            buf_mode: FsBufMode::Full,
+        }));
     }
     FsFile::open(filename, mode).map(|f| Box::new(f) as Box<dyn LuaFileHandle>)
 }
