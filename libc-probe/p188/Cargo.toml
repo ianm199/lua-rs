@@ -1,0 +1,10 @@
+[package]
+name = "p188"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+libc = "=0.2.188"
+
+[workspace]
