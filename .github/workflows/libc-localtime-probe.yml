@@ -12,6 +12,8 @@ name: libc localtime probe
 
 on:
   workflow_dispatch:
+  push:
+    branches: [scratch/libc-localtime-probe]
 
 env:
   CARGO_TERM_COLOR: always
