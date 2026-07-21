@@ -1,0 +1,39 @@
+name: libc localtime probe
+
+# Diagnostic matrix for rust-lang/libc#5299 — never merges.
+#
+# Answers, per MSVC toolchain generation:
+#   - does libc 0.2.186 (link_name = _localtime64_s era) link?
+#   - does libc 0.2.187/0.2.188 (plain extern names) link?
+#   - do plain self-declared localtime_s/gmtime_s externs (rilua-style) ever link?
+#   - which of these names exist at all in ucrt.lib/msvcrt.lib (dumpbin scan)?
+#
+#   gh workflow run libc-localtime-probe.yml --ref scratch/libc-localtime-probe
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  probe:
+    name: probe (${{ matrix.image }})
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [windows-2022, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: toolchain info + import-lib symbol scan
+        shell: pwsh
+        run: ./libc-probe/scan-libs.ps1
+        continue-on-error: true
+      - name: build + run probe matrix
+        shell: pwsh
+        env:
+          PROBE_LABEL: ${{ matrix.image }}
+        run: ./libc-probe/run-probe.ps1
