@@ -494,10 +494,10 @@ fn local_offset_hook(t: i64) -> i64 {
     // library, causing LNK2019 "unresolved external symbol" at link time.
     unsafe {
         extern "C" {
-            fn _localtime64_s(tm: *mut libc::tm, time: *const libc::time_t) -> libc::c_int;
-            fn _gmtime64_s(tm: *mut libc::tm, time: *const libc::time_t) -> libc::c_int;
+            fn _localtime64_s(tm: *mut libc::tm, time: *const i64) -> libc::c_int;
+            fn _gmtime64_s(tm: *mut libc::tm, time: *const i64) -> libc::c_int;
         }
-        let tt = t as libc::time_t;
+        let tt = t;
         let mut loc: libc::tm = std::mem::zeroed();
         let mut utc: libc::tm = std::mem::zeroed();
         if _localtime64_s(&mut loc, &tt) != 0 || _gmtime64_s(&mut utc, &tt) != 0 {
