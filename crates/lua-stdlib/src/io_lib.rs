@@ -418,11 +418,15 @@ fn check_mode_popen(mode: &[u8]) -> bool {
 /// glibc `strerror` both emit — verified against the reference binary for the
 /// file errnos the oracle exercises (2, 9, 13, 20, 28, 1) — so using the table
 /// on every target is deterministic and keeps wasm and native identical.
-/// Errnos absent here (rare, platform-specific values whose text diverges
-/// between Darwin and glibc, e.g. macOS `ENOTEMPTY` = 66) return `None` and are
-/// resolved from the OS `Display`, which is correct on a native host and does
-/// not arise on wasm.
-#[cfg(any(unix, target_arch = "wasm32"))]
+/// The table is also consulted on Windows after Win32→CRT-errno normalization
+/// ([`win32_to_crt_errno`]): MSVC CRT errno integers 1–32 are numerically
+/// identical to their POSIX counterparts, so the same table serves both. Known
+/// text divergence pending a Windows runner: errno 12 (ENOMEM) — the MSVC CRT
+/// `strerror` says "Not enough space" where this table says "Cannot allocate
+/// memory". Errnos absent here (rare, platform-specific values whose text
+/// diverges between platforms, e.g. macOS `ENOTEMPTY` = 66, Windows CRT
+/// `ENOTEMPTY` = 41) return `None` and are resolved from the OS `Display`,
+/// which is correct on a native host and does not arise on wasm.
 fn posix_strerror(code: i32) -> Option<&'static str> {
     Some(match code {
         1 => "Operation not permitted",
@@ -451,18 +455,174 @@ fn posix_strerror(code: i32) -> Option<&'static str> {
     })
 }
 
-/// The [`posix_strerror`] table only applies where `raw_os_error()` IS a POSIX
-/// errno — Unix and wasm. On Windows `raw_os_error()` is a Win32 code with
-/// different numbering (code 5 is `ERROR_ACCESS_DENIED`, not `EIO`), so the
-/// table would mistranslate it; there we return `None` and fall back to the OS
-/// `Display` (Windows's own message + code), which is the port's native
-/// behavior. Faithful Win32→CRT-errno normalization is a separate follow-up.
+/// Win32 error code to MSVC CRT errno, mirroring the `_dosmaperr` table.
+///
+/// The MSVC CRT's `_dosmaperr` runs after every failing Win32 system call and
+/// maps a fixed set of codes to CRT errno values; every other code yields
+/// `EINVAL` (22). That table is stable public CRT ABI (unchanged since at
+/// least VS 2005), and it is what C Lua on Windows observes through `errno`
+/// after a failed `fopen`/`remove`/`rename` — so `file_result`'s pushed
+/// integer must pass through the same mapping (#305). There is no
+/// range-passthrough rule in modern `_dosmaperr`; that logic existed only in
+/// 16-bit DOS-era code.
+///
+/// Named-constant reference (Win32 code → CRT errno name → CRT value):
+/// ```text
+/// 1   ERROR_INVALID_FUNCTION       → EINVAL       22
+/// 2   ERROR_FILE_NOT_FOUND         → ENOENT        2
+/// 3   ERROR_PATH_NOT_FOUND         → ENOENT        2
+/// 4   ERROR_TOO_MANY_OPEN_FILES    → EMFILE       24
+/// 5   ERROR_ACCESS_DENIED          → EACCES       13
+/// 6   ERROR_INVALID_HANDLE         → EBADF         9
+/// 7   ERROR_ARENA_TRASHED          → ENOMEM       12
+/// 8   ERROR_NOT_ENOUGH_MEMORY      → ENOMEM       12
+/// 9   ERROR_INVALID_BLOCK          → ENOMEM       12
+/// 10  ERROR_BAD_ENVIRONMENT        → E2BIG         7
+/// 11  ERROR_BAD_FORMAT             → ENOEXEC       8
+/// 12  ERROR_INVALID_ACCESS         → EINVAL       22
+/// 13  ERROR_INVALID_DATA           → EINVAL       22
+/// 15  ERROR_INVALID_DRIVE          → ENOENT        2
+/// 16  ERROR_CURRENT_DIRECTORY      → EACCES       13
+/// 17  ERROR_NOT_SAME_DEVICE        → EXDEV        18
+/// 18  ERROR_NO_MORE_FILES          → ENOENT        2
+/// 32  ERROR_SHARING_VIOLATION      → EACCES       13
+/// 33  ERROR_LOCK_VIOLATION         → EACCES       13
+/// 53  ERROR_BAD_NETPATH            → ENOENT        2
+/// 65  ERROR_NETWORK_ACCESS_DENIED  → EACCES       13
+/// 67  ERROR_BAD_NET_NAME           → ENOENT        2
+/// 80  ERROR_FILE_EXISTS            → EEXIST       17
+/// 82  ERROR_CANNOT_MAKE            → EACCES       13
+/// 83  ERROR_FAIL_I24               → EACCES       13
+/// 87  ERROR_INVALID_PARAMETER      → EINVAL       22
+/// 89  ERROR_NO_PROC_SLOTS          → EAGAIN       11
+/// 108 ERROR_DRIVE_LOCKED           → EACCES       13
+/// 109 ERROR_BROKEN_PIPE            → EPIPE        32
+/// 112 ERROR_DISK_FULL              → ENOSPC       28
+/// 114 ERROR_INVALID_TARGET_HANDLE  → EBADF         9
+/// 128 ERROR_WAIT_NO_CHILDREN       → ECHILD       10
+/// 129 ERROR_CHILD_NOT_COMPLETE     → ECHILD       10
+/// 130 ERROR_DIRECT_ACCESS_HANDLE   → EBADF         9
+/// 131 ERROR_NEGATIVE_SEEK          → EINVAL       22
+/// 132 ERROR_SEEK_ON_DEVICE         → EACCES       13
+/// 133 ERROR_IS_JOIN_TARGET         → EACCES       13
+/// 134 ERROR_IS_JOINED              → EACCES       13
+/// 135 ERROR_IS_SUBSTED             → EACCES       13
+/// 136 ERROR_NOT_JOINED             → EACCES       13
+/// 137 ERROR_NOT_SUBSTED            → EACCES       13
+/// 138 ERROR_JOIN_TO_JOIN           → EACCES       13
+/// 139 ERROR_SUBST_TO_SUBST         → EACCES       13
+/// 140 ERROR_JOIN_TO_SUBST          → EACCES       13
+/// 141 ERROR_SUBST_TO_JOIN          → EACCES       13
+/// 145 ERROR_DIR_NOT_EMPTY          → ENOTEMPTY    41  (Windows CRT value; POSIX is 39)
+/// 158 ERROR_NOT_LOCKED             → EACCES       13
+/// 161 ERROR_BAD_PATHNAME           → ENOENT        2
+/// 164 ERROR_MAX_THRDS_REACHED      → EAGAIN       11
+/// 167 ERROR_LOCK_FAILED            → EACCES       13
+/// 183 ERROR_ALREADY_EXISTS         → EEXIST       17
+/// 206 ERROR_FILENAME_EXCED_RANGE   → ENOENT        2
+/// 215 ERROR_NESTING_NOT_ALLOWED    → EAGAIN       11
+/// 1816 ERROR_NOT_ENOUGH_QUOTA      → ENOMEM       12
+/// _   (all others)                 → EINVAL       22
+/// ```
+///
+/// This function carries no `cfg` gate so its unit tests run on every
+/// platform; only the call sites are `#[cfg(windows)]`-gated, hence the
+/// dead-code allowance for non-Windows non-test builds.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn win32_to_crt_errno(win32_code: u32) -> i32 {
+    match win32_code {
+        1 => 22,
+        2 => 2,
+        3 => 2,
+        4 => 24,
+        5 => 13,
+        6 => 9,
+        7 => 12,
+        8 => 12,
+        9 => 12,
+        10 => 7,
+        11 => 8,
+        12 => 22,
+        13 => 22,
+        15 => 2,
+        16 => 13,
+        17 => 18,
+        18 => 2,
+        32 => 13,
+        33 => 13,
+        53 => 2,
+        65 => 13,
+        67 => 2,
+        80 => 17,
+        82 => 13,
+        83 => 13,
+        87 => 22,
+        89 => 11,
+        108 => 13,
+        109 => 32,
+        112 => 28,
+        114 => 9,
+        128 => 10,
+        129 => 10,
+        130 => 9,
+        131 => 22,
+        132 => 13,
+        133 => 13,
+        134 => 13,
+        135 => 13,
+        136 => 13,
+        137 => 13,
+        138 => 13,
+        139 => 13,
+        140 => 13,
+        141 => 13,
+        145 => 41,
+        158 => 13,
+        161 => 2,
+        164 => 11,
+        167 => 13,
+        183 => 17,
+        206 => 2,
+        215 => 11,
+        1816 => 12,
+        _ => 22,
+    }
+}
+
+/// Normalize a raw-OS code for the integer pushed in Lua's failure triple.
+///
+/// On Windows `raw_os_error()` returns a Win32 code; the MSVC CRT's
+/// `_dosmaperr` converts it to a CRT errno before C Lua ever sees it through
+/// `errno`. This performs the same conversion so the integer pushed by
+/// [`file_result`] matches what C Lua pushes (#305). On all other targets the
+/// raw OS code is already a POSIX errno and passes through unchanged.
+#[cfg(windows)]
+fn os_errno_for_lua(raw: i32) -> i32 {
+    win32_to_crt_errno(raw as u32)
+}
+
+#[cfg(not(windows))]
+fn os_errno_for_lua(raw: i32) -> i32 {
+    raw
+}
+
+/// On Unix and wasm the raw OS code is already a POSIX errno; look it up in
+/// [`posix_strerror`] directly. On Windows the raw code is a Win32 code
+/// (code 5 is `ERROR_ACCESS_DENIED`, not `EIO`); normalize it to a CRT errno
+/// first so the returned text matches C's `strerror(errno)` for the same
+/// failure (#305). On other targets no translation is known; callers fall
+/// through to the OS `Display`.
 #[cfg(any(unix, target_arch = "wasm32"))]
 fn target_posix_strerror(code: i32) -> Option<&'static str> {
     posix_strerror(code)
 }
 
-#[cfg(not(any(unix, target_arch = "wasm32")))]
+#[cfg(windows)]
+fn target_posix_strerror(code: i32) -> Option<&'static str> {
+    posix_strerror(win32_to_crt_errno(code as u32))
+}
+
+#[cfg(not(any(unix, target_arch = "wasm32", windows)))]
 fn target_posix_strerror(_code: i32) -> Option<&'static str> {
     None
 }
@@ -541,7 +701,7 @@ pub(crate) fn file_result(
     }
     match os_err.raw_os_error() {
         Some(code) => {
-            state.push(LuaValue::Int(code as i64));
+            state.push(LuaValue::Int(os_errno_for_lua(code) as i64));
             Ok(3)
         }
         None => Ok(2),
@@ -1831,4 +1991,183 @@ pub fn luaopen_io(state: &mut LuaState) -> Result<usize, LuaError> {
     create_std_file(state, StdFileKind::Stdout, Some(IO_OUTPUT_KEY), b"stdout")?;
     create_std_file(state, StdFileKind::Stderr, None, b"stderr")?;
     Ok(1)
+}
+
+#[cfg(test)]
+mod win32_errno_map_tests {
+    use super::win32_to_crt_errno;
+
+    #[test]
+    fn file_not_found_yields_enoent() {
+        assert_eq!(win32_to_crt_errno(2), 2, "ERROR_FILE_NOT_FOUND → ENOENT");
+    }
+
+    #[test]
+    fn path_not_found_yields_enoent() {
+        assert_eq!(win32_to_crt_errno(3), 2, "ERROR_PATH_NOT_FOUND → ENOENT");
+    }
+
+    #[test]
+    fn access_denied_yields_eacces() {
+        assert_eq!(win32_to_crt_errno(5), 13, "ERROR_ACCESS_DENIED → EACCES");
+    }
+
+    #[test]
+    fn invalid_handle_yields_ebadf() {
+        assert_eq!(win32_to_crt_errno(6), 9, "ERROR_INVALID_HANDLE → EBADF");
+    }
+
+    #[test]
+    fn not_enough_memory_yields_enomem() {
+        assert_eq!(win32_to_crt_errno(8), 12, "ERROR_NOT_ENOUGH_MEMORY → ENOMEM");
+    }
+
+    #[test]
+    fn arena_trashed_yields_enomem() {
+        assert_eq!(win32_to_crt_errno(7), 12, "ERROR_ARENA_TRASHED → ENOMEM");
+    }
+
+    #[test]
+    fn invalid_block_yields_enomem() {
+        assert_eq!(win32_to_crt_errno(9), 12, "ERROR_INVALID_BLOCK → ENOMEM");
+    }
+
+    #[test]
+    fn too_many_open_files_yields_emfile() {
+        assert_eq!(win32_to_crt_errno(4), 24, "ERROR_TOO_MANY_OPEN_FILES → EMFILE");
+    }
+
+    #[test]
+    fn bad_environment_yields_e2big() {
+        assert_eq!(win32_to_crt_errno(10), 7, "ERROR_BAD_ENVIRONMENT → E2BIG");
+    }
+
+    #[test]
+    fn bad_format_yields_enoexec() {
+        assert_eq!(win32_to_crt_errno(11), 8, "ERROR_BAD_FORMAT → ENOEXEC");
+    }
+
+    #[test]
+    fn sharing_violation_yields_eacces() {
+        assert_eq!(win32_to_crt_errno(32), 13, "ERROR_SHARING_VIOLATION → EACCES");
+    }
+
+    #[test]
+    fn lock_violation_yields_eacces() {
+        assert_eq!(win32_to_crt_errno(33), 13, "ERROR_LOCK_VIOLATION → EACCES");
+    }
+
+    #[test]
+    fn file_exists_yields_eexist() {
+        assert_eq!(win32_to_crt_errno(80), 17, "ERROR_FILE_EXISTS → EEXIST");
+    }
+
+    #[test]
+    fn already_exists_yields_eexist() {
+        assert_eq!(win32_to_crt_errno(183), 17, "ERROR_ALREADY_EXISTS → EEXIST");
+    }
+
+    #[test]
+    fn broken_pipe_yields_epipe() {
+        assert_eq!(win32_to_crt_errno(109), 32, "ERROR_BROKEN_PIPE → EPIPE");
+    }
+
+    #[test]
+    fn disk_full_yields_enospc() {
+        assert_eq!(win32_to_crt_errno(112), 28, "ERROR_DISK_FULL → ENOSPC");
+    }
+
+    #[test]
+    fn not_same_device_yields_exdev() {
+        assert_eq!(win32_to_crt_errno(17), 18, "ERROR_NOT_SAME_DEVICE → EXDEV");
+    }
+
+    #[test]
+    fn invalid_parameter_yields_einval() {
+        assert_eq!(win32_to_crt_errno(87), 22, "ERROR_INVALID_PARAMETER → EINVAL");
+    }
+
+    #[test]
+    fn invalid_function_yields_einval() {
+        assert_eq!(win32_to_crt_errno(1), 22, "ERROR_INVALID_FUNCTION → EINVAL");
+    }
+
+    #[test]
+    fn bad_pathname_yields_enoent() {
+        assert_eq!(win32_to_crt_errno(161), 2, "ERROR_BAD_PATHNAME → ENOENT");
+    }
+
+    #[test]
+    fn filename_exced_range_yields_enoent() {
+        assert_eq!(win32_to_crt_errno(206), 2, "ERROR_FILENAME_EXCED_RANGE → ENOENT");
+    }
+
+    #[test]
+    fn network_access_denied_yields_eacces() {
+        assert_eq!(win32_to_crt_errno(65), 13, "ERROR_NETWORK_ACCESS_DENIED → EACCES");
+    }
+
+    #[test]
+    fn drive_locked_yields_eacces() {
+        assert_eq!(win32_to_crt_errno(108), 13, "ERROR_DRIVE_LOCKED → EACCES");
+    }
+
+    #[test]
+    fn not_enough_quota_yields_enomem() {
+        assert_eq!(win32_to_crt_errno(1816), 12, "ERROR_NOT_ENOUGH_QUOTA → ENOMEM");
+    }
+
+    #[test]
+    fn dir_not_empty_yields_windows_crt_enotempty() {
+        assert_eq!(
+            win32_to_crt_errno(145),
+            41,
+            "ERROR_DIR_NOT_EMPTY → ENOTEMPTY=41 (Windows CRT)"
+        );
+    }
+
+    #[test]
+    fn join_and_subst_family_yields_eacces() {
+        for code in 133u32..=141 {
+            assert_eq!(win32_to_crt_errno(code), 13, "join/subst error {code} → EACCES");
+        }
+    }
+
+    #[test]
+    fn unmapped_codes_yield_einval() {
+        for code in [0u32, 14, 19, 20, 21, 22, 23, 100, 999, 65535, u32::MAX] {
+            assert_eq!(
+                win32_to_crt_errno(code),
+                22,
+                "unmapped Win32 code {code} must yield EINVAL=22 (_dosmaperr default)"
+            );
+        }
+    }
+
+    #[test]
+    fn all_table_codes_map_to_positive_errno() {
+        let mapped_codes: &[u32] = &[
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 32, 33, 53, 65, 67, 80,
+            82, 83, 87, 89, 108, 109, 112, 114, 128, 129, 130, 131, 132, 133, 134, 135, 136,
+            137, 138, 139, 140, 141, 145, 158, 161, 164, 167, 183, 206, 215, 1816,
+        ];
+        for &code in mapped_codes {
+            let errno = win32_to_crt_errno(code);
+            assert!(
+                errno > 0,
+                "Win32 code {code} must map to a positive CRT errno, got {errno}"
+            );
+        }
+    }
+
+    #[test]
+    fn mapped_common_file_errnos_have_posix_strerror_text() {
+        for win32 in [2u32, 3, 5, 6, 80, 109, 112, 183] {
+            let errno = win32_to_crt_errno(win32);
+            assert!(
+                super::posix_strerror(errno).is_some(),
+                "Win32 code {win32} maps to errno {errno} which must have strerror text"
+            );
+        }
+    }
 }
