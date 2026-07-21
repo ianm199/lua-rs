@@ -4,6 +4,21 @@ All notable changes to `omniLua` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — embedding VM churn no longer retains io stream entries (#317)
+
+The `io` library's `LStream` side table (file-handle userdata identity →
+stream) lived in a process-wide `thread_local!`, so it outlived every VM
+that filled it: each `Lua` instance registered its `stdin`/`stdout`/`stderr`
+(plus any opened files) and never removed them. Retention per dropped VM
+scaled with how rarely the allocator hands back a previously seen userdata
+address — small on Linux (~30 B/iter in the leak canary), large on Windows
+(~40–260 B/iter, the envelope 0.7.1 recorded). The table now lives on
+`GlobalState` and dies with its VM; the leak canaries measure exactly zero
+growth across all churn scenarios on Linux, and a new `io_registry_churn`
+scenario pins the fix at the strict POSIX tolerance.
+
 ## [0.7.1] - 2026-07-21
 
 Windows repair release: 0.7.0 could not be installed on current MSVC

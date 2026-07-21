@@ -1623,6 +1623,17 @@ pub struct GlobalState {
     /// `io.popen` to raise a Lua error rather than panic.
     pub popen_hook: Option<PopenHook>,
 
+    /// Per-VM slot for `lua-stdlib`'s `io` stream side table (the `LStream`
+    /// map keyed by file-handle userdata identity). Type-erased because the
+    /// concrete map type lives in `lua-stdlib`, which this crate cannot name;
+    /// `io_lib` lazily installs it on first use and downcasts on access.
+    /// Owned here — rather than in a process-wide `thread_local!` — so the
+    /// table dies with the VM: issue #317 traced the leak canary's
+    /// per-iteration retention to stream entries of dropped VMs accumulating
+    /// forever in the thread-global map whenever a file userdata landed at a
+    /// never-before-seen address.
+    pub io_streams: Option<std::rc::Rc<dyn std::any::Any>>,
+
     /// Hook for removing a file. Set by `lua-cli` since `std::fs` is
     /// banned in `lua-stdlib`. `None` causes `os.remove` to return an error.
     pub file_remove_hook: Option<FileRemoveHook>,
@@ -6325,6 +6336,7 @@ pub fn new_state() -> Option<LuaState> {
         entropy_hook: None,
         temp_name_hook: None,
         popen_hook: None,
+        io_streams: None,
         file_remove_hook: None,
         file_rename_hook: None,
         os_execute_hook: None,

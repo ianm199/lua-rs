@@ -16,7 +16,8 @@
 //! stores the `LStream` inside the userdata payload, but `LStream` carries heap
 //! pointers (a `Box<dyn LuaFileHandle>` and a fn pointer) that cannot be safely
 //! reinterpreted from a raw byte buffer in safe Rust, so the stream lives in a
-//! thread-local `LSTREAM_REGISTRY` keyed by userdata identity. Each I/O step
+//! per-VM side table (`GlobalState::io_streams`) keyed by userdata identity,
+//! dropped with the VM (issue #317). Each I/O step
 //! borrows the file through its `Rc<RefCell<LStream>>` briefly, releases the
 //! borrow, then touches `LuaState` — resolving C's single `LStream *` aliasing
 //! into two scoped borrows.
@@ -37,26 +38,44 @@ use crate::state_stub::{LuaState, LuaStateStubExt as _};
 use lua_types::{LuaError, LuaFileHandle, LuaType, LuaValue};
 use lua_vm::state::{InputHook, OutputHook};
 
-thread_local! {
-    /// Side-table mapping userdata identity (the `Rc` pointer address from
-    /// `GcRef::identity()`) to its associated `LStream` (see the module header
-    /// for why the stream lives here rather than inside the userdata payload).
-    /// Entries are inserted by `new_pre_file` and intentionally never removed —
-    /// a bounded leak per `PORTING.md` §2 #4.
-    static LSTREAM_REGISTRY: RefCell<HashMap<usize, Rc<RefCell<LStream>>>>
-        = RefCell::new(HashMap::new());
+/// Side-table mapping userdata identity (the `Rc` pointer address from
+/// `GcRef::identity()`) to its associated `LStream` (see the module header
+/// for why the stream lives here rather than inside the userdata payload).
+/// Entries are inserted by `new_pre_file` and never removed individually —
+/// a leak bounded by the owning VM's lifetime per `PORTING.md` §2 #4.
+type LStreamMap = RefCell<HashMap<usize, Rc<RefCell<LStream>>>>;
+
+/// Fetch this VM's `LStream` side table from [`GlobalState::io_streams`],
+/// lazily installing an empty map on first use. The table is per-VM state
+/// (issue #317): a process-wide `thread_local!` outlived the VMs that filled
+/// it, retaining one dead `LStream` per file userdata whose identity address
+/// was never reused — the leak canary's per-iteration VM-churn growth.
+///
+/// [`GlobalState::io_streams`]: lua_vm::state::GlobalState::io_streams
+fn lstream_registry(state: &LuaState) -> Rc<LStreamMap> {
+    let installed = state.global().io_streams.clone();
+    match installed {
+        Some(any) => any
+            .downcast::<LStreamMap>()
+            .expect("GlobalState::io_streams holds the io LStream side table"),
+        None => {
+            let fresh: Rc<LStreamMap> = Rc::new(RefCell::new(HashMap::new()));
+            state.global_mut().io_streams = Some(fresh.clone());
+            fresh
+        }
+    }
 }
 
-fn register_lstream(ud_id: usize, lstream: LStream) -> Rc<RefCell<LStream>> {
+fn register_lstream(state: &LuaState, ud_id: usize, lstream: LStream) -> Rc<RefCell<LStream>> {
     let cell = Rc::new(RefCell::new(lstream));
-    LSTREAM_REGISTRY.with(|reg| {
-        reg.borrow_mut().insert(ud_id, cell.clone());
-    });
+    lstream_registry(state)
+        .borrow_mut()
+        .insert(ud_id, cell.clone());
     cell
 }
 
-fn lookup_lstream(ud_id: usize) -> Option<Rc<RefCell<LStream>>> {
-    LSTREAM_REGISTRY.with(|reg| reg.borrow().get(&ud_id).cloned())
+fn lookup_lstream(state: &LuaState, ud_id: usize) -> Option<Rc<RefCell<LStream>>> {
+    lstream_registry(state).borrow().get(&ud_id).cloned()
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -574,7 +593,7 @@ fn exec_result(state: &mut LuaState, stat: i32) -> Result<usize, LuaError> {
 /// reinterpreted from a raw byte buffer in safe Rust.
 fn get_lstream(state: &mut LuaState) -> Result<Rc<RefCell<LStream>>, LuaError> {
     let ud = state.check_arg_userdata(1, LUA_FILE_HANDLE)?;
-    lookup_lstream(ud.identity())
+    lookup_lstream(state, ud.identity())
         .ok_or_else(|| LuaError::runtime(format_args!("invalid file handle")))
 }
 
@@ -595,7 +614,7 @@ fn lstream_from_upvalue(state: &mut LuaState, idx: i32) -> Result<Rc<RefCell<LSt
             )));
         }
     };
-    lookup_lstream(ud_id)
+    lookup_lstream(state, ud_id)
         .ok_or_else(|| LuaError::runtime(format_args!("invalid file handle in upvalue {}", idx)))
 }
 
@@ -630,6 +649,7 @@ fn new_pre_file(state: &mut LuaState) -> Result<Rc<RefCell<LStream>>, LuaError> 
     let ud = state.new_userdata_typed(LUA_FILE_HANDLE, std::mem::size_of::<LStream>(), 0)?;
     state.set_metatable_by_name(LUA_FILE_HANDLE)?;
     let cell = register_lstream(
+        state,
         ud.identity(),
         LStream {
             file: None,
@@ -765,7 +785,7 @@ pub fn io_type(state: &mut LuaState) -> Result<usize, LuaError> {
             state.push(LuaValue::Nil);
         }
         Some(ud) => {
-            let is_closed = match lookup_lstream(ud.identity()) {
+            let is_closed = match lookup_lstream(state, ud.identity()) {
                 Some(rc) => rc.borrow().is_closed(),
                 None => true,
             };
@@ -1376,7 +1396,7 @@ fn get_io_file_rc(state: &mut LuaState, key: &[u8]) -> Result<Rc<RefCell<LStream
             label.escape_ascii()
         ))
     })?;
-    let rc = lookup_lstream(id).ok_or_else(|| {
+    let rc = lookup_lstream(state, id).ok_or_else(|| {
         LuaError::runtime(format_args!(
             "default {} file is invalid",
             label.escape_ascii()
@@ -1590,7 +1610,7 @@ pub fn io_flush(state: &mut LuaState) -> Result<usize, LuaError> {
         id
     };
     if let Some(id) = ud_id {
-        if let Some(rc) = lookup_lstream(id) {
+        if let Some(rc) = lookup_lstream(state, id) {
             let result = {
                 let mut p = rc.borrow_mut();
                 if p.is_closed() {

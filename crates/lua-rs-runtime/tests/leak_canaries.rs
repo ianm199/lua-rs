@@ -73,12 +73,16 @@ const ITERS: usize = 64;
 #[cfg(not(target_os = "windows"))]
 const TOLERANCE: isize = 4096;
 
-/// Windows measured envelope — issue #317: VM churn retains ~40-260
+/// Windows measured envelope — issue #317: VM churn retained ~40-260
 /// bytes/iteration there (pre-existing, GC-reclaimable, NOT #249-class —
-/// the detached tripwire below stays exact on every platform). This
-/// envelope (~1KB/iter headroom) still catches a #249-class leak
-/// (~29KB/iter → ~1.8MB/scenario) by two orders of magnitude; #317 tracks
-/// driving it back down to the POSIX value.
+/// the detached tripwire below stays exact on every platform). Root cause
+/// (the io `LStream` side table outliving its VM in a `thread_local!`;
+/// retention scaled with how rarely the platform allocator reuses
+/// addresses, hence Windows ≫ Linux) is fixed — the table now lives on
+/// `GlobalState` — and the `io_registry_churn` scenario pins it at the
+/// POSIX tolerance. This envelope stays until a Windows suite run
+/// re-measures; it still catches a #249-class leak (~29KB/iter →
+/// ~1.8MB/scenario) by two orders of magnitude.
 #[cfg(target_os = "windows")]
 const TOLERANCE: isize = 65536;
 
@@ -148,6 +152,14 @@ fn embedding_lifecycle_is_steady_state() {
         let mut rt = LuaRuntime::new().unwrap();
         rt.exec(b"return 1 + 1", b"=canary").unwrap();
         drop(rt);
+    });
+
+    assert_steady_state("io_registry_churn: std-file side table dies with the VM (#317)", || {
+        for _ in 0..16 {
+            let lua = Lua::new();
+            lua.load("return io.type(io.stdout)").exec().unwrap();
+            drop(lua);
+        }
     });
 
     let lua = Lua::new();
