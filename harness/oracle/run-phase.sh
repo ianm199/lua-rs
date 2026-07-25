@@ -82,7 +82,7 @@ if [ "$FAIL" = "0" ] && [ "$PASS" -gt "0" ]; then
     PASS_FLAG="true"
 fi
 
-FAILED_JSON=$(printf '"%s",' "${FAILED_NAMES[@]}" | sed 's/,$//')
+FAILED_JSON=$(printf '"%s",' "${FAILED_NAMES[@]+"${FAILED_NAMES[@]}"}" | sed 's/,$//')
 
 cat > "$RESULTS_JSON" <<EOF
 {
